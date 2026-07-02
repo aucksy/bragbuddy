@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Dark-theme platform tokens (see design system --ab-* dark values). -->
+    <!-- Dark-theme platform tokens (dark values of the ab-* design-system tokens). -->
     <color name="ab_primary">#8E96F2</color>
     <color name="ab_bg">#0F1020</color>
     <color name="ab_surface">#191B2E</color>
