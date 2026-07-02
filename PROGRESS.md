@@ -1,8 +1,9 @@
 # BragBuddy — Build Progress
 
-The rolling handoff log for the phased build. **Start of each chat:** read the PRD
-(`../PRD/BragBuddy-Build-Brief.md`, `../PRD/BragBuddy-System-Prompt.md`), the Design System
-(`../Design System/`), this file, and the current code — that is the context, not chat history.
+The rolling handoff log for the phased build. **Start of each chat:** read the PRD folder
+(`../PRD/BragBuddy-PRD.md`, `../PRD/BragBuddy-Build-Brief.md`, `../PRD/BragBuddy-System-Prompt.md`),
+the Design System (`../Design System/`), this file, and the current code — that is the context, not
+chat history.
 **End of each phase:** update this file, commit, leave the repo clean and runnable.
 
 ---
@@ -32,7 +33,14 @@ data layer and the swappable AI seam in place.
 - **Swappable AI seam** — `AiProvider` interface (`categorize`, `generateSummary`, both return
   `Result<>` and must fail safe to Inbox) + typed request/result models matching the two system
   prompts. `StubAiProvider` (no network) echoes a transcript into the Inbox at confidence 0. Bound
-  in `di/AiModule` — swapping to OpenRouter later is a one-line change here.
+  in `di/AiModule` — swapping to OpenRouter later is a one-line change here. The two methods are
+  deliberately separate so the two-models-by-task routing (free categorizer + fallback / stronger
+  summary, remote-config slugs — PRD P0-12) drops in behind the interface in Phase 2.
+- **Usage-metering hook** (`data/usage/UsageMeter` + `DataStoreUsageMeter`, bound in `di/UsageModule`)
+  — the one forward-hook the PRD says to build "from the start" (P0-12 / §11 monetization): counts
+  fresh **summary generations** (per-month + lifetime) and **cloud-transcription seconds**. No
+  billing/tiers/UI — just the counts. Nothing increments it yet (summary = Phase 5, cloud STT =
+  opt-in Phase 1/2); the seam exists so those phases call it instead of a later rewrite.
 - **Default framework** — ships as static data (`data/framework/Framework.DEFAULT`): Performance
   Goals / Leadership & Behaviours / Learning & Growth, with `toPromptBlock()` for the prompts. The
   company name is never asked.
@@ -45,6 +53,21 @@ data layer and the swappable AI seam in place.
 - **CI** — `.github/workflows/android-debug.yml`: on push to main / manual, runs
   `testDebugUnitTest` then `assembleDebug` and uploads `BragBuddy-debug.apk`. One unit test
   (`FrameworkTest`) establishes the test sourceset.
+
+### Requirement update absorbed (2026-07-02 — formal `BragBuddy-PRD.md` added, Build Brief revised)
+The full PRD and a revised brief landed after the initial scaffold. Reviewed against Phase 0:
+- **Consistent already, no code change:** default framework (Perf Goals / Leadership & Behaviours /
+  Learning & Growth), text-entry first-class (`EntrySource.TEXT`), ~0.6-confidence→Inbox, immutable
+  raw log, swappable provider, on-device STT default.
+- **Two models routed by task + remote-config slugs + fallback-on-429** (PRD P0-12): the seam
+  already supports it (separate `categorize`/`generateSummary`); wiring is Phase 2. Documented on
+  `AiProvider`.
+- **Summary-generation guardrails** (view cached free; regenerate only when the rollup changed;
+  cache per period+length; soft cap): Phase 5 repository concern — noted for that phase.
+- **Metering "from the start"**: implemented now as the small `UsageMeter` hook (see above) — the
+  only net-new architectural change this update required.
+- **Monetization (PRD §11)** is post-MVP and explicitly not built; the metering hook is its only
+  MVP footprint.
 
 ### Decisions & deviations (things a reviewer should know)
 - **Stack = native Kotlin/Compose** (not Flutter, which the brief floated) — confirmed with the
