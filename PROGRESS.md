@@ -12,7 +12,12 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.3.0 — cloud transcription ✅ built (pending CI) · v0.2.0 = Phase 1 done · v0.1.0 = Phase 0
+## Status: v0.3.0 — cloud transcription ✅ DONE (verified green · signed) · v0.2.0 = Phase 1 · v0.1.0 = Phase 0
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.3.0/BragBuddy-v0.3.0.apk`. To use it:
+Settings → Transcription → Cloud Whisper → paste a Groq key (`gsk_…` from console.groq.com). CI
+caught 1 compile error (missing `import androidx.compose.foundation.layout.Box` in SettingsScreen —
+its 4 "@Composable invocations" errors were cascade from the unresolved `Box`).
 
 ### Capture-quality upgrade — cloud Whisper (v0.3.0, `versionCode 3`)
 On-device STT quality was poor, so — per PRD **P0-11** (cloud transcription is a swappable upgrade) —
