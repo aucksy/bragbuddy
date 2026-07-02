@@ -12,7 +12,82 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.3.0 — cloud transcription ✅ DONE (verified green · signed) · v0.2.0 = Phase 1 · v0.1.0 = Phase 0
+## Status: v0.4.0 — Phase 2 AI categorization ✅ DONE (verified green · signed · first-try CI)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.4.0/BragBuddy-v0.4.0.apk` (signed;
+`.aab` alongside). **To use it:** Settings → **AI brain (OpenRouter)** → paste an OpenRouter key
+(`sk-or-v1-…` from openrouter.ai → Keys) — a **NEW key, separate from the Groq transcription key**,
+stored on-device only. Then capture an entry: it gets cleaned into a bullet and filed to a goal
+area, or lands in the Inbox. Framework tab → **Refine by voice** to reshape your pillars.
+
+### What was built (Phase 2, `versionCode 4`)
+- **AI brain wired behind the seam.** `data/ai/OpenRouterAiProvider` replaces `StubAiProvider` in
+  `di/AiModule` (one-line bind). OpenAI-compatible OpenRouter; key read fresh from `SettingsStore`
+  on each call, on-device only. **Two models by task + fallback** (`data/ai/AiConfig` — the single
+  place slugs live, remote-config-ready): categorizer `deepseek/deepseek-chat-v3-0324:free`, fallback
+  `meta-llama/llama-3.3-70b-instruct:free`; summary slugs set for Phase 5 (not exercised yet). On any
+  transient/HTTP/parse failure the provider tries the fallback model, then fails safe.
+- **Baked prompts** (`data/ai/AiPrompts`) — Part A daily categorizer + Part C framework refine + Part
+  B summary, verbatim from `../PRD/BragBuddy-System-Prompt.md`, with runtime injection (today /
+  framework / projects). `data/ai/AiJson` does lenient JSON extraction (strips ```-fences/prose,
+  first `{`…last `}`) — **unit-tested** (`CategorizeParsingTest`).
+- **Categorization pipeline** (`data/entry/EntryProcessor`, kicked from `EntryRepository.capture` on
+  an app-lifetime `CoroutineScope` — `di/CoroutinesModule` `@ApplicationScope`). Off the capture
+  path (never blocks). Splits a multi-item transcript into sibling rows (each keeps the transcript),
+  fills every field, and sets status: **confidence < 0.6 or an "Inbox" placement → INBOX**;
+  AI/parse/network failure → **FAILED (transcript kept, shown in Inbox)**; empty result → INBOX.
+  **Never loses an entry.** Drained on launch (`MainActivity`) for interrupted runs.
+- **Framework refine-by-voice** (`ui/framework/`) — `FrameworkStore` (DataStore JSON) persists the
+  editable framework, defaulting to the shipped `Framework.DEFAULT`. Framework tab: pillars grouped
+  by axis (*What you did* / *How you did it*) with the ramp colours, rename/remove/add; **Refine by
+  voice** → speak (on-device STT) or type how you're judged → AI builds pillars → shown as editable
+  cards for a **one-tap confirm**. **Company name never asked** (prompt forbids it; no field exists).
+- **Settings** — new **AI brain (OpenRouter)** key card (mirrors the Groq card; on-device only; the
+  screen is now scrollable). **Home** cards now show the cleaned bullet + a placement/status chip
+  (Processing… / goal area / Inbox / Extra). **Inbox** tab: read-only list of INBOX+FAILED entries
+  with a bottom-bar badge and a **Try again** on failures. `MainScaffold` routes the Framework +
+  Inbox tabs (were placeholders).
+
+### Decisions / deviations / flags (Phase 2)
+- **Scope line held to the Build Brief phase list:** the *structured pillar Home document* and the
+  *Inbox tap-to-resolve quick-confirm* (assign a `suggestedProject`) are **Phase 3** — not built
+  here. Home stays a flat list (now AI-enriched); Inbox is read + retry only.
+- **Refine-by-voice uses on-device STT** (not cloud Whisper) — smallest reliable surface for a short
+  description; typing is a peer. Cloud STT for refine can come later.
+- **Drag-to-reorder pillars deferred** (rename/add/remove + the AI refine are in). Reorder is a
+  later polish.
+- **FAILED entries don't auto-reprocess when the key is *finished* typing.** `setOpenRouterApiKey`
+  best-effort re-runs failed on the blank→non-blank edge (fires on the 1st char, so mostly a no-op).
+  The reliable path: **Inbox → Try again**, or just add the key *before* capturing. Made idempotent
+  (see below) so it can't duplicate.
+- **generateSummary is implemented but unexercised** (no caller until Phase 5); kept complete so the
+  seam is real, not a stub.
+
+### Adversarial review before tagging (per the release protocol)
+Ran a compile pass (clean — 0 findings) **and** a logic pass **before** tagging. The logic pass
+caught three real bugs, all fixed in commit `638bfd0` before the release:
+1. **Crash-loop / fail-safe hole:** a throw while *building* the request (OkHttp rejects a malformed
+   key char in a header) or reading DataStore escaped `runCatching` and the fire-and-forget scope →
+   crash, row stuck RAW → re-throw + crash-loop next launch. Fix: whole `callChat` body (incl.
+   request/header build) inside `runCatching`, **plus** an `EntryProcessor.process` catch-all that
+   lands any throw in FAILED (visible). Fail-safe restored.
+2. **Duplicate sibling rows:** capture's kick + a launch-time drain during a config change could both
+   see a row RAW and both insert its split siblings. Fix: `process()` serializes on a `Mutex` and
+   **re-reads status inside the lock**, processing only RAW/FAILED (PROCESSED/INBOX skipped) — never
+   split twice; also makes a double `reprocessFailed()` idempotent.
+3. Removed the unused `force` param; Inbox retry routes through the same guarded path.
+
+### How it was tested
+- **Built green in CI, first try** (Android Release workflow, run `28608099310`): `testDebugUnitTest`
+  (incl. the new `CategorizeParsingTest`) then a **signed** `assembleRelease`/`bundleRelease` →
+  published `BragBuddy-v0.4.0.apk` + `.aab`. No CI round-trips were needed (careful pre-commit
+  compile review + the adversarial pass).
+- On-device smoke test is the creator's step: add the OpenRouter key, capture a real update, confirm
+  it's cleaned + filed (or lands in Inbox), and try Refine-by-voice.
+
+---
+
+## v0.3.0 — cloud transcription ✅ DONE (verified green · signed) · v0.2.0 = Phase 1 · v0.1.0 = Phase 0
 
 **APK:** `github.com/aucksy/bragbuddy/releases/download/v0.3.0/BragBuddy-v0.3.0.apk`. To use it:
 Settings → Transcription → Cloud Whisper → paste a Groq key (`gsk_…` from console.groq.com). CI
@@ -171,18 +246,24 @@ The full PRD and a revised brief landed after the initial scaffold. Reviewed aga
 
 ---
 
-## Next — Phase 2: AI categorization
-Wire OpenRouter (free model) behind the existing `AiProvider` seam (replace `StubAiProvider`); run
-the daily categorizer prompt on each RAW entry; parse the JSON and file each into project / goal
-area / Inbox with all its fields (confidence < ~0.6 → Inbox; parse-fail → keep transcript, route to
-Inbox). The default framework already ships as static data. Add **voice-refinement of the framework**
-(speak how you're judged → editable pillars, no company name) + a light confirm. Meter nothing extra
-here beyond the existing `UsageMeter` hook (summary metering is Phase 5). *Testable: an update gets
-cleaned + categorized or lands in Inbox; framework refine-by-voice works.*
+## Next — Phase 3: Living document + Inbox (Build Brief phase list)
+Turn **Home into the structured pillar document** (goal areas → projects → bullets; behaviour
+pillars gather evidence; Inbox sits last) — the AI-derived fields are already stored per entry, so
+this is a rendering/data-shaping phase over the flat list Phase 2 ships. Add the **Inbox
+tap-to-resolve**: `suggestedProjects` quick-confirm buttons (assign a project/goal in one tap → set
+status PROCESSED). This is the resolve UX deliberately deferred from Phase 2. *Testable: entries
+appear in the structured doc; unclear ones resolve from the Inbox in a tap.*
 
-**Creator setup needed in Phase 2:** walk the creator through creating an **OpenRouter key** (stored
-in local config, never committed/shipped); pick a free JSON-reliable model + a fallback. Two models
-by task: free categorizer now / stronger summary in Phase 5.
+**Groundwork already in place for Phase 3:** `EntryEntity` carries every field (bullet, project,
+goalCategory, demonstrates, isExtra, impact, routine/routineType, metric, confidence,
+suggestedProjects); `EntryDao.observeIn`/`observeCountIn` exist; the Framework editor + `ProjectDao`
+exist (no project-creation UI yet — projects are currently always empty, so most work is
+Outside-project/Inbox until Phase 3/4 lets the user add projects). The `EntryProcessor` mutex + the
+guarded `process()` already make an Inbox-resolve retry safe.
+
+**Creator setup (one-time, if not done in Phase 2):** create the **OpenRouter key** at openrouter.ai
+→ Keys (`sk-or-v1-…`), paste it in **Settings → AI brain (OpenRouter)** — on-device only, separate
+from the Groq transcription key. Categorization is a no-op (entries wait in Inbox) until it's set.
 
 ### Repo / hosting (DONE)
 - Repo live: **github.com/aucksy/bragbuddy** (`main` + tag `v0.1.0`). Two workflows: `android-debug`

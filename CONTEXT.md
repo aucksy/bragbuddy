@@ -82,14 +82,21 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   - `v0.2.0` — Phase 1 capture loop: speak/type → save raw transcript → Home list + daily reminder.
   - `v0.3.0` — cloud Whisper transcription via **Groq** (Settings → Transcription; key on-device
     only), with on-device STT as the fallback. Room DB still v1.
-- **Next: Phase 2 — AI categorization.** Wire **OpenRouter** (free JSON model + fallback) behind the
-  existing `AiProvider` seam (replace `StubAiProvider`); run the daily-categorizer prompt on each RAW
-  entry → file to pillar / goal-area / Inbox (confidence < ~0.6 → Inbox; parse-fail → keep transcript
-  → Inbox); add framework refine-by-voice. **Needs a NEW OpenRouter key (for the LLM — separate from
-  the Groq transcription key) — walk the creator through it; don't assume it exists.**
+  - `v0.4.0` — Phase 2 **AI categorization** via **OpenRouter** (behind the `AiProvider` seam;
+    `StubAiProvider` retired). Daily categorizer runs on each RAW entry → cleaned bullet filed to a
+    goal area, or Inbox (conf < 0.6 / "Inbox" placement / AI-fail → Inbox, transcript kept — never
+    lost); two models + fallback, slugs in `data/ai/AiConfig`. **Framework refine-by-voice** (editable
+    pillar cards, one-tap confirm, no company name). OpenRouter key on-device in **Settings → AI brain**
+    (separate from the Groq key). Room DB still v1.
+- **Next: Phase 3 — Living document + Inbox.** Home becomes the **structured pillar document**
+  (goal areas → projects → bullets; behaviours gather evidence; Inbox last); **Inbox tap-to-resolve**
+  with `suggestedProjects` quick-confirm. The per-entry fields + DAO + Framework editor already exist;
+  this is mostly rendering/data-shaping + the resolve UX deferred from Phase 2. (No project-creation
+  UI yet → projects are empty, so placements are Outside-project/Inbox until it lands.)
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
   round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
-  errors). Fix from the CI log (GitHub API + `git credential fill`).
+  errors). Fix from the CI log via the **public** GitHub API (unauthenticated is enough for run status
+  + release assets; `git credential fill` for token reuse is blocked by the sandbox classifier).
 
 ---
 
