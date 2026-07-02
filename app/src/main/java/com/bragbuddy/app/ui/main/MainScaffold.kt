@@ -101,7 +101,7 @@ private fun BottomBar(
                 Modifier
                     .fillMaxWidth()
                     .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
-                    .padding(horizontal = 14.dp, top = 9.dp, bottom = 10.dp),
+                    .padding(start = 14.dp, end = 14.dp, top = 9.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TabItem(HomeTab.HOME, selected, Icons.Filled.Home, Icons.Outlined.Home, onSelect, Modifier.weight(1f))

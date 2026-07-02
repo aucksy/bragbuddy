@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -48,7 +49,7 @@ import kotlinx.coroutines.delay
 @AndroidEntryPoint
 class CaptureActivity : ComponentActivity() {
 
-    private val vm: CaptureViewModel by androidx.activity.viewModels()
+    private val vm: CaptureViewModel by viewModels()
 
     private val requestMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) vm.startListening() else vm.setMode(CaptureMode.TYPE)
