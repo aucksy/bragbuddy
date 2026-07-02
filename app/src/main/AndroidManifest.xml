@@ -44,6 +44,16 @@
             </intent-filter>
         </activity>
 
+        <!-- The light, overlay-style capture surface. Translucent so the sheet floats over a scrim;
+             launched from the Home mic FAB and the daily reminder. -->
+        <activity
+            android:name=".ui.capture.CaptureActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.BragBuddy.Capture"
+            android:windowSoftInputMode="adjustResize" />
+
     </application>
 
 </manifest>

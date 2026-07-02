@@ -12,7 +12,43 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: Phase 0 — Skeleton ✅ DONE (verified green in CI · signed `v0.1.0` published)
+## Status: Phase 1 — Capture loop ✅ built (pending CI verify) · Phase 0 shipped as v0.1.0
+
+**Goal:** tap → **speak or type** → save the raw transcript → see it in a list. Fire-and-forget; no
+AI yet. `versionCode 2` / `versionName 0.2.0`.
+
+### What was built (Phase 1)
+- **Capture surface** (`ui/capture/`: `CaptureActivity` [translucent] + `CaptureScreen` +
+  `CaptureViewModel`): a bottom sheet over a scrim with a **Speak/Type toggle** that opens to the
+  last-used mode. Voice = on-device `SpeechRecognizer` (`data/speech/SpeechToText`, prefers offline)
+  with live partials, a timer, an RMS-driven waveform, and **stop = submit**; Type = a text field +
+  submit arrow. Both **fire-and-forget**: save → brief "Saved" confirmation → dismiss. No-speech /
+  STT-unavailable → retry or "Type instead".
+- **Save path** (`data/entry/EntryRepository.capture`): stores the raw transcript immediately as an
+  `EntryEntity` (status RAW, source VOICE/TEXT). Nothing is lost; AI fills the rest in Phase 2.
+- **Home = entry list** (`ui/home/`): newest-first cards (transcript + relative time + source icon)
+  or the empty state, hosted in **`ui/main/MainScaffold`** = the design's bottom tab bar with the
+  raised **mic FAB** (the capture trigger). Summary / Framework / Inbox are placeholder tabs.
+- **Daily reminder** (`reminder/ReminderScheduler` + `ReminderWorker`, `notification/Notifications`):
+  a user-set daily notification (WorkManager 24h periodic, initial-delay to the chosen time) → tap
+  opens capture. Channel created in `BragBuddyApp`. Enable toggle + time picker in **Settings**.
+- **Permissions:** RECORD_AUDIO requested from the capture sheet (deny → Type fallback);
+  POST_NOTIFICATIONS requested at launch (Android 13+).
+
+### Deviations / flags (Phase 1)
+- **Settings** is reached via a temporary **gear in the Home header** — the design shows "Summarise"
+  there (a Phase 5 feature). Relocate when the summary surface lands.
+- **Placeholder Summary/Framework/Inbox tabs** aren't in the design as "coming soon" screens —
+  flagged; their phases replace them.
+- STT forces `EXTRA_PREFER_OFFLINE`; a device without an offline pack will error → the sheet offers
+  Type. Tune against the creator's real device (cloud STT is P0-11, later). No audio is retained yet,
+  so a failed STT falls back only to retry/type.
+- A review agent statically checked all 16 files for compile-breakers (none found); real
+  verification is the green CI run below.
+
+---
+
+## Phase 0 — Skeleton ✅ (shipped v0.1.0, verified green in CI)
 
 **Goal:** an Android Kotlin/Compose project that builds and runs to an empty Home screen, with the
 data layer and the swappable AI seam in place.
@@ -105,14 +141,18 @@ The full PRD and a revised brief landed after the initial scaffold. Reviewed aga
 
 ---
 
-## Next — Phase 1: Capture loop
-Daily reminder → tap → recording screen → on-device transcription (Android `SpeechRecognizer`) →
-save the raw transcript as an `EntryEntity` (status RAW) → show it in a list. **Typed entry is
-first-class**, not voice-only. No AI yet (the stub already routes to Inbox if we want to exercise
-it). *Testable: speak or type on the phone; the entry saves and shows.*
+## Next — Phase 2: AI categorization
+Wire OpenRouter (free model) behind the existing `AiProvider` seam (replace `StubAiProvider`); run
+the daily categorizer prompt on each RAW entry; parse the JSON and file each into project / goal
+area / Inbox with all its fields (confidence < ~0.6 → Inbox; parse-fail → keep transcript, route to
+Inbox). The default framework already ships as static data. Add **voice-refinement of the framework**
+(speak how you're judged → editable pillars, no company name) + a light confirm. Meter nothing extra
+here beyond the existing `UsageMeter` hook (summary metering is Phase 5). *Testable: an update gets
+cleaned + categorized or lands in Inbox; framework refine-by-voice works.*
 
-**Creator setup needed before/within Phase 1:** none for capture itself (STT + mic are on-device).
-The OpenRouter key walk-through comes in **Phase 2**, not now — don't wire the LLM early.
+**Creator setup needed in Phase 2:** walk the creator through creating an **OpenRouter key** (stored
+in local config, never committed/shipped); pick a free JSON-reliable model + a fallback. Two models
+by task: free categorizer now / stronger summary in Phase 5.
 
 ### Repo / hosting (DONE)
 - Repo live: **github.com/aucksy/bragbuddy** (`main` + tag `v0.1.0`). Two workflows: `android-debug`

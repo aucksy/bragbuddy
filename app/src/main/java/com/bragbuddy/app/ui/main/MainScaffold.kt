@@ -1,0 +1,178 @@
+package com.bragbuddy.app.ui.main
+
+import android.content.Intent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.bragbuddy.app.ui.capture.CaptureActivity
+import com.bragbuddy.app.ui.home.HomeScreen
+import com.bragbuddy.app.ui.theme.BragBuddyTheme
+
+private enum class HomeTab(val label: String) { HOME("Home"), SUMMARY("Summary"), FRAMEWORK("Framework"), INBOX("Inbox") }
+
+/**
+ * The app shell: the design's bottom tab bar with the raised central **mic FAB** as the capture
+ * trigger. Phase 1 wires Home (the entry list) + the capture button; Summary / Framework / Inbox
+ * are placeholders their later phases fill in.
+ */
+@Composable
+fun MainScaffold(onOpenSettings: () -> Unit) {
+    val palette = BragBuddyTheme.palette
+    val context = LocalContext.current
+    var tab by rememberSaveable { mutableStateOf(HomeTab.HOME) }
+    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val contentBottom = 74.dp + navInset
+
+    Box(Modifier.fillMaxSize().background(palette.bg)) {
+        when (tab) {
+            HomeTab.HOME -> HomeScreen(onOpenSettings = onOpenSettings, contentBottomPadding = contentBottom)
+            HomeTab.SUMMARY -> PlaceholderTab("Summary", "Your review-ready write-up lands here.", Icons.Outlined.Description, contentBottom)
+            HomeTab.FRAMEWORK -> PlaceholderTab("Framework", "Shape how you're judged — coming soon.", Icons.Outlined.Dashboard, contentBottom)
+            HomeTab.INBOX -> PlaceholderTab("Inbox", "Unclear entries will wait here for a tap.", Icons.Outlined.Inbox, contentBottom)
+        }
+
+        BottomBar(
+            modifier = Modifier.align(Alignment.BottomCenter),
+            selected = tab,
+            onSelect = { tab = it },
+            onCapture = { context.startActivity(Intent(context, CaptureActivity::class.java)) },
+        )
+    }
+}
+
+@Composable
+private fun BottomBar(
+    modifier: Modifier,
+    selected: HomeTab,
+    onSelect: (HomeTab) -> Unit,
+    onCapture: () -> Unit,
+) {
+    val palette = BragBuddyTheme.palette
+    Box(modifier.fillMaxWidth()) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(palette.surface)
+                .align(Alignment.BottomCenter),
+        ) {
+            Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+                    .padding(horizontal = 14.dp, top = 9.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TabItem(HomeTab.HOME, selected, Icons.Filled.Home, Icons.Outlined.Home, onSelect, Modifier.weight(1f))
+                TabItem(HomeTab.SUMMARY, selected, Icons.Outlined.Description, Icons.Outlined.Description, onSelect, Modifier.weight(1f))
+                Spacer(Modifier.weight(1f)) // space for the FAB
+                TabItem(HomeTab.FRAMEWORK, selected, Icons.Outlined.Dashboard, Icons.Outlined.Dashboard, onSelect, Modifier.weight(1f))
+                TabItem(HomeTab.INBOX, selected, Icons.Outlined.Inbox, Icons.Outlined.Inbox, onSelect, Modifier.weight(1f))
+            }
+        }
+        // Raised capture FAB, centered and straddling the top edge of the bar.
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-20).dp)
+                .size(52.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(palette.primary)
+                .clickable(onClick = onCapture),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.Mic, "Capture", tint = Color.White, modifier = Modifier.size(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun TabItem(
+    tab: HomeTab,
+    selected: HomeTab,
+    activeIcon: ImageVector,
+    inactiveIcon: ImageVector,
+    onSelect: (HomeTab) -> Unit,
+    modifier: Modifier,
+) {
+    val palette = BragBuddyTheme.palette
+    val isActive = tab == selected
+    val tint = if (isActive) palette.primary else palette.text3
+    val noRipple = remember { MutableInteractionSource() }
+    Column(
+        modifier = modifier.clickable(interactionSource = noRipple, indication = null) { onSelect(tab) },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Icon(if (isActive) activeIcon else inactiveIcon, tab.label, tint = tint, modifier = Modifier.size(21.dp))
+        Text(
+            tab.label,
+            style = MaterialTheme.typography.labelSmall,
+            color = tint,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun PlaceholderTab(title: String, subtitle: String, icon: ImageVector, bottomPadding: androidx.compose.ui.unit.Dp) {
+    val palette = BragBuddyTheme.palette
+    Box(Modifier.fillMaxSize().padding(bottom = bottomPadding, start = 32.dp, end = 32.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                Modifier.size(64.dp).clip(RoundedCornerShape(20.dp)).background(palette.primarySoft),
+                contentAlignment = Alignment.Center,
+            ) { Icon(icon, null, tint = palette.primary, modifier = Modifier.size(30.dp)) }
+            Spacer(Modifier.height(12.dp))
+            Text(title, style = MaterialTheme.typography.titleLarge, color = palette.text1)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = palette.text3,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        }
+    }
+}

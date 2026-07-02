@@ -20,4 +20,16 @@
         <item name="postSplashScreenTheme">@style/Theme.BragBuddy</item>
     </style>
 
+    <!-- Capture surface: a translucent activity so Compose can draw the scrim + bottom sheet over
+         whatever is behind (the app, or nothing when launched from the reminder). -->
+    <style name="Theme.BragBuddy.Capture" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
 </resources>
