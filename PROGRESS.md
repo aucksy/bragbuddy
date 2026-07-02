@@ -12,7 +12,12 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: Phase 1 — Capture loop ✅ built (pending CI verify) · Phase 0 shipped as v0.1.0
+## Status: Phase 1 — Capture loop ✅ DONE (verified green · signed `v0.2.0` published) · Phase 0 = v0.1.0
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.2.0/BragBuddy-v0.2.0.apk`. Two compile
+errors were caught by CI + fixed (a static review agent missed both): `by
+androidx.activity.viewModels()` FQN-call doesn't resolve as a delegate (import + `by viewModels()`);
+`Modifier.padding(horizontal=, top=, bottom=)` mixes incompatible overloads (use start/end/top/bottom).
 
 **Goal:** tap → **speak or type** → save the raw transcript → see it in a list. Fire-and-forget; no
 AI yet. `versionCode 2` / `versionName 0.2.0`.
