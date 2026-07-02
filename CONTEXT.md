@@ -74,12 +74,22 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
 
 ---
 
-## 4. Status snapshot (keep to ~3 lines; full detail in `PROGRESS.md`)
-- **Done:** Phase 0 — Skeleton (committed on `main`, local only).
-- **Owner action owed:** create + push the GitHub repo → a green `Android Debug APK` CI run verifies
-  Phase 0 (nothing is compiled locally).
-- **Next:** Phase 1 — Capture loop (reminder → record → on-device STT → save raw transcript → list;
-  typed entry first-class; no AI yet).
+## 4. Status snapshot (keep short; full detail in `PROGRESS.md`)
+- **Repo:** github.com/aucksy/bragbuddy — live, signed tag-driven releases (push `vX.Y.Z` → APK at
+  `releases/download/<tag>/BragBuddy-<tag>.apk`). Git identity: `simpleapps108@gmail.com`.
+- **Shipped & verified green:**
+  - `v0.1.0` — Phase 0 skeleton.
+  - `v0.2.0` — Phase 1 capture loop: speak/type → save raw transcript → Home list + daily reminder.
+  - `v0.3.0` — cloud Whisper transcription via **Groq** (Settings → Transcription; key on-device
+    only), with on-device STT as the fallback. Room DB still v1.
+- **Next: Phase 2 — AI categorization.** Wire **OpenRouter** (free JSON model + fallback) behind the
+  existing `AiProvider` seam (replace `StubAiProvider`); run the daily-categorizer prompt on each RAW
+  entry → file to pillar / goal-area / Inbox (confidence < ~0.6 → Inbox; parse-fail → keep transcript
+  → Inbox); add framework refine-by-voice. **Needs a NEW OpenRouter key (for the LLM — separate from
+  the Groq transcription key) — walk the creator through it; don't assume it exists.**
+- **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
+  round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
+  errors). Fix from the CI log (GitHub API + `git credential fill`).
 
 ---
 
