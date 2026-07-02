@@ -1,0 +1,125 @@
+name: Android Release
+
+# Builds BragBuddy and publishes a GitHub RELEASE (visible under the repo's "Releases" tab and in
+# the GitHub mobile app) with the APK attached, when you push a tag like `v0.1.0`.
+#
+# Signing: add these repository secrets (Settings → Secrets and variables → Actions) to get a
+# proper SIGNED release (applicationId com.bragbuddy.app):
+#   KEYSTORE_BASE64    base64 of your release keystore
+#   KEYSTORE_PASSWORD  keystore password
+#   KEY_ALIAS          key alias  (bragbuddy)
+#   KEY_PASSWORD       key password
+#
+# IMPORTANT: KEYSTORE_BASE64 must be CLEAN base64 with no headers/line-wrapping. On Windows:
+#   [Convert]::ToBase64String([IO.File]::ReadAllBytes("D:\path\to\bragbuddy-release.keystore")) | Set-Clipboard
+#
+# If the keystore is missing or invalid, the job does NOT fail — it builds an installable debug
+# APK instead and still publishes the Release (clearly labelled), so you always get something.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # required to create the GitHub Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure Gradle wrapper exists
+        run: |
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            gradle wrapper --gradle-version 8.10.2
+          fi
+          chmod +x gradlew
+
+      - name: Decode & verify keystore
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::No KEYSTORE_BASE64 secret — building an installable debug APK instead."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Strip ALL whitespace (handles copy-paste line wraps / CRLF), then decode tolerantly.
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.keystore" 2>/dev/null || true
+          bytes=$(wc -c < "$RUNNER_TEMP/release.keystore" 2>/dev/null | tr -d ' ' || echo 0)
+          echo "Decoded keystore size: ${bytes:-0} bytes."
+          if [ "${bytes:-0}" -lt 100 ]; then
+            echo "::warning::KEYSTORE_BASE64 did NOT decode to a real keystore (${bytes:-0} bytes) — the secret isn't clean base64."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          elif keytool -list -keystore "$RUNNER_TEMP/release.keystore" -storepass "$KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            echo "Keystore decoded (${bytes} bytes) and opened OK — building a SIGNED release."
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Keystore decoded fine (${bytes} bytes) but could NOT be opened — KEYSTORE_PASSWORD is wrong. Building a debug APK fallback."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Build
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
+            ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace
+          else
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          fi
+
+      - name: Collect outputs
+        run: |
+          # Name the artifacts after the app + tag, e.g. BragBuddy-v0.1.0.apk (not app-release.apk).
+          NAME="BragBuddy-${{ github.ref_name }}"
+          mkdir -p dist
+          for f in app/build/outputs/apk/release/*.apk;    do [ -f "$f" ] && cp "$f" "dist/${NAME}.apk"; done
+          for f in app/build/outputs/bundle/release/*.aab; do [ -f "$f" ] && cp "$f" "dist/${NAME}.aab"; done
+          for f in app/build/outputs/apk/debug/*.apk;      do [ -f "$f" ] && cp "$f" "dist/${NAME}-debug.apk"; done
+          echo "Artifacts to publish:"; ls -la dist
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNED: ${{ steps.keystore.outputs.signed }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ "$SIGNED" = "true" ]; then
+            NOTES="Signed release build of **BragBuddy** (\`com.bragbuddy.app\`). Download the \`.apk\` below and install it (allow installs from unknown sources). The \`.aab\` is for Google Play."
+          else
+            NOTES="⚠️ Installable **debug** build (\`com.bragbuddy.app.debug\`) — published because \`KEYSTORE_BASE64\` was missing or invalid. It installs and runs fine. Add the keystore secrets (see the workflow header) and re-push the tag for a signed release."
+          fi
+          # Idempotent: replace any existing release for this tag (keeps the tag itself).
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          gh release create "$TAG" --title "BragBuddy $TAG" --notes "$NOTES" dist/*
+
+      - name: Upload artifacts (manual runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bragbuddy-release
+          path: dist/*
+          if-no-files-found: error
