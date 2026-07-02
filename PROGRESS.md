@@ -1,9 +1,13 @@
 # BragBuddy — Build Progress
 
-The rolling handoff log for the phased build. **Start of each chat:** read the PRD folder
-(`../PRD/BragBuddy-PRD.md`, `../PRD/BragBuddy-Build-Brief.md`, `../PRD/BragBuddy-System-Prompt.md`),
-the Design System (`../Design System/`), this file, and the current code — that is the context, not
-chat history.
+> **Entrypoint is `CONTEXT.md`** — read it first (it carries the invariants, the reading order, and
+> the new-chat protocol). This file is the **live state** it points to: what's built and the exact
+> next step. Keep this file current; it's what makes a fresh chat pick up without losing context.
+
+The rolling handoff log for the phased build. **Start of each chat:** read `CONTEXT.md`, then the
+PRD folder (`../PRD/BragBuddy-PRD.md`, `../PRD/BragBuddy-Build-Brief.md`,
+`../PRD/BragBuddy-System-Prompt.md`), the Design System (`../Design System/`), this file, and the
+current code — that is the context, not chat history.
 **End of each phase:** update this file, commit, leave the repo clean and runnable.
 
 ---
