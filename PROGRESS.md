@@ -12,21 +12,34 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.4.0 — Phase 2 AI categorization ✅ DONE (verified green · signed · first-try CI)
+## Status: v0.4.1 — Phase 2 AI categorization ✅ DONE (verified green · signed · first-try CI)
 
-**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.4.0/BragBuddy-v0.4.0.apk` (signed;
-`.aab` alongside). **To use it:** Settings → **AI brain (OpenRouter)** → paste an OpenRouter key
-(`sk-or-v1-…` from openrouter.ai → Keys) — a **NEW key, separate from the Groq transcription key**,
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.4.1/BragBuddy-v0.4.1.apk` (signed;
+`.aab` alongside). **To use it:** Settings → **AI brain (Groq)** → paste your **Groq key**
+(`gsk_…` from console.groq.com → API Keys) — the **same single key that powers Cloud Whisper**,
 stored on-device only. Then capture an entry: it gets cleaned into a bullet and filed to a goal
 area, or lands in the Inbox. Framework tab → **Refine by voice** to reshape your pillars.
 
+### v0.4.1 — AI runs on Groq (single key), not OpenRouter
+Creator's call (asked directly): reuse the one Groq key instead of a second OpenRouter signup. Groq
+runs LLMs too (OpenAI-compatible), so the categorizer + framework refine now use the **same on-device
+Groq key** as cloud Whisper — faster, and Groq's API doesn't train on the data. `OpenRouterAiProvider`
+→ **`GroqAiProvider`** (reads `groqApiKey`); `AiConfig` repointed to `api.groq.com/openai/v1` with
+`llama-3.3-70b-versatile` (categorizer) + `llama-3.1-8b-instant` (fallback) + `openai/gpt-oss-120b`
+(summary) — **verified live** against console.groq.com/docs/models (the OpenRouter `deepseek-v3:free`
+slug I'd first picked had already been pulled — exactly why the slug lives in one file). The
+`AiProvider` seam is unchanged, so a public launch can still route the **summary** to a paid provider
+model. Settings collapsed to **one** canonical "AI brain (Groq)" key card (the Transcription card
+points at it — no duplicate field). `openRouterApiKey` removed; `aiEnabled = groqApiKey set`.
+
 ### What was built (Phase 2, `versionCode 4`)
-- **AI brain wired behind the seam.** `data/ai/OpenRouterAiProvider` replaces `StubAiProvider` in
-  `di/AiModule` (one-line bind). OpenAI-compatible OpenRouter; key read fresh from `SettingsStore`
-  on each call, on-device only. **Two models by task + fallback** (`data/ai/AiConfig` — the single
-  place slugs live, remote-config-ready): categorizer `deepseek/deepseek-chat-v3-0324:free`, fallback
-  `meta-llama/llama-3.3-70b-instruct:free`; summary slugs set for Phase 5 (not exercised yet). On any
-  transient/HTTP/parse failure the provider tries the fallback model, then fails safe.
+- **AI brain wired behind the seam.** `data/ai/GroqAiProvider` replaces `StubAiProvider` in
+  `di/AiModule` (one-line bind). OpenAI-compatible **Groq**, reusing the on-device `groqApiKey` (read
+  fresh per call). **Two models by task + fallback** (`data/ai/AiConfig` — the single place slugs
+  live, remote-config-ready): categorizer `llama-3.3-70b-versatile`, fallback `llama-3.1-8b-instant`;
+  summary `openai/gpt-oss-120b` (Phase 5, not exercised yet). On any transient/HTTP/parse failure the
+  provider tries the fallback model, then fails safe. (v0.4.0 shipped this on OpenRouter; v0.4.1
+  switched to Groq per the creator — see the top section.)
 - **Baked prompts** (`data/ai/AiPrompts`) — Part A daily categorizer + Part C framework refine + Part
   B summary, verbatim from `../PRD/BragBuddy-System-Prompt.md`, with runtime injection (today /
   framework / projects). `data/ai/AiJson` does lenient JSON extraction (strips ```-fences/prose,

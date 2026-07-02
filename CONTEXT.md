@@ -82,12 +82,14 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   - `v0.2.0` — Phase 1 capture loop: speak/type → save raw transcript → Home list + daily reminder.
   - `v0.3.0` — cloud Whisper transcription via **Groq** (Settings → Transcription; key on-device
     only), with on-device STT as the fallback. Room DB still v1.
-  - `v0.4.0` — Phase 2 **AI categorization** via **OpenRouter** (behind the `AiProvider` seam;
-    `StubAiProvider` retired). Daily categorizer runs on each RAW entry → cleaned bullet filed to a
-    goal area, or Inbox (conf < 0.6 / "Inbox" placement / AI-fail → Inbox, transcript kept — never
-    lost); two models + fallback, slugs in `data/ai/AiConfig`. **Framework refine-by-voice** (editable
-    pillar cards, one-tap confirm, no company name). OpenRouter key on-device in **Settings → AI brain**
-    (separate from the Groq key). Room DB still v1.
+  - `v0.4.0`→`v0.4.1` — Phase 2 **AI categorization** behind the `AiProvider` seam (`StubAiProvider`
+    retired). Daily categorizer runs on each RAW entry → cleaned bullet filed to a goal area, or Inbox
+    (conf < 0.6 / "Inbox" placement / AI-fail → Inbox, transcript kept — never lost); two models +
+    fallback, slugs in `data/ai/AiConfig`. **Framework refine-by-voice** (editable pillar cards,
+    one-tap confirm, no company name). **v0.4.1 runs the AI on Groq (`GroqAiProvider`, `llama-3.3-70b-
+    versatile`) reusing the SINGLE on-device Groq key** — one key for AI + Cloud Whisper (Settings →
+    AI brain (Groq)); no OpenRouter needed. Seam stays swappable (summary → paid provider at launch).
+    Room DB still v1.
 - **Next: Phase 3 — Living document + Inbox.** Home becomes the **structured pillar document**
   (goal areas → projects → bullets; behaviours gather evidence; Inbox last); **Inbox tap-to-resolve**
   with `suggestedProjects` quick-confirm. The per-entry fields + DAO + Framework editor already exist;
