@@ -12,10 +12,15 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: Phase 0 — Skeleton ✅ (built, not yet cloud-verified)
+## Status: Phase 0 — Skeleton ✅ DONE (verified green in CI · signed `v0.1.0` published)
 
 **Goal:** an Android Kotlin/Compose project that builds and runs to an empty Home screen, with the
 data layer and the swappable AI seam in place.
+
+**Verified:** repo live at **github.com/aucksy/bragbuddy**; signed release APK built + published by
+CI at `releases/download/v0.1.0/BragBuddy-v0.1.0.apk`. Two build-time issues were found by the
+cloud build and fixed (see "How it was tested"): an XML-comment `--`, and a variable-font
+`ExperimentalTextApi` opt-in.
 
 ### What was built
 - **Project & toolchain** — single-module Gradle project (`:app`), Kotlin 2.0.21, AGP 8.7.3,
@@ -87,11 +92,16 @@ The full PRD and a revised brief landed after the initial scaffold. Reviewed aga
   later and measure, per the brief.
 
 ### How it was tested
-- Not yet run through the cloud build. Config mirrors the known-green Pause project 1:1 (same
-  wrapper, same version catalog shape, same workflow), and sources were self-reviewed for imports.
-- **Verification step owed:** push to GitHub and confirm the `Android Debug APK` workflow is green,
-  then install `BragBuddy-debug.apk` and confirm it opens to the empty Home and Settings shows the
-  stub provider label. Record the result here.
+- **Built green in the cloud (GitHub Actions).** The tag-driven release workflow produced a signed
+  APK: `github.com/aucksy/bragbuddy/releases/download/v0.1.0/BragBuddy-v0.1.0.apk`. Install and
+  confirm it opens to the empty Home + Settings shows the stub AI-engine label.
+- **Two issues the cloud build caught (nothing is compiled locally — this is the gate):**
+  1. `values-night/colors.xml` had `--ab-*` inside an XML comment → `mergeDebugResources` failed
+     (XML forbids `--` inside comments). **Lesson:** never put `--` (e.g. the design `--ab-*` token
+     names) in Android res-XML comments; Kotlin `//` comments are fine.
+  2. `Fonts.kt` used the variable-font `FontVariation` / `Font(variationSettings=)` API, which is
+     an error-level `@RequiresOptIn` (`ExperimentalTextApi`) → `compileDebugKotlin` failed. Fixed
+     with `@file:OptIn(ExperimentalTextApi::class)`.
 
 ---
 
@@ -104,8 +114,13 @@ it). *Testable: speak or type on the phone; the entry saves and shows.*
 **Creator setup needed before/within Phase 1:** none for capture itself (STT + mic are on-device).
 The OpenRouter key walk-through comes in **Phase 2**, not now — don't wire the LLM early.
 
-### Repo / hosting setup still owed (owner action)
-- Create the GitHub repo (e.g. `github.com/aucksy/BragBuddy`) and push `main`. Confirm the debug
-  workflow runs green and produces the APK artifact.
-- Release signing (keystore + secrets) is only needed when we cut a signed Release later; the debug
-  workflow needs no secrets.
+### Repo / hosting (DONE)
+- Repo live: **github.com/aucksy/bragbuddy** (`main` + tag `v0.1.0`). Two workflows: `android-debug`
+  (push→main, artifact) and `android-release` (tag `v*` → signed APK + Release; debug fallback if
+  secrets absent).
+- Signing set up: keystore at `D:\Apps\BragBuddy\bragbuddy-release.keystore` (alias `bragbuddy`),
+  secret values in `D:\Apps\BragBuddy\_signing_backup\GITHUB_SECRETS.txt`; 4 repo secrets added
+  (`KEYSTORE_BASE64` + `KEYSTORE_PASSWORD` are the ones Gradle actually uses).
+- Ship a new build: bump `versionCode`/`versionName` in `app/build.gradle.kts`, commit, push a tag
+  `vX.Y.Z` → the signed APK Release publishes at `releases/download/<tag>/BragBuddy-<tag>.apk`.
+- Git identity is `simpleapps108@gmail.com`.
