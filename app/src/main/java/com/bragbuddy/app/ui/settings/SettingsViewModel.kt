@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.bragbuddy.app.data.ai.AiProvider
 import com.bragbuddy.app.data.prefs.AppSettings
 import com.bragbuddy.app.data.prefs.SettingsStore
+import com.bragbuddy.app.data.prefs.TranscriptionEngine
 import com.bragbuddy.app.reminder.ReminderScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -36,5 +37,13 @@ class SettingsViewModel @Inject constructor(
         settingsStore.setReminderTime(hour, minute)
         val s = settingsStore.settings.first()
         if (s.reminderEnabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute)
+    }
+
+    fun setTranscriptionEngine(engine: TranscriptionEngine) = viewModelScope.launch {
+        settingsStore.setTranscriptionEngine(engine)
+    }
+
+    fun setGroqApiKey(key: String) = viewModelScope.launch {
+        settingsStore.setGroqApiKey(key)
     }
 }

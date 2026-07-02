@@ -52,7 +52,7 @@ class CaptureActivity : ComponentActivity() {
     private val vm: CaptureViewModel by viewModels()
 
     private val requestMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) vm.startListening() else vm.setMode(CaptureMode.TYPE)
+        if (granted) vm.startVoice() else vm.setMode(CaptureMode.TYPE)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,7 +75,7 @@ class CaptureActivity : ComponentActivity() {
                 // Enter voice mode → ensure mic permission, then listen. Re-runs if the user toggles.
                 LaunchedEffect(state.mode) {
                     if (state.mode == CaptureMode.SPEAK && state.phase == VoicePhase.IDLE) {
-                        if (hasMic()) vm.startListening() else requestMic.launch(Manifest.permission.RECORD_AUDIO)
+                        if (hasMic()) vm.startVoice() else requestMic.launch(Manifest.permission.RECORD_AUDIO)
                     }
                 }
 

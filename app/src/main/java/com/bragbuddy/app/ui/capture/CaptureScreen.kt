@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -198,6 +199,15 @@ private fun VoiceContent(
                 PillButton("Type instead", primary = false, onClick = onSwitchToType)
             }
             Spacer(Modifier.height(8.dp))
+            return
+        }
+
+        if (state.phase == VoicePhase.TRANSCRIBING) {
+            Spacer(Modifier.height(10.dp))
+            CircularProgressIndicator(color = palette.primary, strokeWidth = 3.dp, modifier = Modifier.size(30.dp))
+            Spacer(Modifier.height(14.dp))
+            Text("Transcribing…", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+            Spacer(Modifier.height(10.dp))
             return
         }
 

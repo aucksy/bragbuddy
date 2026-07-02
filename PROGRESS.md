@@ -12,7 +12,27 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: Phase 1 — Capture loop ✅ DONE (verified green · signed `v0.2.0` published) · Phase 0 = v0.1.0
+## Status: v0.3.0 — cloud transcription ✅ built (pending CI) · v0.2.0 = Phase 1 done · v0.1.0 = Phase 0
+
+### Capture-quality upgrade — cloud Whisper (v0.3.0, `versionCode 3`)
+On-device STT quality was poor, so — per PRD **P0-11** (cloud transcription is a swappable upgrade) —
+added a **swappable transcription engine**:
+- **On-device** (free/offline Android STT, unchanged) OR **Cloud Whisper via Groq** (free-tier
+  `whisper-large-v3`, OpenAI-compatible endpoint).
+- Cloud path: `data/speech/AudioRecorder` (MediaRecorder → m4a) records with the live waveform → on
+  stop, `data/speech/GroqTranscriber` (OkHttp multipart) transcribes (brief "Transcribing…" state)
+  → save. Retry re-transcribes the same recording (no re-speaking on a transient network fail).
+- **Key handling (per the brief's rule):** the Groq key is entered in **Settings → Transcription**
+  and stored **on-device only** — never committed, never in the APK. On-device is the no-key/offline
+  fallback (`AppSettings.cloudTranscription` = engine==CLOUD && key set).
+- `di/NetworkModule` provides OkHttp; `TranscriptionEngine` + `groqApiKey` in `SettingsStore`.
+- Provider chosen with the user (AskUserQuestion): **Groq** (free, no card) over OpenAI (paid).
+- Compile-reviewed by an agent (1 real bug caught + fixed: a `LaunchedEffect` still calling the
+  now-private `startListening()` — must be `startVoice()`).
+
+---
+
+## Phase 1 — Capture loop ✅ (v0.2.0, verified green)
 
 **APK:** `github.com/aucksy/bragbuddy/releases/download/v0.2.0/BragBuddy-v0.2.0.apk`. Two compile
 errors were caught by CI + fixed (a static review agent missed both): `by

@@ -1,12 +1,14 @@
 package com.bragbuddy.app.ui.capture
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import android.content.Context
 import com.bragbuddy.app.data.entry.EntryRepository
 import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.prefs.CaptureMode
 import com.bragbuddy.app.data.prefs.SettingsStore
+import com.bragbuddy.app.data.speech.AudioRecorder
+import com.bragbuddy.app.data.speech.GroqTranscriber
 import com.bragbuddy.app.data.speech.SpeechToText
 import com.bragbuddy.app.data.speech.SttEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -21,9 +23,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
-enum class VoicePhase { IDLE, LISTENING, ERROR }
+enum class VoicePhase { IDLE, LISTENING, TRANSCRIBING, ERROR }
 
 data class CaptureUiState(
     val mode: CaptureMode = CaptureMode.SPEAK,
@@ -33,21 +36,25 @@ data class CaptureUiState(
     val typed: String = "",
     val levels: List<Float> = emptyList(),
     val error: String? = null,
+    /** True while the engine is cloud Whisper (affects the recorder/live-partials behaviour). */
+    val cloud: Boolean = false,
 )
 
 /**
  * Drives the capture sheet. **Fire-and-forget:** on submit it saves the raw transcript and signals
- * [saved] so the surface can toast + dismiss — no AI, no blocking. Voice uses on-device STT; typing
- * is an equal peer. The sheet opens to whichever mode was used last.
+ * [saved] so the surface can toast + dismiss. Two voice engines: **on-device** (Android STT, live
+ * partials) or **cloud Whisper** (record → upload to Groq → text). Typing is always an equal peer.
  */
 @HiltViewModel
 class CaptureViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val entries: EntryRepository,
     private val settings: SettingsStore,
+    private val groqTranscriber: GroqTranscriber,
 ) : ViewModel() {
 
     private val stt by lazy { SpeechToText(appContext) }
+    private val recorder by lazy { AudioRecorder(appContext) }
 
     private val _state = MutableStateFlow(CaptureUiState())
     val state: StateFlow<CaptureUiState> = _state.asStateFlow()
@@ -56,32 +63,86 @@ class CaptureViewModel @Inject constructor(
     val saved: SharedFlow<Unit> = _saved
 
     private var timerJob: Job? = null
+    private var ampJob: Job? = null
     private var submitting = false
     private var didSave = false
+    private var lastAudio: File? = null
+    private var useCloud = false
 
     init {
         viewModelScope.launch {
-            val mode = settings.settings.first().lastCaptureMode
-            _state.update { it.copy(mode = mode) }
+            val s = settings.settings.first()
+            useCloud = s.cloudTranscription
+            _state.update { it.copy(mode = s.lastCaptureMode, cloud = useCloud) }
         }
     }
-
-    val sttAvailable: Boolean get() = stt.isAvailable()
 
     fun setMode(mode: CaptureMode) {
         if (_state.value.mode == mode) return
         _state.update { it.copy(mode = mode, error = null) }
         viewModelScope.launch { settings.setLastCaptureMode(mode) }
-        if (mode == CaptureMode.TYPE) stopListening() else _state.update { it.copy(phase = VoicePhase.IDLE) }
+        if (mode == CaptureMode.TYPE) stopVoiceInternal() else _state.update { it.copy(phase = VoicePhase.IDLE) }
     }
 
-    /** Called once mic permission is confirmed (or on entering voice mode with permission). */
-    fun startListening() {
-        if (_state.value.phase == VoicePhase.LISTENING) return
+    /** Called once mic permission is confirmed. Reads the engine fresh (avoids a first-capture race
+     *  with the async init), then branches to cloud recording or on-device STT. */
+    fun startVoice() {
+        val phase = _state.value.phase
+        if (phase == VoicePhase.LISTENING || phase == VoicePhase.TRANSCRIBING) return
         submitting = false
         didSave = false
-        _state.update { it.copy(phase = VoicePhase.LISTENING, elapsedSec = 0, partial = "", error = null, levels = emptyList()) }
-        startTimer()
+        lastAudio = null
+        viewModelScope.launch {
+            useCloud = settings.settings.first().cloudTranscription
+            _state.update {
+                it.copy(phase = VoicePhase.LISTENING, cloud = useCloud, elapsedSec = 0, partial = "", error = null, levels = emptyList())
+            }
+            startTimer()
+            if (useCloud) startRecording() else startListening()
+        }
+    }
+
+    // ---------------- Cloud (record → Groq Whisper) ----------------
+
+    private fun startRecording() {
+        runCatching { lastAudio = recorder.start() }.onFailure {
+            fail("Couldn't start recording")
+            return
+        }
+        ampJob = viewModelScope.launch {
+            while (true) {
+                delay(90)
+                val norm = (recorder.maxAmplitude() / 12000f).coerceIn(0f, 1f)
+                _state.update { s -> s.copy(levels = (s.levels + norm).takeLast(MAX_LEVELS)) }
+            }
+        }
+    }
+
+    private fun stopAndTranscribe() {
+        stopTimer()
+        ampJob?.cancel(); ampJob = null
+        val file = runCatching { recorder.stop() }.getOrNull()
+        lastAudio = file
+        if (file == null) { fail("Didn't catch that — try again or type it"); return }
+        transcribe(file)
+    }
+
+    private fun transcribe(file: File) {
+        _state.update { it.copy(phase = VoicePhase.TRANSCRIBING, error = null) }
+        viewModelScope.launch {
+            groqTranscriber.transcribe(file).fold(
+                onSuccess = { text ->
+                    if (text.isBlank()) fail("Didn't catch that — try again or type it")
+                    else save(text, EntrySource.VOICE) { file.delete(); lastAudio = null }
+                },
+                onFailure = { fail(it.message ?: "Couldn't transcribe — try again or type it") },
+            )
+        }
+    }
+
+    // ---------------- On-device (live STT) ----------------
+
+    private fun startListening() {
         stt.start { event -> handle(event) }
     }
 
@@ -95,44 +156,39 @@ class CaptureViewModel @Inject constructor(
             is SttEvent.Partial -> _state.update { it.copy(partial = event.text) }
             is SttEvent.Final -> {
                 if (event.text.isNotBlank()) _state.update { it.copy(partial = event.text) }
-                if (submitting) finishSubmit()
+                if (submitting) finishOnDeviceSubmit()
             }
             is SttEvent.EndOfSpeech -> {}
             is SttEvent.Error -> {
-                // If the user already asked to submit and we have text, keep it; else surface the error.
-                if (submitting && _state.value.partial.isNotBlank()) finishSubmit()
-                else _state.update { it.copy(phase = VoicePhase.ERROR, error = event.message) }
+                if (submitting && _state.value.partial.isNotBlank()) finishOnDeviceSubmit()
+                else fail(event.message)
                 stopTimer()
             }
         }
     }
 
-    /** Stop button = submit. Finalize STT, then save whatever we heard. */
-    fun stopAndSubmitVoice() {
-        if (submitting) return
-        submitting = true
-        stopTimer()
-        stt.stop()
-        // Safety net: if no final result arrives, save the latest partial anyway.
-        viewModelScope.launch {
-            delay(1500)
-            if (!didSave) finishSubmit()
-        }
+    private fun finishOnDeviceSubmit() {
+        val text = _state.value.partial.trim()
+        if (text.isBlank()) { fail("Didn't catch that — try again or type it"); submitting = false; return }
+        stt.cancelAndRelease()
+        save(text, EntrySource.VOICE)
     }
 
-    private fun finishSubmit() {
-        if (didSave) return
-        val text = _state.value.partial.trim()
-        if (text.isBlank()) {
-            _state.update { it.copy(phase = VoicePhase.ERROR, error = "Didn't catch that — try again or type it") }
-            submitting = false
-            return
-        }
-        didSave = true
-        stt.cancelAndRelease()
-        viewModelScope.launch {
-            entries.capture(text, EntrySource.VOICE)
-            _saved.tryEmit(Unit)
+    // ---------------- Shared ----------------
+
+    /** Stop = submit. Cloud → stop recording + transcribe; on-device → finalize STT. */
+    fun stopAndSubmitVoice() {
+        if (submitting || didSave) return
+        if (useCloud) {
+            stopAndTranscribe()
+        } else {
+            submitting = true
+            stopTimer()
+            stt.stop()
+            viewModelScope.launch {
+                delay(1500)
+                if (!didSave) finishOnDeviceSubmit()
+            }
         }
     }
 
@@ -141,21 +197,35 @@ class CaptureViewModel @Inject constructor(
     fun submitTyped() {
         val text = _state.value.typed.trim()
         if (text.isBlank() || didSave) return
+        save(text, EntrySource.TEXT)
+    }
+
+    fun retryVoice() {
+        _state.update { it.copy(error = null) }
+        val audio = lastAudio
+        if (useCloud && audio != null && audio.exists()) transcribe(audio) else startVoice()
+    }
+
+    private fun save(text: String, source: EntrySource, onDone: () -> Unit = {}) {
+        if (didSave) return
         didSave = true
         viewModelScope.launch {
-            entries.capture(text, EntrySource.TEXT)
+            entries.capture(text, source)
+            onDone()
             _saved.tryEmit(Unit)
         }
     }
 
-    fun retryVoice() {
-        _state.update { it.copy(phase = VoicePhase.IDLE, error = null) }
-        startListening()
+    private fun fail(message: String) {
+        submitting = false
+        _state.update { it.copy(phase = VoicePhase.ERROR, error = message) }
     }
 
-    private fun stopListening() {
+    private fun stopVoiceInternal() {
         stopTimer()
+        ampJob?.cancel(); ampJob = null
         stt.cancelAndRelease()
+        runCatching { recorder.cancel() }
         if (_state.value.phase == VoicePhase.LISTENING) _state.update { it.copy(phase = VoicePhase.IDLE) }
     }
 
@@ -176,7 +246,10 @@ class CaptureViewModel @Inject constructor(
 
     override fun onCleared() {
         stopTimer()
+        ampJob?.cancel()
         stt.cancelAndRelease()
+        runCatching { recorder.cancel() }
+        if (!didSave) lastAudio?.delete()
     }
 
     private companion object {
