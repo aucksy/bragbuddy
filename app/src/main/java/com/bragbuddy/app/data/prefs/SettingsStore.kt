@@ -29,16 +29,15 @@ data class AppSettings(
     val reminderMinute: Int = 0,
     val lastCaptureMode: CaptureMode = CaptureMode.SPEAK,
     val transcriptionEngine: TranscriptionEngine = TranscriptionEngine.ON_DEVICE,
-    /** Groq API key (gsk_…). Stored on-device only — never committed or shipped. */
+    /** Groq API key (gsk_…). Powers BOTH cloud Whisper transcription and the AI brain (categorizer +
+     *  framework refine). Stored on-device only — never committed or shipped. */
     val groqApiKey: String = "",
-    /** OpenRouter API key (sk-or-…) for the LLM brain (categorizer + framework refine). On-device only. */
-    val openRouterApiKey: String = "",
 ) {
     /** Cloud transcription only actually runs when the engine is CLOUD *and* a key is set. */
     val cloudTranscription: Boolean get() = transcriptionEngine == TranscriptionEngine.CLOUD && groqApiKey.isNotBlank()
 
-    /** AI categorization only runs when an OpenRouter key is present; otherwise entries wait in the Inbox. */
-    val aiEnabled: Boolean get() = openRouterApiKey.isNotBlank()
+    /** AI categorization only runs when the Groq key is present; otherwise entries wait in the Inbox. */
+    val aiEnabled: Boolean get() = groqApiKey.isNotBlank()
 }
 
 @Singleton
@@ -57,7 +56,6 @@ class SettingsStore @Inject constructor(
             transcriptionEngine = runCatching { TranscriptionEngine.valueOf(p[KEY_STT_ENGINE] ?: "ON_DEVICE") }
                 .getOrDefault(TranscriptionEngine.ON_DEVICE),
             groqApiKey = p[KEY_GROQ_KEY] ?: "",
-            openRouterApiKey = p[KEY_OPENROUTER_KEY] ?: "",
         )
     }
 
@@ -80,9 +78,6 @@ class SettingsStore @Inject constructor(
     suspend fun setGroqApiKey(key: String) =
         store.edit { it[KEY_GROQ_KEY] = key.trim() }
 
-    suspend fun setOpenRouterApiKey(key: String) =
-        store.edit { it[KEY_OPENROUTER_KEY] = key.trim() }
-
     private companion object {
         val KEY_REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
         val KEY_REMINDER_HOUR = intPreferencesKey("reminder_hour")
@@ -90,6 +85,5 @@ class SettingsStore @Inject constructor(
         val KEY_LAST_MODE = stringPreferencesKey("last_capture_mode")
         val KEY_STT_ENGINE = stringPreferencesKey("transcription_engine")
         val KEY_GROQ_KEY = stringPreferencesKey("groq_api_key")
-        val KEY_OPENROUTER_KEY = stringPreferencesKey("openrouter_api_key")
     }
 }

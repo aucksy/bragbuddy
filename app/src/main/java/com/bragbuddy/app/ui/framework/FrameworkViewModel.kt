@@ -162,7 +162,7 @@ class FrameworkViewModel @Inject constructor(
                     }
                 },
                 onFailure = {
-                    _refine.value = RefineState.Error(it.message ?: "Couldn't reach the AI. Check your OpenRouter key and try again.")
+                    _refine.value = RefineState.Error(it.message ?: "Couldn't reach the AI. Check your Groq key in Settings and try again.")
                 },
             )
         }

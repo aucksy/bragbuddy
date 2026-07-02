@@ -64,7 +64,7 @@ class EntryProcessor @Inject constructor(
         entryDao.listByStatus(EntryStatus.RAW).forEach { process(it.id) }
     }
 
-    /** Re-run everything that previously failed (e.g. right after the user adds an OpenRouter key). */
+    /** Re-run everything that previously failed (e.g. right after the user adds the Groq key). */
     suspend fun reprocessFailed() {
         entryDao.observeIn(listOf(EntryStatus.FAILED)).first().forEach { process(it.id) }
     }

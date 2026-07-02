@@ -53,7 +53,7 @@ class EntryRepository @Inject constructor(
         appScope.launch { processor.processPending() }
     }
 
-    /** Re-run entries that previously failed (e.g. after an OpenRouter key is added). */
+    /** Re-run entries that previously failed (e.g. after the Groq key is added). */
     fun reprocessFailed() {
         appScope.launch { processor.reprocessFailed() }
     }

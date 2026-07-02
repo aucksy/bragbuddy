@@ -19,21 +19,22 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The real AI brain: **OpenRouter** (OpenAI-compatible), reached through the swappable [AiProvider]
- * seam. The key is read fresh from [SettingsStore] on each call and lives only on-device — never
- * committed, never in the APK (same rule as the Groq transcription key).
+ * The AI brain: **Groq** (OpenAI-compatible LLM inference), reached through the swappable
+ * [AiProvider] seam. Reuses the single **Groq key** ([SettingsStore.groqApiKey]) that also powers
+ * cloud Whisper transcription — one key for both, read fresh on each call and stored only on-device
+ * (never committed, never in the APK).
  *
- * TWO MODELS BY TASK + FALLBACK (Build Brief § model routing): the categorizer runs the free
+ * TWO MODELS BY TASK + FALLBACK (Build Brief § model routing): the categorizer runs the fast
  * [AiConfig.categorizerModel]; on a rate-limit / transient failure — or if the primary returns
  * unparseable JSON — it retries with [AiConfig.categorizerFallback]. Slugs live in [AiConfig] so a
- * vanished free model is a one-value change.
+ * retired model is a one-value change.
  *
  * FAIL SAFE (firm invariant): any network error, non-2xx, or unparseable output surfaces as a
  * failed [Result]. The caller (EntryProcessor) then keeps the raw transcript and routes the entry
  * to the Inbox — nothing the user said is ever lost.
  */
 @Singleton
-class OpenRouterAiProvider @Inject constructor(
+class GroqAiProvider @Inject constructor(
     private val settings: SettingsStore,
     private val client: OkHttpClient,
 ) : AiProvider {
@@ -86,8 +87,8 @@ class OpenRouterAiProvider @Inject constructor(
         user: String,
         parse: (String) -> T,
     ): Result<T> {
-        val key = settings.settings.first().openRouterApiKey.trim()
-        if (key.isBlank()) return Result.failure(IllegalStateException("No OpenRouter key set"))
+        val key = settings.settings.first().groqApiKey.trim()
+        if (key.isBlank()) return Result.failure(IllegalStateException("No Groq key set"))
 
         var last: Throwable = IllegalStateException("No model responded")
         for (model in models) {
@@ -98,7 +99,7 @@ class OpenRouterAiProvider @Inject constructor(
         return Result.failure(last)
     }
 
-    /** One OpenRouter chat completion → the assistant message content string. */
+    /** One Groq chat completion → the assistant message content string. */
     private suspend fun callChat(
         model: String,
         system: String,
@@ -111,6 +112,7 @@ class OpenRouterAiProvider @Inject constructor(
             val payload = buildJsonObject {
                 put("model", model)
                 put("temperature", 0.2)
+                // Groq honours JSON mode; our prompts all contain the word "JSON" (its precondition).
                 putJsonObject("response_format") { put("type", "json_object") }
                 putJsonArray("messages") {
                     addJsonObject { put("role", "system"); put("content", system) }
@@ -122,15 +124,13 @@ class OpenRouterAiProvider @Inject constructor(
             val request = Request.Builder()
                 .url(AiConfig.BASE_URL)
                 .header("Authorization", "Bearer $key")
-                .header("HTTP-Referer", AiConfig.REFERER)
-                .header("X-Title", AiConfig.TITLE)
                 .post(body)
                 .build()
 
             client.newCall(request).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
-                    error("OpenRouter ${resp.code}${if (raw.isNotBlank()) ": ${raw.take(160)}" else ""}")
+                    error("Groq ${resp.code}${if (raw.isNotBlank()) ": ${raw.take(160)}" else ""}")
                 }
                 val content = AiJson.json.decodeFromString(ChatResponse.serializer(), raw)
                     .choices.firstOrNull()?.message?.content

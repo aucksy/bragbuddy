@@ -46,13 +46,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setGroqApiKey(key: String) = viewModelScope.launch {
+        val wasBlank = settingsStore.settings.first().groqApiKey.isBlank()
         settingsStore.setGroqApiKey(key)
-    }
-
-    fun setOpenRouterApiKey(key: String) = viewModelScope.launch {
-        val wasBlank = settingsStore.settings.first().openRouterApiKey.isBlank()
-        settingsStore.setOpenRouterApiKey(key)
-        // Just added a key? Re-run anything that failed while there was no brain to reach.
+        // Just added a key (the same one powers the AI brain)? Re-run anything that failed while
+        // there was no brain to reach.
         if (wasBlank && key.isNotBlank()) entryRepository.reprocessFailed()
     }
 }

@@ -172,34 +172,11 @@ fun SettingsScreen(
                     )
                 }
                 if (settings.transcriptionEngine == TranscriptionEngine.CLOUD) {
-                    Spacer(Modifier.height(Spacing.s3))
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 50.dp)
-                            .clip(RoundedCornerShape(Radii.md))
-                            .border(1.5.dp, palette.primary.copy(alpha = 0.45f), RoundedCornerShape(Radii.md))
-                            .background(palette.surface)
-                            .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        if (settings.groqApiKey.isEmpty()) {
-                            Text("Paste your Groq key (gsk_…)", style = MaterialTheme.typography.bodyMedium, color = palette.text3)
-                        }
-                        BasicTextField(
-                            value = settings.groqApiKey,
-                            onValueChange = { viewModel.setGroqApiKey(it) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            textStyle = LocalTextStyle.current.merge(TextStyle(color = palette.text1, fontSize = 14.sp)),
-                            cursorBrush = SolidColor(palette.primary),
-                        )
-                    }
                     Spacer(Modifier.height(Spacing.s2))
                     Text(
                         if (settings.groqApiKey.isBlank())
-                            "Free key at console.groq.com — stored on this device only, never uploaded to us."
-                        else "Key saved on this device.",
+                            "Add your Groq key under “AI brain (Groq)” below — the one key runs Cloud Whisper too."
+                        else "Using your Groq key ✓ (set under “AI brain (Groq)” below).",
                         style = MaterialTheme.typography.bodySmall,
                         color = palette.text3,
                     )
@@ -208,11 +185,12 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(Spacing.s4))
 
-            // AI brain (OpenRouter) — categorizer + framework refine. On-device key only.
+            // AI brain (Groq) — the ONE key, reused for categorizer + framework refine (and Cloud
+            // Whisper above). On-device only.
             Card(palette) {
-                Text("AI brain (OpenRouter)", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                Text("AI brain (Groq)", style = MaterialTheme.typography.titleMedium, color = palette.text1)
                 Text(
-                    "Cleans and files each entry, and builds your framework by voice. Without a key, entries just wait in the Inbox.",
+                    "Cleans and files each entry, and builds your framework by voice. Uses your Groq key — the same one Cloud Whisper uses. Without it, entries just wait in the Inbox.",
                     style = MaterialTheme.typography.bodySmall,
                     color = palette.text3,
                 )
@@ -227,12 +205,12 @@ fun SettingsScreen(
                         .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
                     contentAlignment = Alignment.CenterStart,
                 ) {
-                    if (settings.openRouterApiKey.isEmpty()) {
-                        Text("Paste your OpenRouter key (sk-or-…)", style = MaterialTheme.typography.bodyMedium, color = palette.text3)
+                    if (settings.groqApiKey.isEmpty()) {
+                        Text("Paste your Groq key (gsk_…)", style = MaterialTheme.typography.bodyMedium, color = palette.text3)
                     }
                     BasicTextField(
-                        value = settings.openRouterApiKey,
-                        onValueChange = { viewModel.setOpenRouterApiKey(it) },
+                        value = settings.groqApiKey,
+                        onValueChange = { viewModel.setGroqApiKey(it) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = LocalTextStyle.current.merge(TextStyle(color = palette.text1, fontSize = 14.sp)),
@@ -241,9 +219,9 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(Spacing.s2))
                 Text(
-                    if (settings.openRouterApiKey.isBlank())
-                        "Free key at openrouter.ai → Keys. Stored on this device only, never uploaded to us."
-                    else "Key saved on this device.",
+                    if (settings.groqApiKey.isBlank())
+                        "One free key at console.groq.com → API Keys powers both AI and Cloud Whisper. Stored on this device only, never uploaded to us."
+                    else "Key saved on this device — powering AI categorization.",
                     style = MaterialTheme.typography.bodySmall,
                     color = palette.text3,
                 )
