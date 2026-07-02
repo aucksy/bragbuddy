@@ -105,26 +105,28 @@ class OpenRouterAiProvider @Inject constructor(
         user: String,
         key: String,
     ): Result<String> = withContext(Dispatchers.IO) {
-        val payload = buildJsonObject {
-            put("model", model)
-            put("temperature", 0.2)
-            putJsonObject("response_format") { put("type", "json_object") }
-            putJsonArray("messages") {
-                addJsonObject { put("role", "system"); put("content", system) }
-                addJsonObject { put("role", "user"); put("content", user) }
-            }
-        }
-        val body = AiJson.json.encodeToString(JsonObject.serializer(), payload)
-            .toRequestBody("application/json".toMediaType())
-        val request = Request.Builder()
-            .url(AiConfig.BASE_URL)
-            .header("Authorization", "Bearer $key")
-            .header("HTTP-Referer", AiConfig.REFERER)
-            .header("X-Title", AiConfig.TITLE)
-            .post(body)
-            .build()
-
+        // Everything is inside runCatching — including request/header building — so even a malformed
+        // key character (OkHttp validates header values) becomes a failed Result, never a thrown crash.
         runCatching {
+            val payload = buildJsonObject {
+                put("model", model)
+                put("temperature", 0.2)
+                putJsonObject("response_format") { put("type", "json_object") }
+                putJsonArray("messages") {
+                    addJsonObject { put("role", "system"); put("content", system) }
+                    addJsonObject { put("role", "user"); put("content", user) }
+                }
+            }
+            val body = AiJson.json.encodeToString(JsonObject.serializer(), payload)
+                .toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url(AiConfig.BASE_URL)
+                .header("Authorization", "Bearer $key")
+                .header("HTTP-Referer", AiConfig.REFERER)
+                .header("X-Title", AiConfig.TITLE)
+                .post(body)
+                .build()
+
             client.newCall(request).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {

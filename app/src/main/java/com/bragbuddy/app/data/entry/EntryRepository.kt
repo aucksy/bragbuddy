@@ -58,8 +58,8 @@ class EntryRepository @Inject constructor(
         appScope.launch { processor.reprocessFailed() }
     }
 
-    /** Retry one Inbox/failed entry on demand. */
+    /** Retry one failed entry on demand (from the Inbox). */
     fun retry(id: Long) {
-        appScope.launch { processor.process(id, force = true) }
+        appScope.launch { processor.process(id) }
     }
 }

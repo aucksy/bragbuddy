@@ -9,6 +9,8 @@ import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.ProjectDao
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
@@ -35,21 +37,36 @@ class EntryProcessor @Inject constructor(
     private val aiProvider: AiProvider,
 ) {
 
-    /** Process a single entry by id. [force] re-runs an entry that is no longer RAW (Inbox retry). */
-    suspend fun process(id: Long, force: Boolean = false) {
-        val entry = entryDao.getById(id) ?: return
-        if (!force && entry.status != EntryStatus.RAW) return
-        processEntry(entry)
+    // Serialize all processing so two callers (capture's kick + a launch-time drain during a config
+    // change) can never both claim the same row and double-insert its split siblings. Also friendlier
+    // to the free-tier rate limit — entries process one at a time.
+    private val mutex = Mutex()
+
+    /**
+     * Process a single entry by id. Idempotent and safe to call from several places: it re-reads the
+     * row inside the lock and only processes work that is still awaiting it (RAW) or that previously
+     * failed and can be retried (FAILED). A PROCESSED/INBOX row is skipped, so nothing is split twice.
+     */
+    suspend fun process(id: Long) {
+        mutex.withLock {
+            val entry = entryDao.getById(id) ?: return@withLock
+            if (entry.status != EntryStatus.RAW && entry.status != EntryStatus.FAILED) return@withLock
+            // Backstop: ANY throw (a malformed key char in a header, a DataStore read error, etc.)
+            // must still leave the entry visible in the Inbox rather than crashing the fire-and-forget
+            // scope and stranding the row as RAW (which would re-throw and crash-loop on next launch).
+            runCatching { processEntry(entry) }
+                .onFailure { runCatching { entryDao.update(entry.copy(status = EntryStatus.FAILED)) } }
+        }
     }
 
     /** Drain every entry still awaiting processing (called on launch after an interrupted run). */
     suspend fun processPending() {
-        entryDao.listByStatus(EntryStatus.RAW).forEach { processEntry(it) }
+        entryDao.listByStatus(EntryStatus.RAW).forEach { process(it.id) }
     }
 
     /** Re-run everything that previously failed (e.g. right after the user adds an OpenRouter key). */
     suspend fun reprocessFailed() {
-        entryDao.observeIn(listOf(EntryStatus.FAILED)).first().forEach { processEntry(it) }
+        entryDao.observeIn(listOf(EntryStatus.FAILED)).first().forEach { process(it.id) }
     }
 
     private suspend fun processEntry(entry: EntryEntity) {
