@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
+import com.bragbuddy.app.data.entry.EntryRepository
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.reminder.ReminderScheduler
 import com.bragbuddy.app.ui.navigation.BragNavHost
@@ -25,6 +26,7 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var settingsStore: SettingsStore
     @Inject lateinit var reminderScheduler: ReminderScheduler
+    @Inject lateinit var entryRepository: EntryRepository
 
     private val requestNotifications =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* scheduling is independent of the result */ }
@@ -47,6 +49,9 @@ class MainActivity : ComponentActivity() {
             if (s.reminderEnabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute)
             else reminderScheduler.cancel()
         }
+
+        // Categorize anything left RAW by an interrupted run (never lose an entry).
+        entryRepository.processPending()
 
         setContent {
             BragBuddyTheme {

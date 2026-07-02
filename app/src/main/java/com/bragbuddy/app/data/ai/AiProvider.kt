@@ -30,6 +30,13 @@ interface AiProvider {
     /** Produce a curated, length-capped summary from the pre-aggregated rollup. */
     suspend fun generateSummary(request: SummaryRequest): Result<SummaryResult>
 
+    /**
+     * Turn a plain-language description of how the user is judged into structured pillars
+     * (BragBuddy-System-Prompt PART C). One-time setup / refine-by-voice; never asks the company
+     * name. Failure is safe — the caller keeps the existing framework unchanged.
+     */
+    suspend fun refineFramework(request: FrameworkRefineRequest): Result<FrameworkRefineResult>
+
     /** Human-readable id of the active provider/model (for the backup-health / debug surfaces). */
     val label: String
 }

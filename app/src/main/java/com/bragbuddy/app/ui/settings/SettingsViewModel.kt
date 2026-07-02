@@ -3,6 +3,7 @@ package com.bragbuddy.app.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bragbuddy.app.data.ai.AiProvider
+import com.bragbuddy.app.data.entry.EntryRepository
 import com.bragbuddy.app.data.prefs.AppSettings
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.prefs.TranscriptionEngine
@@ -20,6 +21,7 @@ class SettingsViewModel @Inject constructor(
     aiProvider: AiProvider,
     private val settingsStore: SettingsStore,
     private val reminderScheduler: ReminderScheduler,
+    private val entryRepository: EntryRepository,
 ) : ViewModel() {
 
     val aiProviderLabel: String = aiProvider.label
@@ -45,5 +47,12 @@ class SettingsViewModel @Inject constructor(
 
     fun setGroqApiKey(key: String) = viewModelScope.launch {
         settingsStore.setGroqApiKey(key)
+    }
+
+    fun setOpenRouterApiKey(key: String) = viewModelScope.launch {
+        val wasBlank = settingsStore.settings.first().openRouterApiKey.isBlank()
+        settingsStore.setOpenRouterApiKey(key)
+        // Just added a key? Re-run anything that failed while there was no brain to reach.
+        if (wasBlank && key.isNotBlank()) entryRepository.reprocessFailed()
     }
 }

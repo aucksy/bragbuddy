@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,7 +31,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -38,13 +41,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.R
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntrySource
+import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
+import com.bragbuddy.app.ui.theme.BragPalette
 import com.bragbuddy.app.ui.theme.Radii
 import com.bragbuddy.app.ui.theme.Spacing
 
 /**
- * Home (Design System §1). Phase 1 shows the captured entries newest-first; the empty state nudges
- * a first capture. The structured pillar document arrives in Phase 3.
+ * Home (Design System §1). Phase 1 showed raw transcripts; Phase 2 shows the **categorized** result
+ * — the cleaned bullet with its placement chip, or a "processing / Inbox" state. It stays a flat,
+ * newest-first list; the structured pillar document is Phase 3.
  */
 @Composable
 fun HomeScreen(
@@ -104,6 +110,14 @@ private fun EntryCard(entry: EntryEntity) {
     ).toString()
     val sourceLabel = if (entry.source == EntrySource.VOICE) "Voice" else "Typed"
 
+    // The cleaned bullet once categorized; the raw transcript while it's still processing / failed.
+    val headline = entry.bullet?.takeIf { it.isNotBlank() } ?: entry.rawTranscript
+    val dotColor = when (entry.status) {
+        EntryStatus.PROCESSED -> palette.primary
+        EntryStatus.INBOX, EntryStatus.FAILED -> palette.inbox
+        EntryStatus.RAW -> palette.text3
+    }
+
     Row(
         Modifier
             .fillMaxWidth()
@@ -117,15 +131,25 @@ private fun EntryCard(entry: EntryEntity) {
                 .padding(top = 6.dp)
                 .size(7.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(palette.primary),
+                .background(dotColor),
         )
         Spacer(Modifier.size(Spacing.s3))
         Column(Modifier.weight(1f)) {
             Text(
-                text = entry.rawTranscript,
+                text = headline,
                 style = MaterialTheme.typography.bodyMedium,
                 color = palette.text1,
             )
+
+            // Placement / status chips.
+            val chips = statusChips(entry, palette)
+            if (chips.isNotEmpty()) {
+                Spacer(Modifier.height(Spacing.s2))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    chips.forEach { Chip(it.text, it.fill, it.ink) }
+                }
+            }
+
             Spacer(Modifier.height(Spacing.s2))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -143,6 +167,41 @@ private fun EntryCard(entry: EntryEntity) {
             }
         }
     }
+}
+
+private data class ChipSpec(val text: String, val fill: Color, val ink: Color)
+
+private fun statusChips(entry: EntryEntity, palette: BragPalette): List<ChipSpec> {
+    val chips = mutableListOf<ChipSpec>()
+    when (entry.status) {
+        EntryStatus.RAW -> chips += ChipSpec("Processing…", palette.surface2, palette.text3)
+        EntryStatus.FAILED -> chips += ChipSpec("Waiting for AI", palette.inboxSoft, palette.inboxInk)
+        EntryStatus.INBOX -> chips += ChipSpec("Inbox", palette.inboxSoft, palette.inboxInk)
+        EntryStatus.PROCESSED -> {
+            entry.goalCategory?.takeIf { it.isNotBlank() && !it.equals("Inbox", true) }
+                ?.let { chips += ChipSpec(it, palette.primarySoft, palette.primary) }
+            entry.project
+                ?.takeIf { it.isNotBlank() && !it.equals("Inbox", true) && !it.equals("Outside-project", true) }
+                ?.let { chips += ChipSpec(it, palette.surface2, palette.text2) }
+        }
+    }
+    if (entry.isExtra) chips += ChipSpec("Extra", palette.extraSoft, palette.extraInk)
+    return chips
+}
+
+@Composable
+private fun Chip(text: String, fill: Color, ink: Color) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = ink,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .wrapContentWidth()
+            .clip(RoundedCornerShape(Radii.sm))
+            .background(fill)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    )
 }
 
 @Composable

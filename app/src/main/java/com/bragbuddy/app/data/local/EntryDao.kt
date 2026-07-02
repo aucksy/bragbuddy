@@ -21,6 +21,17 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE status = :status ORDER BY createdAt DESC")
     fun observeByStatus(status: EntryStatus): Flow<List<EntryEntity>>
 
+    /** The Inbox surface: low-confidence / unplaceable (INBOX) and AI-failure (FAILED) entries. */
+    @Query("SELECT * FROM entries WHERE status IN (:statuses) ORDER BY createdAt DESC")
+    fun observeIn(statuses: List<EntryStatus>): Flow<List<EntryEntity>>
+
+    @Query("SELECT COUNT(*) FROM entries WHERE status IN (:statuses)")
+    fun observeCountIn(statuses: List<EntryStatus>): Flow<Int>
+
+    /** All entries still awaiting AI processing (drained on launch in case a run was interrupted). */
+    @Query("SELECT * FROM entries WHERE status = :status ORDER BY createdAt ASC")
+    suspend fun listByStatus(status: EntryStatus = EntryStatus.RAW): List<EntryEntity>
+
     @Query("SELECT * FROM entries WHERE id = :id")
     suspend fun getById(id: Long): EntryEntity?
 

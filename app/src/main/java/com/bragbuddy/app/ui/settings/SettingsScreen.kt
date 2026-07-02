@@ -14,8 +14,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -84,6 +86,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(inner)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = Spacing.screen),
         ) {
             // Daily reminder
@@ -205,12 +208,56 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(Spacing.s4))
 
+            // AI brain (OpenRouter) — categorizer + framework refine. On-device key only.
+            Card(palette) {
+                Text("AI brain (OpenRouter)", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                Text(
+                    "Cleans and files each entry, and builds your framework by voice. Without a key, entries just wait in the Inbox.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.text3,
+                )
+                Spacer(Modifier.height(Spacing.s3))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 50.dp)
+                        .clip(RoundedCornerShape(Radii.md))
+                        .border(1.5.dp, palette.primary.copy(alpha = 0.45f), RoundedCornerShape(Radii.md))
+                        .background(palette.surface)
+                        .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    if (settings.openRouterApiKey.isEmpty()) {
+                        Text("Paste your OpenRouter key (sk-or-…)", style = MaterialTheme.typography.bodyMedium, color = palette.text3)
+                    }
+                    BasicTextField(
+                        value = settings.openRouterApiKey,
+                        onValueChange = { viewModel.setOpenRouterApiKey(it) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = LocalTextStyle.current.merge(TextStyle(color = palette.text1, fontSize = 14.sp)),
+                        cursorBrush = SolidColor(palette.primary),
+                    )
+                }
+                Spacer(Modifier.height(Spacing.s2))
+                Text(
+                    if (settings.openRouterApiKey.isBlank())
+                        "Free key at openrouter.ai → Keys. Stored on this device only, never uploaded to us."
+                    else "Key saved on this device.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.text3,
+                )
+            }
+
+            Spacer(Modifier.height(Spacing.s4))
+
             // About
             Card(palette) {
                 InfoRow("AI engine", viewModel.aiProviderLabel, palette)
                 Spacer(Modifier.height(Spacing.s3))
                 InfoRow("Version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", palette)
             }
+            Spacer(Modifier.height(Spacing.s6))
         }
     }
 }

@@ -25,9 +25,11 @@ data class CategorizeRequest(
 
 @Serializable
 data class CategorizedEntry(
-    val bullet: String,
-    val project: String,
-    val goalCategory: String,
+    val bullet: String = "",
+    // Default to Inbox so a model that omits a placement field still parses (→ routed to Inbox),
+    // rather than failing the whole entry's parse. The prompt always asks for these.
+    val project: String = "Inbox",
+    val goalCategory: String = "Inbox",
     val demonstrates: List<String> = emptyList(),
     val isExtra: Boolean = false,
     val impact: Double = 0.0,
@@ -102,4 +104,27 @@ data class SetAsideNote(
 data class SummaryResult(
     val summary: SummaryBody,
     @SerialName("setAside") val setAside: List<SetAsideNote> = emptyList(),
+)
+
+// ---------------- Framework refine (Part C · one-time setup call) ----------------
+
+/** Turn a plain-language description of how the user is judged into structured pillars. */
+data class FrameworkRefineRequest(
+    /** What the user spoke/typed about their review. */
+    val description: String,
+    /** The current framework block, so the AI refines rather than blindly replaces. */
+    val currentFramework: String,
+)
+
+/** One proposed pillar. [kind] is a raw string mapped to [com.bragbuddy.app.data.framework.PillarKind]. */
+@Serializable
+data class RefinedPillar(
+    val name: String,
+    val kind: String = "GOAL_AREA",
+    val blurb: String = "",
+)
+
+@Serializable
+data class FrameworkRefineResult(
+    val pillars: List<RefinedPillar> = emptyList(),
 )

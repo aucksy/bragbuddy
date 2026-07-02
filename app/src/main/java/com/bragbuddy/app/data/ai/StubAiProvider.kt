@@ -28,4 +28,7 @@ class StubAiProvider @Inject constructor() : AiProvider {
 
     override suspend fun generateSummary(request: SummaryRequest): Result<SummaryResult> =
         Result.success(SummaryResult(summary = SummaryBody()))
+
+    override suspend fun refineFramework(request: FrameworkRefineRequest): Result<FrameworkRefineResult> =
+        Result.failure(IllegalStateException("No AI provider wired"))
 }

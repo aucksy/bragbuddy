@@ -45,22 +45,31 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.ui.capture.CaptureActivity
+import com.bragbuddy.app.ui.framework.FrameworkScreen
 import com.bragbuddy.app.ui.home.HomeScreen
+import com.bragbuddy.app.ui.inbox.InboxScreen
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 
 private enum class HomeTab(val label: String) { HOME("Home"), SUMMARY("Summary"), FRAMEWORK("Framework"), INBOX("Inbox") }
 
 /**
  * The app shell: the design's bottom tab bar with the raised central **mic FAB** as the capture
- * trigger. Phase 1 wires Home (the entry list) + the capture button; Summary / Framework / Inbox
- * are placeholders their later phases fill in.
+ * trigger. Phase 2 wires Home (categorized entries), Framework (editor + refine-by-voice), and the
+ * Inbox (read + retry). Summary stays a placeholder until Phase 5.
  */
 @Composable
-fun MainScaffold(onOpenSettings: () -> Unit) {
+fun MainScaffold(
+    onOpenSettings: () -> Unit,
+    viewModel: MainViewModel = hiltViewModel(),
+) {
     val palette = BragBuddyTheme.palette
     val context = LocalContext.current
     var tab by rememberSaveable { mutableStateOf(HomeTab.HOME) }
+    val inboxCount by viewModel.inboxCount.collectAsStateWithLifecycle()
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val contentBottom = 74.dp + navInset
 
@@ -68,13 +77,14 @@ fun MainScaffold(onOpenSettings: () -> Unit) {
         when (tab) {
             HomeTab.HOME -> HomeScreen(onOpenSettings = onOpenSettings, contentBottomPadding = contentBottom)
             HomeTab.SUMMARY -> PlaceholderTab("Summary", "Your review-ready write-up lands here.", Icons.Outlined.Description, contentBottom)
-            HomeTab.FRAMEWORK -> PlaceholderTab("Framework", "Shape how you're judged — coming soon.", Icons.Outlined.Dashboard, contentBottom)
-            HomeTab.INBOX -> PlaceholderTab("Inbox", "Unclear entries will wait here for a tap.", Icons.Outlined.Inbox, contentBottom)
+            HomeTab.FRAMEWORK -> FrameworkScreen(contentBottomPadding = contentBottom)
+            HomeTab.INBOX -> InboxScreen(contentBottomPadding = contentBottom)
         }
 
         BottomBar(
             modifier = Modifier.align(Alignment.BottomCenter),
             selected = tab,
+            inboxCount = inboxCount,
             onSelect = { tab = it },
             onCapture = { context.startActivity(Intent(context, CaptureActivity::class.java)) },
         )
@@ -85,6 +95,7 @@ fun MainScaffold(onOpenSettings: () -> Unit) {
 private fun BottomBar(
     modifier: Modifier,
     selected: HomeTab,
+    inboxCount: Int,
     onSelect: (HomeTab) -> Unit,
     onCapture: () -> Unit,
 ) {
@@ -108,7 +119,7 @@ private fun BottomBar(
                 TabItem(HomeTab.SUMMARY, selected, Icons.Outlined.Description, Icons.Outlined.Description, onSelect, Modifier.weight(1f))
                 Spacer(Modifier.weight(1f)) // space for the FAB
                 TabItem(HomeTab.FRAMEWORK, selected, Icons.Outlined.Dashboard, Icons.Outlined.Dashboard, onSelect, Modifier.weight(1f))
-                TabItem(HomeTab.INBOX, selected, Icons.Outlined.Inbox, Icons.Outlined.Inbox, onSelect, Modifier.weight(1f))
+                TabItem(HomeTab.INBOX, selected, Icons.Outlined.Inbox, Icons.Outlined.Inbox, onSelect, Modifier.weight(1f), badge = inboxCount)
             }
         }
         // Raised capture FAB, centered and straddling the top edge of the bar.
@@ -135,6 +146,7 @@ private fun TabItem(
     inactiveIcon: ImageVector,
     onSelect: (HomeTab) -> Unit,
     modifier: Modifier,
+    badge: Int = 0,
 ) {
     val palette = BragBuddyTheme.palette
     val isActive = tab == selected
@@ -145,7 +157,26 @@ private fun TabItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Icon(if (isActive) activeIcon else inactiveIcon, tab.label, tint = tint, modifier = Modifier.size(21.dp))
+        Box(contentAlignment = Alignment.TopEnd) {
+            Icon(if (isActive) activeIcon else inactiveIcon, tab.label, tint = tint, modifier = Modifier.size(21.dp))
+            if (badge > 0) {
+                Box(
+                    Modifier
+                        .offset(x = 7.dp, y = (-5).dp)
+                        .size(15.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(palette.inbox),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        if (badge > 9) "9+" else badge.toString(),
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp,
+                    )
+                }
+            }
+        }
         Text(
             tab.label,
             style = MaterialTheme.typography.labelSmall,
