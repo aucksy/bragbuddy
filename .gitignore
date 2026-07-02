@@ -1,0 +1,32 @@
+# Built artifacts
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Gradle / build
+.gradle/
+build/
+local.properties
+captures/
+
+# Signing — never commit keys
+keystore.properties
+*.keystore
+*.jks
+
+# API keys / secrets — never commit (OpenRouter etc.)
+secrets.properties
+*.secrets
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Kotlin
+.kotlin/
+
+# Stray Windows 'Copy' duplicates
+*- Copy.md

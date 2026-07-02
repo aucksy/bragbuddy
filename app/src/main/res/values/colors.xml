@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Design-system tokens used at the platform layer (splash, window background).
+         The full palette lives in the Compose theme (ui/theme/Color.kt). -->
+    <color name="ab_primary">#4C56D6</color>
+    <color name="ab_bg">#F7F7FB</color>
+    <color name="ab_surface">#FFFFFF</color>
+    <color name="ab_text_1">#181A2E</color>
+
+    <!-- Adaptive launcher icon background (indigo gradient's mid tone). -->
+    <color name="ic_launcher_background">#4C56D6</color>
+</resources>

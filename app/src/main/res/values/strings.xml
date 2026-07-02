@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BragBuddy</string>
+
+    <!-- Navigation destinations -->
+    <string name="nav_home">Home</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Home (Phase 0 placeholder) -->
+    <string name="home_eyebrow">Your record · always ready</string>
+    <string name="home_title">This year</string>
+    <string name="home_empty_title">Nothing logged yet</string>
+    <string name="home_empty_body">Got 20 seconds? Tell me about your day and I\'ll keep the record.</string>
+
+    <!-- Settings (Phase 0 placeholder) -->
+    <string name="settings_title">Settings</string>
+</resources>

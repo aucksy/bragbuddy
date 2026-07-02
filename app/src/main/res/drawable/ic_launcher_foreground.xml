@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BragBuddy briefcase mark (design system logo), white on the indigo adaptive background.
+     The 32-unit design paths are scaled and centred into the 108-unit adaptive viewport. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="1.85"
+        android:scaleY="1.85"
+        android:translateX="24.4"
+        android:translateY="24.4">
+        <!-- Briefcase body -->
+        <path
+            android:pathData="M7.7,11 h16.6 a3.2,3.2 0 0 1 3.2,3.2 v8.1 a3.2,3.2 0 0 1 -3.2,3.2 h-16.6 a3.2,3.2 0 0 1 -3.2,-3.2 v-8.1 a3.2,3.2 0 0 1 3.2,-3.2 z"
+            android:fillColor="#FFFFFF" />
+        <!-- Handle -->
+        <path
+            android:pathData="M11.3,11 V9.4 A2.4,2.4 0 0 1 13.7,7 h4.6 a2.4,2.4 0 0 1 2.4,2.4 V11"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <!-- Divider -->
+        <path
+            android:pathData="M4.5,16.2 h23 v1.8 h-23 z"
+            android:fillColor="#4750C8"
+            android:fillAlpha="0.16" />
+        <!-- Clasp -->
+        <path
+            android:pathData="M14.9,15.2 h2.2 a1.3,1.3 0 0 1 1.3,1.3 v1.4 a1.3,1.3 0 0 1 -1.3,1.3 h-2.2 a1.3,1.3 0 0 1 -1.3,-1.3 v-1.4 a1.3,1.3 0 0 1 1.3,-1.3 z"
+            android:fillColor="#4750C8" />
+    </group>
+</vector>

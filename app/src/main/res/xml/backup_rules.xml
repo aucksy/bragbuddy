@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Android auto-backup rules. BragBuddy's own Google Drive backup (Phase 6) is the real
+   redundancy path; this covers the OS-level auto-backup. The Room database is included so a
+   device transfer keeps the record. See https://developer.android.com/guide/topics/data/autobackup
+-->
+<full-backup-content>
+    <include domain="database" path="bragbuddy.db" />
+    <include domain="sharedpref" path="." />
+</full-backup-content>
