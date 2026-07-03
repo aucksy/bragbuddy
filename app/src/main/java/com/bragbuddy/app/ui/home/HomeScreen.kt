@@ -5,6 +5,7 @@ import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,13 +17,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Mic
@@ -58,16 +64,19 @@ import com.bragbuddy.app.R
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.local.EntryStatus
+import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.ui.capture.CaptureActivity
+import com.bragbuddy.app.ui.role.RoleInput
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
 import com.bragbuddy.app.ui.theme.Radii
 import com.bragbuddy.app.ui.theme.Spacing
 
 /**
- * Home (Design System §1). Phase 2 shows the **categorized** result — cleaned bullet with its
- * placement chip, or a processing/Inbox state. Each entry can be edited (→ re-filed), re-recorded
- * from scratch (Redo), or deleted. Flat list; the structured document is Phase 3.
+ * Home (Design System §1). Phase 2 shows the **categorized** result — cleaned bullet + placement
+ * chip, or a processing/Inbox state. Adds project **folders** (tap → capture into that project) and,
+ * on first run, a gentle "what's your role?" prompt. Flat entry list; the structured document is
+ * Phase 3.
  */
 @Composable
 fun HomeScreen(
@@ -78,9 +87,18 @@ fun HomeScreen(
     val palette = BragBuddyTheme.palette
     val context = LocalContext.current
     val entries by viewModel.entries.collectAsStateWithLifecycle()
+    val folders by viewModel.folders.collectAsStateWithLifecycle()
+    val showRolePrompt by viewModel.showRolePrompt.collectAsStateWithLifecycle()
 
     var editTarget by remember { mutableStateOf<EntryEntity?>(null) }
     var deleteTarget by remember { mutableStateOf<EntryEntity?>(null) }
+    var showCreateFolder by remember { mutableStateOf(false) }
+
+    fun captureInto(project: String?) {
+        val intent = Intent(context, CaptureActivity::class.java)
+        if (project != null) intent.putExtra(CaptureActivity.EXTRA_PROJECT, project)
+        context.startActivity(intent)
+    }
 
     Column(
         modifier = Modifier
@@ -103,33 +121,50 @@ fun HomeScreen(
                     color = palette.text1,
                 )
             }
-            // NOTE: Settings entry point isn't in the design (which shows "Summarise" here — a
-            // Phase 5 feature). Temporary gear until the summary surface + a proper settings home land.
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Outlined.Settings, stringResource(R.string.nav_settings), tint = palette.text2)
             }
         }
         Spacer(Modifier.height(Spacing.s3))
 
-        if (entries.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyState() }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(Spacing.s3),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = contentBottomPadding + Spacing.s4),
-            ) {
-                items(entries, key = { it.id }) { entry ->
-                    EntryCard(
-                        entry = entry,
-                        onEdit = { editTarget = entry },
-                        onRedo = {
-                            context.startActivity(
-                                Intent(context, CaptureActivity::class.java)
-                                    .putExtra(CaptureActivity.EXTRA_REPLACE_ID, entry.id),
-                            )
-                        },
-                        onDelete = { deleteTarget = entry },
-                    )
+        if (showRolePrompt) {
+            RolePromptCard(
+                palette = palette,
+                onSave = { viewModel.saveRole(it) },
+                onDismiss = { viewModel.dismissRolePrompt() },
+            )
+            Spacer(Modifier.height(Spacing.s3))
+        }
+
+        FoldersRow(
+            folders = folders,
+            palette = palette,
+            onOpen = { captureInto(it.name) },
+            onCreate = { showCreateFolder = true },
+        )
+        Spacer(Modifier.height(Spacing.s3))
+
+        Box(Modifier.weight(1f)) {
+            if (entries.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyState() }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(Spacing.s3),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = contentBottomPadding + Spacing.s4),
+                ) {
+                    items(entries, key = { it.id }) { entry ->
+                        EntryCard(
+                            entry = entry,
+                            onEdit = { editTarget = entry },
+                            onRedo = {
+                                context.startActivity(
+                                    Intent(context, CaptureActivity::class.java)
+                                        .putExtra(CaptureActivity.EXTRA_REPLACE_ID, entry.id),
+                                )
+                            },
+                            onDelete = { deleteTarget = entry },
+                        )
+                    }
                 }
             }
         }
@@ -158,7 +193,169 @@ fun HomeScreen(
             containerColor = palette.surface,
         )
     }
+
+    if (showCreateFolder) {
+        CreateFolderDialog(
+            palette = palette,
+            onConfirm = { viewModel.createFolder(it); showCreateFolder = false },
+            onDismiss = { showCreateFolder = false },
+        )
+    }
 }
+
+// ---------------- Project folders ----------------
+
+@Composable
+private fun FoldersRow(
+    folders: List<ProjectEntity>,
+    palette: BragPalette,
+    onOpen: (ProjectEntity) -> Unit,
+    onCreate: () -> Unit,
+) {
+    Column {
+        Text(
+            "PROJECTS",
+            style = MaterialTheme.typography.labelSmall,
+            color = palette.text3,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 2.dp, bottom = Spacing.s2),
+        )
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            folders.forEach { FolderCard(it.name, palette) { onOpen(it) } }
+            NewFolderCard(hasFolders = folders.isNotEmpty(), palette = palette, onClick = onCreate)
+        }
+    }
+}
+
+@Composable
+private fun FolderCard(name: String, palette: BragPalette, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .widthIn(max = 200.dp)
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.s3, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).background(palette.primarySoft),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Outlined.Folder, null, tint = palette.primary, modifier = Modifier.size(15.dp)) }
+        Spacer(Modifier.size(Spacing.s2))
+        Text(
+            name,
+            style = MaterialTheme.typography.titleSmall,
+            color = palette.text1,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun NewFolderCard(hasFolders: Boolean, palette: BragPalette, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(Radii.lg))
+            .border(1.5.dp, palette.primary.copy(alpha = 0.4f), RoundedCornerShape(Radii.lg))
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.s3, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Add, null, tint = palette.primary, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.size(6.dp))
+        Text(
+            if (hasFolders) "New" else "New project",
+            style = MaterialTheme.typography.titleSmall,
+            color = palette.primary,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun CreateFolderDialog(palette: BragPalette, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) { Text("Create") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text("New project folder", color = palette.text1) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                placeholder = { Text("e.g. Raven Migration", color = palette.text3) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        containerColor = palette.surface,
+    )
+}
+
+// ---------------- First-run role prompt ----------------
+
+@Composable
+private fun RolePromptCard(palette: BragPalette, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var draft by remember { mutableStateOf("") }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+            .padding(Spacing.card),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                Text("What's your role?", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                Text(
+                    "Helps me judge what's core vs. standout for you. Not your company.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.text3,
+                )
+            }
+            Box(
+                Modifier.size(28.dp).clip(RoundedCornerShape(999.dp)).clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Outlined.Close, "Not now", tint = palette.text3, modifier = Modifier.size(16.dp)) }
+        }
+        Spacer(Modifier.height(Spacing.s3))
+        RoleInput(value = draft, onValueChange = { draft = it }, palette = palette, onImeDone = { if (draft.isNotBlank()) onSave(draft) })
+        Spacer(Modifier.height(Spacing.s3))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(if (draft.isNotBlank()) palette.primary else palette.primary.copy(alpha = 0.4f))
+                    .clickable(enabled = draft.isNotBlank()) { onSave(draft) }
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("Save", style = MaterialTheme.typography.titleSmall, color = Color.White, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.size(Spacing.s3))
+            Text(
+                "Not now",
+                style = MaterialTheme.typography.titleSmall,
+                color = palette.text3,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(999.dp)).clickable(onClick = onDismiss).padding(horizontal = 12.dp, vertical = 10.dp),
+            )
+        }
+    }
+}
+
+// ---------------- Entry cards (unchanged from v0.5.0) ----------------
 
 @Composable
 private fun EntryCard(
@@ -173,7 +370,6 @@ private fun EntryCard(
     ).toString()
     val sourceLabel = if (entry.source == EntrySource.VOICE) "Voice" else "Typed"
 
-    // The cleaned bullet once categorized; the raw transcript while it's still processing / failed.
     val headline = entry.bullet?.takeIf { it.isNotBlank() } ?: entry.rawTranscript
     val dotColor = when (entry.status) {
         EntryStatus.PROCESSED -> palette.primary

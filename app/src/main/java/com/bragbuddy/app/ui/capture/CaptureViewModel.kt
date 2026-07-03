@@ -42,6 +42,8 @@ data class CaptureUiState(
     val cloud: Boolean = false,
     /** Set once settings (last mode / engine) have loaded — the host waits for this before auto-starting voice. */
     val initialized: Boolean = false,
+    /** When capturing into a folder, the project name this entry is anchored to (shown as a chip). */
+    val anchorProject: String? = null,
 )
 
 /**
@@ -76,6 +78,15 @@ class CaptureViewModel @Inject constructor(
     /** When set (Home → Redo), Add replaces this existing entry instead of inserting a new one. */
     private var replaceId: Long? = null
     fun setReplaceId(id: Long) { if (id > 0L) replaceId = id }
+
+    /** When set (folder tap), the capture is anchored to this project — no spoken prefix needed. */
+    private var anchorProject: String? = null
+    fun setAnchorProject(name: String) {
+        val clean = name.trim()
+        if (clean.isEmpty()) return
+        anchorProject = clean
+        _state.update { it.copy(anchorProject = clean) }
+    }
 
     init {
         viewModelScope.launch {
@@ -248,7 +259,7 @@ class CaptureViewModel @Inject constructor(
         didSave = true
         viewModelScope.launch {
             val id = replaceId
-            if (id != null) entries.replaceText(id, text) else entries.capture(text, source)
+            if (id != null) entries.replaceText(id, text) else entries.capture(text, source, anchorProject = anchorProject)
             onDone()
             _saved.tryEmit(Unit)
         }

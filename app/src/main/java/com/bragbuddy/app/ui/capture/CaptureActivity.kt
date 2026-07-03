@@ -61,6 +61,8 @@ class CaptureActivity : ComponentActivity() {
 
         // Redo (from Home) re-records over an existing entry instead of creating a new one.
         intent.getLongExtra(EXTRA_REPLACE_ID, 0L).let { if (it > 0L) vm.setReplaceId(it) }
+        // Folder tap → capture straight into that project (no spoken prefix needed).
+        intent.getStringExtra(EXTRA_PROJECT)?.let { vm.setAnchorProject(it) }
 
         setContent {
             BragBuddyTheme {
@@ -110,6 +112,9 @@ class CaptureActivity : ComponentActivity() {
     companion object {
         /** Long extra: the id of an entry to re-record over (Home → Redo). */
         const val EXTRA_REPLACE_ID = "replace_entry_id"
+
+        /** String extra: a project name to anchor this capture to (Home folder tap). */
+        const val EXTRA_PROJECT = "anchor_project"
     }
 }
 

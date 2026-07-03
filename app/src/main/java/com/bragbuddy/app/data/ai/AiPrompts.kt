@@ -9,7 +9,7 @@ package com.bragbuddy.app.data.ai
 object AiPrompts {
 
     // ---------------- PART A · daily categorizer ----------------
-    // Placeholders {{TODAY}} / {{APPRAISAL_FRAMEWORK}} / {{PROJECTS}} are substituted per call.
+    // Placeholders {{TODAY}} / {{ROLE}} / {{APPRAISAL_FRAMEWORK}} / {{PROJECTS}} / {{PROJECT_ANCHOR}}.
     private const val CATEGORIZER = """You are the processing engine inside "BragBuddy", a mobile app that helps an
 employee keep a record of their work contributions for performance appraisals,
 organised the way their company's appraisal form is structured.
@@ -19,6 +19,12 @@ clean, structured, appraisal-ready entries.
 
 CONTEXT
 - Today's date: {{TODAY}}
+- The user's job role: {{ROLE}}
+  Use the role to judge what is CORE duty for this person versus BEYOND scope / leadership.
+  Example: for a Product Owner, shipping a feature is core performance work (isExtra=false);
+  unblocking three other teams is beyond scope (isExtra=true) and may evidence leadership.
+  The role INFORMS, it does NOT DICTATE: it never moves normal work out of its goal area —
+  it only sharpens "isExtra", "impact" and which behaviours are genuinely evidenced.
 - The company's appraisal framework:
 {{APPRAISAL_FRAMEWORK}}
   GOAL AREAS = the "what" (results and project work map here). BEHAVIOURS/COMPETENCIES
@@ -27,6 +33,9 @@ CONTEXT
 - The user's current projects (each tagged with the goal area it rolls up to):
 {{PROJECTS}}
   If empty, treat all work as "Outside-project" or "Inbox".
+- Explicit project anchor for THIS note: {{PROJECT_ANCHOR}}
+  If an anchor is given (not "none"), the whole note belongs to that project — use it as the
+  "project" for every entry, with high confidence, and skip guessing the project.
 
 WHAT TO DO
 1. Read the transcript. It may describe one thing or several.
@@ -35,18 +44,19 @@ WHAT TO DO
    action-led; preserve meaning, names and technical terms; clear English even if the
    transcript mixes languages; invent nothing — no impact or numbers the user did not
    say; one sentence where possible.
-4. "project": exact name of one of the user's projects, or "Outside-project", or
-   "Inbox" (can't place it / maybe new / unsure). Never invent a project; prefer
-   "Inbox" over guessing. If torn between listed projects, fill "suggestedProjects"
-   with the 1-2 best matches; otherwise omit it.
+4. "project": if an explicit project anchor is given above, use it verbatim for every entry.
+   Otherwise: the exact name of one of the user's projects, or "Outside-project", or "Inbox"
+   (can't place it / maybe new / unsure). Never invent a project; prefer "Inbox" over guessing.
+   If torn between listed projects, fill "suggestedProjects" with the 1-2 best matches; else omit.
 5. "goalCategory": the goal area this counts toward. If it belongs to a known project,
    use that project's goal area. For Outside-project work pick the best-fitting goal
    area. If unsure, "Inbox".
 6. "demonstrates": list the behaviours/competencies from the framework this work
-   GENUINELY evidences. Tag a behaviour only when clearly shown — never inflate.
-   Empty list if none.
-7. "isExtra": true only if clearly beyond normal duties (mentoring, helping another
-   team, an initiative they started, fixing something not theirs). Else false.
+   GENUINELY evidences (this stays your decision even when the project is anchored). Tag a
+   behaviour only when clearly shown — never inflate. Empty list if none.
+7. "isExtra": true only if clearly beyond this person's normal duties FOR THEIR ROLE
+   (mentoring, helping another team, an initiative they started, fixing something not theirs).
+   A core deliverable of their role is NOT extra. Else false.
 8. "impact": a number 0.0-1.0 estimating how appraisal-worthy this is — weigh outcome
    (moved a metric / hit a goal), scale, difficulty, visibility, alignment to goals,
    and extra/leadership work. This is provisional; the summary step re-judges later.
@@ -85,13 +95,21 @@ OUTPUT
 }
 If there is no usable work contribution, return exactly: { "entries": [] }"""
 
-    fun categorizer(today: String, framework: String, projects: List<String>): String {
+    fun categorizer(
+        today: String,
+        framework: String,
+        projects: List<String>,
+        role: String = "",
+        projectAnchor: String? = null,
+    ): String {
         val frameworkBlock = framework.ifBlank { "(none set)" }
         val projectBlock = if (projects.isEmpty()) "(none yet)" else projects.joinToString("\n")
         return CATEGORIZER
             .replace("{{TODAY}}", today)
+            .replace("{{ROLE}}", role.ifBlank { "(not set)" })
             .replace("{{APPRAISAL_FRAMEWORK}}", frameworkBlock)
             .replace("{{PROJECTS}}", projectBlock)
+            .replace("{{PROJECT_ANCHOR}}", projectAnchor?.takeIf { it.isNotBlank() } ?: "none")
     }
 
     // ---------------- PART C · framework refine (setup + ongoing voice edits) ----------------
@@ -107,6 +125,8 @@ Each category sits on one axis:
 - DEVELOPMENT = optional growth/learning.
 
 CONTEXT
+- The user's job role: {{ROLE}}
+  Use it to seed sensible, role-appropriate categories when building from scratch.
 - The CURRENT framework:
 {{CURRENT}}
 - The user's instruction:
@@ -133,8 +153,9 @@ OUTPUT
   ]
 }"""
 
-    fun framework(current: String, description: String): String =
+    fun framework(current: String, description: String, role: String = ""): String =
         FRAMEWORK
+            .replace("{{ROLE}}", role.ifBlank { "(not set)" })
             .replace("{{CURRENT}}", current.ifBlank { "(the default: Performance Goals / Leadership & Behaviours / Learning & Growth)" })
             .replace("{{DESCRIPTION}}", description.trim())
 
@@ -147,6 +168,9 @@ invent nothing.
 CONTEXT
 - Period: {{PERIOD}}
 - Length target: {{LENGTH_CAP}}
+- The user's job role: {{ROLE}}
+  Let the role shape what reads as core delivery versus standout/leadership for this person,
+  so the curation emphasises the genuinely notable. It informs emphasis, not invention.
 - The company's appraisal framework:
 {{APPRAISAL_FRAMEWORK}}
 - Pinned items the user insists on including (always include these):
@@ -180,10 +204,18 @@ OUTPUT (JSON only — no prose, no markdown, no code fences)
   "setAside": [ { "what": "string", "why": "string" } ]
 }"""
 
-    fun summary(period: String, lengthCap: String, framework: String, pinned: List<String>, rollup: String): String =
+    fun summary(
+        period: String,
+        lengthCap: String,
+        framework: String,
+        pinned: List<String>,
+        rollup: String,
+        role: String = "",
+    ): String =
         SUMMARY
             .replace("{{PERIOD}}", period.ifBlank { "full-year" })
             .replace("{{LENGTH_CAP}}", lengthCap.ifBlank { "about one page" })
+            .replace("{{ROLE}}", role.ifBlank { "(not set)" })
             .replace("{{APPRAISAL_FRAMEWORK}}", framework.ifBlank { "(none set)" })
             .replace("{{PINNED}}", if (pinned.isEmpty()) "(none)" else pinned.joinToString("\n") { "- $it" })
             .replace("{{ROLLUP}}", rollup.ifBlank { "(empty)" })

@@ -8,6 +8,7 @@ import com.bragbuddy.app.data.local.EntryDao
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.ProjectDao
+import com.bragbuddy.app.data.prefs.SettingsStore
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,6 +36,7 @@ class EntryProcessor @Inject constructor(
     private val projectDao: ProjectDao,
     private val frameworkStore: FrameworkStore,
     private val aiProvider: AiProvider,
+    private val settings: SettingsStore,
 ) {
 
     // Serialize all processing so two callers (capture's kick + a launch-time drain during a config
@@ -104,18 +106,26 @@ class EntryProcessor @Inject constructor(
     }
 
     private suspend fun processEntry(entry: EntryEntity) {
+        val role = settings.settings.first().jobRole
         val framework = frameworkStore.framework.first().toPromptBlock()
-        val projects = projectDao.observeActive().first().map { p ->
+        val activeProjects = projectDao.observeActive().first()
+        val projects = activeProjects.map { p ->
             buildString {
                 append("- ").append(p.name).append(" [").append(p.goalArea).append("]")
                 p.description?.takeIf { it.isNotBlank() }?.let { append(" — ").append(it) }
             }
         }
+        // Folder-tap anchor: fixes the project for this whole capture (and its split siblings).
+        val anchor = entry.anchorProject?.takeIf { it.isNotBlank() }
+        val anchorGoalArea = anchor?.let { name -> activeProjects.firstOrNull { it.name.equals(name, ignoreCase = true) }?.goalArea }
+
         val request = CategorizeRequest(
             transcript = entry.rawTranscript,
             today = LocalDate.now().toString(),
             framework = framework,
             projects = projects,
+            role = role,
+            projectAnchor = anchor,
         )
 
         aiProvider.categorize(request).fold(
@@ -126,10 +136,10 @@ class EntryProcessor @Inject constructor(
                     entryDao.update(entry.copy(status = EntryStatus.INBOX, confidence = 0.0))
                 } else {
                     // First result updates the captured row; extras become sibling rows.
-                    entryDao.update(entry.applyCategorized(result.entries.first()))
+                    entryDao.update(entry.applyCategorized(result.entries.first(), anchor, anchorGoalArea))
                     result.entries.drop(1).forEach { extra ->
                         entryDao.insert(
-                            entry.copy(id = 0, bullet = null).applyCategorized(extra),
+                            entry.copy(id = 0, bullet = null).applyCategorized(extra, anchor, anchorGoalArea),
                         )
                     }
                 }
@@ -141,13 +151,22 @@ class EntryProcessor @Inject constructor(
         )
     }
 
-    /** Map one categorizer result onto this row, computing the pipeline status and occurred date. */
-    private fun EntryEntity.applyCategorized(c: CategorizedEntry): EntryEntity = copy(
-        status = statusFor(c),
+    /**
+     * Map one categorizer result onto this row. When the capture is anchored to a folder, the
+     * project (and its goal area) are fixed deterministically — the folder tap wins even if the
+     * model drifts — and the entry is PROCESSED (the project is certain, so no Inbox for placement
+     * uncertainty). Behaviours / impact / isExtra always come from the AI.
+     */
+    private fun EntryEntity.applyCategorized(
+        c: CategorizedEntry,
+        anchor: String?,
+        anchorGoalArea: String?,
+    ): EntryEntity = copy(
+        status = statusFor(c, anchored = anchor != null),
         occurredAt = c.dateMentioned.toEpochMillisOrNull() ?: occurredAt,
         bullet = c.bullet.ifBlank { null },
-        project = c.project,
-        goalCategory = c.goalCategory,
+        project = anchor ?: c.project,
+        goalCategory = if (anchor != null) (anchorGoalArea ?: c.goalCategory) else c.goalCategory,
         demonstrates = c.demonstrates,
         isExtra = c.isExtra,
         impact = c.impact,
@@ -162,8 +181,12 @@ class EntryProcessor @Inject constructor(
         const val INBOX_LABEL = "Inbox"
         const val CONFIDENCE_FLOOR = 0.6
 
-        /** Force to Inbox when unplaceable or low-confidence; otherwise it's cleanly PROCESSED. */
-        fun statusFor(c: CategorizedEntry): EntryStatus {
+        /**
+         * Force to Inbox when unplaceable or low-confidence; otherwise cleanly PROCESSED. An anchored
+         * capture has a certain project, so it's never held in the Inbox for placement uncertainty.
+         */
+        fun statusFor(c: CategorizedEntry, anchored: Boolean): EntryStatus {
+            if (anchored) return EntryStatus.PROCESSED
             val unplaceable = c.project.equals(INBOX_LABEL, ignoreCase = true) ||
                 c.goalCategory.equals(INBOX_LABEL, ignoreCase = true)
             return if (unplaceable || c.confidence < CONFIDENCE_FLOOR) EntryStatus.INBOX else EntryStatus.PROCESSED

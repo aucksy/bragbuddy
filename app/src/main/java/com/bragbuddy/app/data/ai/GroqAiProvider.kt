@@ -42,7 +42,9 @@ class GroqAiProvider @Inject constructor(
     override val label: String = AiConfig.categorizerLabel()
 
     override suspend fun categorize(request: CategorizeRequest): Result<CategorizeResult> {
-        val system = AiPrompts.categorizer(request.today, request.framework, request.projects)
+        val system = AiPrompts.categorizer(
+            request.today, request.framework, request.projects, request.role, request.projectAnchor,
+        )
         val user = request.transcript.trim()
         if (user.isEmpty()) return Result.success(CategorizeResult(emptyList()))
         return completeAndParse(
@@ -53,7 +55,7 @@ class GroqAiProvider @Inject constructor(
     }
 
     override suspend fun refineFramework(request: FrameworkRefineRequest): Result<FrameworkRefineResult> {
-        val system = AiPrompts.framework(request.currentFramework, request.description)
+        val system = AiPrompts.framework(request.currentFramework, request.description, request.role)
         val user = request.description.trim()
         if (user.isEmpty()) return Result.failure(IllegalStateException("Nothing to build from"))
         return completeAndParse(
@@ -65,7 +67,7 @@ class GroqAiProvider @Inject constructor(
 
     override suspend fun generateSummary(request: SummaryRequest): Result<SummaryResult> {
         val system = AiPrompts.summary(
-            request.period, request.lengthCap, request.framework, request.pinned, request.rollup,
+            request.period, request.lengthCap, request.framework, request.pinned, request.rollup, request.role,
         )
         return completeAndParse(
             models = listOf(AiConfig.summaryModel, AiConfig.summaryFallback),

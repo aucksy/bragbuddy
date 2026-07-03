@@ -26,6 +26,34 @@ class AiPromptsTest {
         val prompt = AiPrompts.categorizer(today = "2026-07-03", framework = "", projects = emptyList())
         assertThat(prompt).contains("(none set)")
         assertThat(prompt).contains("(none yet)")
+        assertThat(prompt).contains("(not set)") // role unset
+        assertThat(prompt).contains("none")      // no anchor
+        assertThat(prompt).doesNotContain("{{")
+    }
+
+    @Test
+    fun `categorizer injects role and honours an explicit project anchor`() {
+        val prompt = AiPrompts.categorizer(
+            today = "2026-07-03",
+            framework = "GOAL AREAS:\n- Performance Goals: delivery",
+            projects = emptyList(),
+            role = "Product Owner",
+            projectAnchor = "Raven Migration",
+        )
+        assertThat(prompt).contains("Product Owner")
+        assertThat(prompt).contains("Raven Migration")
+        // The anchor instruction must be present so the model files into it directly.
+        assertThat(prompt).contains("explicit project anchor")
+        assertThat(prompt).doesNotContain("{{")
+    }
+
+    @Test
+    fun `summary injects the role`() {
+        val prompt = AiPrompts.summary(
+            period = "full-year", lengthCap = "", framework = "", pinned = emptyList(), rollup = "",
+            role = "Backend Engineer",
+        )
+        assertThat(prompt).contains("Backend Engineer")
         assertThat(prompt).doesNotContain("{{")
     }
 

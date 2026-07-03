@@ -21,6 +21,10 @@ data class CategorizeRequest(
     val framework: String,
     /** One line per project: name + [goal area] + short description ({{PROJECTS}}). */
     val projects: List<String>,
+    /** The user's job role — context to sharpen core-duty vs. beyond-scope judgement. Blank = unset. */
+    val role: String = "",
+    /** Explicit project anchor (folder-tap). When set, the model must file into this exact project. */
+    val projectAnchor: String? = null,
 )
 
 @Serializable
@@ -58,6 +62,8 @@ data class SummaryRequest(
     val pinned: List<String>,
     /** The serialised running rollup (never the raw log). */
     val rollup: String,
+    /** The user's job role — context for what reads as core vs. standout for that role. Blank = unset. */
+    val role: String = "",
 )
 
 @Serializable
@@ -114,6 +120,8 @@ data class FrameworkRefineRequest(
     val description: String,
     /** The current framework block, so the AI refines rather than blindly replaces. */
     val currentFramework: String,
+    /** The user's job role — helps seed sensible categories for that role. Blank = unset. */
+    val role: String = "",
 )
 
 /** One proposed pillar. [kind] is a raw string mapped to [com.bragbuddy.app.data.framework.PillarKind]. */

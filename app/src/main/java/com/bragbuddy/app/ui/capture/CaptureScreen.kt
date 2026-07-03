@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.CircularProgressIndicator
@@ -123,6 +124,11 @@ fun CaptureScreen(
             }
             Spacer(Modifier.height(12.dp))
 
+            state.anchorProject?.let { project ->
+                AnchorBanner(project)
+                Spacer(Modifier.height(Spacing.s3))
+            }
+
             if (showToggle) {
                 SpeakTypeToggle(mode = state.mode, onSetMode = onSetMode)
                 Spacer(Modifier.height(Spacing.s4))
@@ -147,6 +153,30 @@ fun CaptureScreen(
             )
             Spacer(Modifier.height(18.dp + bottomInset))
         }
+    }
+}
+
+/** Shown when capturing straight into a project folder — no spoken prefix needed. */
+@Composable
+private fun AnchorBanner(project: String) {
+    val palette = BragBuddyTheme.palette
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(999.dp))
+            .background(palette.primarySoft)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Folder, null, tint = palette.primary, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(7.dp))
+        Text(
+            "Filing into $project",
+            style = MaterialTheme.typography.titleSmall,
+            color = palette.primary,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
     }
 }
 
@@ -283,6 +313,16 @@ private fun VoiceContent(
             style = MaterialTheme.typography.bodySmall,
             color = palette.text3,
         )
+        if (state.anchorProject == null && state.partial.isBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Tip: start with a project name to file it fast",
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.text3.copy(alpha = 0.7f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+        }
         if (state.partial.isNotBlank()) {
             Spacer(Modifier.height(10.dp))
             Text(
@@ -416,7 +456,9 @@ private fun TypeContent(
         ) {
             if (state.typed.isEmpty()) {
                 Text(
-                    "What did you get done?",
+                    if (state.anchorProject == null)
+                        "What did you get done?  e.g. “In my Onboarding project, shipped …”"
+                    else "What did you get done?",
                     style = MaterialTheme.typography.bodyLarge,
                     color = palette.text3,
                 )

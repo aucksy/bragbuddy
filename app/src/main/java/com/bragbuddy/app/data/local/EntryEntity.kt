@@ -46,6 +46,14 @@ data class EntryEntity(
     /** The verbatim transcript (voice) or typed text. Never dropped. */
     val rawTranscript: String,
 
+    /**
+     * Explicit project anchor set at capture time (from tapping a project folder). When present the
+     * categorizer must file this entry — and its split siblings — into this exact project, skipping
+     * the guess. Null = infer the project as usual. Fixes the PROJECT only; behaviour tagging stays
+     * an AI decision. (Room v2 column.)
+     */
+    val anchorProject: String? = null,
+
     // ---- AI-derived (null until processed; see BragBuddy-System-Prompt PART A) ----
     /** One clean, appraisal-ready bullet. */
     val bullet: String? = null,

@@ -32,6 +32,11 @@ data class AppSettings(
     /** Groq API key (gsk_…). Powers BOTH cloud Whisper transcription and the AI brain (categorizer +
      *  framework refine). Stored on-device only — never committed or shipped. */
     val groqApiKey: String = "",
+    /** The user's job role (e.g. "Product Owner"). Context for the AI — sharpens core-duty vs.
+     *  beyond-scope/leadership judgement. Free text, device-local. NEVER the company name. */
+    val jobRole: String = "",
+    /** Set true once the first-run "what's your role?" prompt has been answered or dismissed. */
+    val rolePromptDismissed: Boolean = false,
 ) {
     /** Cloud transcription only actually runs when the engine is CLOUD *and* a key is set. */
     val cloudTranscription: Boolean get() = transcriptionEngine == TranscriptionEngine.CLOUD && groqApiKey.isNotBlank()
@@ -56,6 +61,8 @@ class SettingsStore @Inject constructor(
             transcriptionEngine = runCatching { TranscriptionEngine.valueOf(p[KEY_STT_ENGINE] ?: "ON_DEVICE") }
                 .getOrDefault(TranscriptionEngine.ON_DEVICE),
             groqApiKey = p[KEY_GROQ_KEY] ?: "",
+            jobRole = p[KEY_JOB_ROLE] ?: "",
+            rolePromptDismissed = p[KEY_ROLE_PROMPT_DISMISSED] ?: false,
         )
     }
 
@@ -78,6 +85,16 @@ class SettingsStore @Inject constructor(
     suspend fun setGroqApiKey(key: String) =
         store.edit { it[KEY_GROQ_KEY] = key.trim() }
 
+    /** Setting the role also marks the first-run prompt handled. */
+    suspend fun setJobRole(role: String) =
+        store.edit {
+            it[KEY_JOB_ROLE] = role.trim()
+            it[KEY_ROLE_PROMPT_DISMISSED] = true
+        }
+
+    suspend fun dismissRolePrompt() =
+        store.edit { it[KEY_ROLE_PROMPT_DISMISSED] = true }
+
     private companion object {
         val KEY_REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
         val KEY_REMINDER_HOUR = intPreferencesKey("reminder_hour")
@@ -85,5 +102,7 @@ class SettingsStore @Inject constructor(
         val KEY_LAST_MODE = stringPreferencesKey("last_capture_mode")
         val KEY_STT_ENGINE = stringPreferencesKey("transcription_engine")
         val KEY_GROQ_KEY = stringPreferencesKey("groq_api_key")
+        val KEY_JOB_ROLE = stringPreferencesKey("job_role")
+        val KEY_ROLE_PROMPT_DISMISSED = booleanPreferencesKey("role_prompt_dismissed")
     }
 }

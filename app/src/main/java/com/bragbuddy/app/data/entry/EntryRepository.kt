@@ -33,8 +33,14 @@ class EntryRepository @Inject constructor(
     fun observeInboxCount(): Flow<Int> =
         entryDao.observeCountIn(listOf(EntryStatus.INBOX, EntryStatus.FAILED))
 
-    /** Durably store what the user said/typed, then categorize in the background. Returns the row id. */
-    suspend fun capture(rawTranscript: String, source: EntrySource, occurredAt: Long? = null): Long {
+    /** Durably store what the user said/typed, then categorize in the background. Returns the row id.
+     *  [anchorProject] (folder-tap) fixes the project for this capture. */
+    suspend fun capture(
+        rawTranscript: String,
+        source: EntrySource,
+        occurredAt: Long? = null,
+        anchorProject: String? = null,
+    ): Long {
         val id = entryDao.insert(
             EntryEntity(
                 createdAt = System.currentTimeMillis(),
@@ -42,6 +48,7 @@ class EntryRepository @Inject constructor(
                 source = source,
                 status = EntryStatus.RAW,
                 rawTranscript = rawTranscript.trim(),
+                anchorProject = anchorProject?.takeIf { it.isNotBlank() },
             ),
         )
         appScope.launch { processor.process(id) }
