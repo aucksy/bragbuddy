@@ -85,11 +85,15 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   - `v0.4.0`→`v0.4.1` — Phase 2 **AI categorization** behind the `AiProvider` seam (`StubAiProvider`
     retired). Daily categorizer runs on each RAW entry → cleaned bullet filed to a goal area, or Inbox
     (conf < 0.6 / "Inbox" placement / AI-fail → Inbox, transcript kept — never lost); two models +
-    fallback, slugs in `data/ai/AiConfig`. **Framework refine-by-voice** (editable pillar cards,
-    one-tap confirm, no company name). **v0.4.1 runs the AI on Groq (`GroqAiProvider`, `llama-3.3-70b-
+    fallback, slugs in `data/ai/AiConfig`. **AI runs on Groq (`GroqAiProvider`, `llama-3.3-70b-
     versatile`) reusing the SINGLE on-device Groq key** — one key for AI + Cloud Whisper (Settings →
     AI brain (Groq)); no OpenRouter needed. Seam stays swappable (summary → paid provider at launch).
-    Room DB still v1.
+  - `v0.5.0` — post-testing **cleanup batch**: "pillar"→**"category"** (user-facing); **voice capture
+    review-before-Add** (Add/Re-record/Cancel; typed instant); Home entry **⋮ Edit/Redo/Delete**
+    (`replaceText` re-files under the processor mutex + clears split siblings); **editable category
+    descriptions** (feed the categorizer); **refine-by-voice via Groq cloud transcription** +
+    instruction-aware prompt (add/rename/remove/keep-the-rest) + distinct sheet; status-bar insets +
+    tab-label wrap fixed. Adversarial review caught + fixed 8 bugs pre-tag. Room DB still v1.
 - **Next: Phase 3 — Living document + Inbox.** Home becomes the **structured pillar document**
   (goal areas → projects → bullets; behaviours gather evidence; Inbox last); **Inbox tap-to-resolve**
   with `suggestedProjects` quick-confirm. The per-entry fields + DAO + Framework editor already exist;

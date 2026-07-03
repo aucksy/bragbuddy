@@ -12,13 +12,55 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.4.1 — Phase 2 AI categorization ✅ DONE (verified green · signed · first-try CI)
+## Status: v0.5.0 — Phase 2 + cleanup batch ✅ DONE (verified green · signed · first-try CI)
 
-**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.4.1/BragBuddy-v0.4.1.apk` (signed;
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.5.0/BragBuddy-v0.5.0.apk` (signed;
 `.aab` alongside). **To use it:** Settings → **AI brain (Groq)** → paste your **Groq key**
 (`gsk_…` from console.groq.com → API Keys) — the **same single key that powers Cloud Whisper**,
-stored on-device only. Then capture an entry: it gets cleaned into a bullet and filed to a goal
-area, or lands in the Inbox. Framework tab → **Refine by voice** to reshape your pillars.
+stored on-device only. Then capture: after you stop a **voice** take, review/edit the transcript and
+tap **Add**; typed is instant. Home entries have a **⋮ menu** (Edit / Redo / Delete). Framework tab →
+**Refine by voice** reshapes your **categories** (add/rename/remove/re-describe).
+
+### v0.5.0 — post-testing cleanup batch (creator feedback, 9 items)
+Answers taken via AskUserQuestion: word = **"category"** (not "pillar"); Home = **Edit (retype+save)**
++ **Redo (re-record from scratch)** + Delete; category **details = an editable description**; voice
+capture gets a **review-before-Add** step (voice only; typed stays instant).
+- **UI fixes:** status-bar inset on Home/Framework/Inbox (`statusBarsPadding`); bottom-bar
+  "Framework" no longer wraps (smaller label + `maxLines=1`).
+- **Capture rework:** after Stop, the transcript shows **editable** with **Add / Re-record / Cancel**
+  — nothing saves until Add; a close ✕ cancels anytime (`VoicePhase.REVIEW`, `enterReview`,
+  `confirmAdd`, `reRecord`). Typed unchanged. **Redo** re-records over the entry via
+  `CaptureActivity.EXTRA_REPLACE_ID` → `replaceText` (replace mode; cancel keeps the original).
+- **Home entry actions:** ⋮ menu → Edit text (dialog → `replaceText` → re-file), Redo, Delete
+  (confirm). `EntryDao.deleteById`/`deleteSiblings`; `EntryRepository.delete`/`replaceText`.
+- **Categories:** "category" wording everywhere user-facing (internal `Pillar`/`PillarKind`
+  unchanged); each has an **editable description** (feeds the categorizer); add/edit dialogs include it.
+- **Refine-by-voice:** now uses the **same Groq cloud transcription** as capture (was on-device STT —
+  the "not connected" feeling; gated on `groqApiKey` present, not the capture engine); the prompt is
+  **instruction-aware** (apply add/rename/remove/re-describe, keep the rest); distinct **"REFINING
+  YOUR FRAMEWORK"** sheet with a transcribing state.
+
+### Adversarial review before tagging (8 bugs caught + fixed pre-release)
+Compile pass clean; logic pass found 8, all fixed in commit `4a80bba` **before** the tag:
+1. **[HIGH]** on-device voice review was torn down ~1.5s after transcription (the STT force-submit
+   fallback only checked `!didSave`; review saves later) → now also gated on `submitting`.
+2–3. **[MED]** refine sheet could resurrect after Cancel during "Thinking", and a late cloud-transcribe
+   callback could bleed into a re-opened refine → in-flight coroutine tracked in `refineJob`, cancelled
+   on dismiss/reopen/start-over + a `Thinking`-state guard.
+4–5. **[MED]** editing/Redoing a **split** entry duplicated its sibling rows, and an edit could be
+   clobbered by an in-flight categorization → `replace()` moved into `EntryProcessor` under the same
+   `Mutex` and deletes siblings (shared `createdAt`) before re-filing.
+6. **[MED]** first-capture race auto-started voice under the default SPEAK before the saved mode loaded
+   → auto-start waits on an `initialized` flag (`LaunchedEffect(mode, initialized)`).
+7–8. **[LOW]** audio temp-file leak after a failed take + typed save; unguarded cloud Stop double-tap.
+
+---
+
+## v0.4.1 — Phase 2 AI categorization ✅ DONE (verified green · signed · first-try CI)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.4.1/BragBuddy-v0.4.1.apk`. Settings →
+**AI brain (Groq)** → paste your **Groq key** (the same single key that powers Cloud Whisper),
+stored on-device only.
 
 ### v0.4.1 — AI runs on Groq (single key), not OpenRouter
 Creator's call (asked directly): reuse the one Groq key instead of a second OpenRouter signup. Groq
