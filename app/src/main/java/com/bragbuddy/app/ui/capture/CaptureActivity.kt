@@ -75,9 +75,11 @@ class CaptureActivity : ComponentActivity() {
                     }
                 }
 
-                // Enter voice mode → ensure mic permission, then listen. Re-runs if the user toggles.
-                LaunchedEffect(state.mode) {
-                    if (state.mode == CaptureMode.SPEAK && state.phase == VoicePhase.IDLE) {
+                // Enter voice mode → ensure mic permission, then listen. Waits for settings to load
+                // (initialized) so a Type-preferring user isn't hit with the mic before their last
+                // mode resolves. Re-runs when the mode or initialized flips.
+                LaunchedEffect(state.mode, state.initialized) {
+                    if (state.initialized && state.mode == CaptureMode.SPEAK && state.phase == VoicePhase.IDLE) {
                         if (hasMic()) vm.startVoice() else requestMic.launch(Manifest.permission.RECORD_AUDIO)
                     }
                 }

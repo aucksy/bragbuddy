@@ -69,34 +69,11 @@ class EntryRepository @Inject constructor(
     }
 
     /**
-     * Replace an entry's text and re-file it from scratch (Home → Edit, or Redo's re-record). Resets
-     * all AI-derived fields to a clean RAW state and re-runs the categorizer, so a corrected
-     * transcript gets re-cleaned and re-placed. No-op if the row is gone.
+     * Replace an entry's text and re-file it from scratch (Home → Edit, or Redo's re-record). The
+     * reset + re-categorize runs inside [EntryProcessor] under its lock, so it can't be clobbered by
+     * an in-flight categorization of the same row and can't leave duplicate split rows.
      */
     fun replaceText(id: Long, text: String) {
-        val clean = text.trim()
-        if (clean.isEmpty()) return
-        appScope.launch {
-            val existing = entryDao.getById(id) ?: return@launch
-            entryDao.update(
-                existing.copy(
-                    rawTranscript = clean,
-                    status = EntryStatus.RAW,
-                    occurredAt = null,
-                    bullet = null,
-                    project = null,
-                    goalCategory = null,
-                    demonstrates = emptyList(),
-                    isExtra = false,
-                    impact = null,
-                    routine = false,
-                    routineType = null,
-                    metric = null,
-                    confidence = null,
-                    suggestedProjects = emptyList(),
-                ),
-            )
-            processor.process(id)
-        }
+        appScope.launch { processor.replace(id, text) }
     }
 }

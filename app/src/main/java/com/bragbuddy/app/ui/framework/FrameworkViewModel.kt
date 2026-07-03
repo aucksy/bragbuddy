@@ -17,6 +17,7 @@ import com.bragbuddy.app.data.speech.SpeechToText
 import com.bragbuddy.app.data.speech.SttEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -69,6 +70,9 @@ class FrameworkViewModel @Inject constructor(
     private val recorder by lazy { AudioRecorder(appContext) }
     private var refineAudio: File? = null
     private var useCloud = false
+    // The in-flight transcription / AI coroutine — cancelled on dismiss/reopen so a late callback
+    // can't write into a sheet the user already closed or restarted.
+    private var refineJob: Job? = null
 
     val framework: StateFlow<Framework> = frameworkStore.framework
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Framework.DEFAULT)
@@ -102,9 +106,13 @@ class FrameworkViewModel @Inject constructor(
 
     // ---------------- Refine-by-voice flow ----------------
 
-    fun openRefine() { _refine.value = RefineState.Input() }
+    fun openRefine() {
+        refineJob?.cancel(); refineJob = null
+        _refine.value = RefineState.Input()
+    }
 
     fun cancelRefine() {
+        refineJob?.cancel(); refineJob = null
         stt.cancelAndRelease()
         runCatching { recorder.cancel() }
         refineAudio?.delete(); refineAudio = null
@@ -126,7 +134,10 @@ class FrameworkViewModel @Inject constructor(
     fun startVoice() {
         val s = _refine.value as? RefineState.Input ?: return
         viewModelScope.launch {
-            useCloud = settings.settings.first().cloudTranscription
+            // Use Groq cloud Whisper for refine whenever a key exists — regardless of the capture
+            // engine preference — so refine-by-voice is reliable for anyone with a Groq key.
+            // On-device STT is only the no-key fallback (the AI step will then fail with a clear hint).
+            useCloud = settings.settings.first().groqApiKey.isNotBlank()
             _refine.value = s.copy(mode = RefineMode.SPEAK, listening = true, transcribing = false, error = null)
             if (useCloud) startRecording() else stt.start { handleStt(it) }
         }
@@ -150,7 +161,7 @@ class FrameworkViewModel @Inject constructor(
                 return
             }
             _refine.value = s.copy(listening = false, transcribing = true, error = null)
-            viewModelScope.launch {
+            refineJob = viewModelScope.launch {
                 groqTranscriber.transcribe(file).fold(
                     onSuccess = { text ->
                         file.delete(); refineAudio = null
@@ -189,10 +200,12 @@ class FrameworkViewModel @Inject constructor(
         if (text.isBlank()) return
         stt.cancelAndRelease()
         _refine.value = RefineState.Thinking
-        viewModelScope.launch {
+        refineJob = viewModelScope.launch {
             val current = frameworkStore.framework.first().toPromptBlock()
             aiProvider.refineFramework(FrameworkRefineRequest(text, current)).fold(
                 onSuccess = { result ->
+                    // Ignore a late result if the user has since dismissed/restarted the sheet.
+                    if (_refine.value !is RefineState.Thinking) return@fold
                     val pillars = result.pillars
                         .filter { it.name.isNotBlank() }
                         .mapIndexed { i, p ->
@@ -212,6 +225,7 @@ class FrameworkViewModel @Inject constructor(
                     }
                 },
                 onFailure = {
+                    if (_refine.value !is RefineState.Thinking) return@fold
                     _refine.value = RefineState.Error(it.message ?: "Couldn't reach the AI. Check your Groq key in Settings and try again.")
                 },
             )
@@ -237,7 +251,10 @@ class FrameworkViewModel @Inject constructor(
         _refine.value = RefineState.Hidden
     }
 
-    fun backToInput() { _refine.value = RefineState.Input() }
+    fun backToInput() {
+        refineJob?.cancel(); refineJob = null
+        _refine.value = RefineState.Input()
+    }
 
     override fun onCleared() {
         stt.cancelAndRelease()

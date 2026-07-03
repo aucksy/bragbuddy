@@ -38,6 +38,10 @@ interface EntryDao {
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    /** Delete the other rows a split capture produced (siblings share the capture's createdAt). */
+    @Query("DELETE FROM entries WHERE createdAt = :createdAt AND id != :id")
+    suspend fun deleteSiblings(createdAt: Long, id: Long)
+
     @Query("SELECT COUNT(*) FROM entries")
     fun observeCount(): Flow<Int>
 }

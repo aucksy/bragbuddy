@@ -40,6 +40,8 @@ data class CaptureUiState(
     val error: String? = null,
     /** True while the engine is cloud Whisper (affects the recorder/live-partials behaviour). */
     val cloud: Boolean = false,
+    /** Set once settings (last mode / engine) have loaded — the host waits for this before auto-starting voice. */
+    val initialized: Boolean = false,
 )
 
 /**
@@ -79,7 +81,7 @@ class CaptureViewModel @Inject constructor(
         viewModelScope.launch {
             val s = settings.settings.first()
             useCloud = s.cloudTranscription
-            _state.update { it.copy(mode = s.lastCaptureMode, cloud = useCloud) }
+            _state.update { it.copy(mode = s.lastCaptureMode, cloud = useCloud, initialized = true) }
         }
     }
 
@@ -186,18 +188,20 @@ class CaptureViewModel @Inject constructor(
 
     // ---------------- Shared ----------------
 
-    /** Stop = submit. Cloud → stop recording + transcribe; on-device → finalize STT. */
+    /** Stop = finish the take → review. Cloud → stop recording + transcribe; on-device → finalize STT. */
     fun stopAndSubmitVoice() {
         if (submitting || didSave) return
+        submitting = true // guards a double-tap on Stop for both engines
         if (useCloud) {
             stopAndTranscribe()
         } else {
-            submitting = true
             stopTimer()
             stt.stop()
             viewModelScope.launch {
                 delay(1500)
-                if (!didSave) finishOnDeviceSubmit()
+                // Only the genuine "STT never returned a Final" fallback: once we've entered review
+                // (enterReview clears `submitting`) this must NOT fire and tear the review down.
+                if (!didSave && submitting) finishOnDeviceSubmit()
             }
         }
     }
@@ -283,7 +287,8 @@ class CaptureViewModel @Inject constructor(
         ampJob?.cancel()
         stt.cancelAndRelease()
         runCatching { recorder.cancel() }
-        if (!didSave) lastAudio?.delete()
+        // Always clean up any recorded temp file — after a successful save it's already null.
+        lastAudio?.delete()
     }
 
     private companion object {

@@ -59,6 +59,40 @@ class EntryProcessor @Inject constructor(
         }
     }
 
+    /**
+     * Replace an entry's text and re-file it from scratch (Home → Edit, or Redo's re-record). Runs
+     * under the same lock as processing, so it can't interleave with an in-flight categorization of
+     * the same row (which would otherwise clobber the edit). Clears any sibling rows a prior split
+     * produced first, so re-filing can't leave duplicates. No-op if the row is gone.
+     */
+    suspend fun replace(id: Long, text: String) {
+        val clean = text.trim()
+        if (clean.isEmpty()) return
+        mutex.withLock {
+            val e = entryDao.getById(id) ?: return@withLock
+            entryDao.deleteSiblings(e.createdAt, id)
+            val reset = e.copy(
+                rawTranscript = clean,
+                status = EntryStatus.RAW,
+                occurredAt = null,
+                bullet = null,
+                project = null,
+                goalCategory = null,
+                demonstrates = emptyList(),
+                isExtra = false,
+                impact = null,
+                routine = false,
+                routineType = null,
+                metric = null,
+                confidence = null,
+                suggestedProjects = emptyList(),
+            )
+            entryDao.update(reset)
+            runCatching { processEntry(reset) }
+                .onFailure { runCatching { entryDao.update(reset.copy(status = EntryStatus.FAILED)) } }
+        }
+    }
+
     /** Drain every entry still awaiting processing (called on launch after an interrupted run). */
     suspend fun processPending() {
         entryDao.listByStatus(EntryStatus.RAW).forEach { process(it.id) }
