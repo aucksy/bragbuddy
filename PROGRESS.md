@@ -12,7 +12,11 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.8.0 — Phase 3 · Living document + Inbox resolve ⏳ (built + adversarially reviewed; tag pending CI)
+## Status: v0.8.0 — Phase 3 · Living document + Inbox resolve ✅ DONE (verified green · signed · first-try CI)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.8.0/BragBuddy-v0.8.0.apk` (signed; `.aab`
+alongside). Built green in CI first try (run `28660160397`) — unit tests incl. the new `HomeDocTest`,
+then signed `assembleRelease`/`bundleRelease`.
 
 **Home is now the structured document** (Design System §1 · "Home — your living document"): goal /
 growth **pillars** hold **project cards** (name · N entries · updated); behaviour pillars gather the
