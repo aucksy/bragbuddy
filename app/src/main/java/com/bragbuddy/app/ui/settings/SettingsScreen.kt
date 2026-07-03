@@ -342,7 +342,7 @@ private fun RoleCard(savedRole: String, palette: BragPalette, onSave: (String) -
             color = palette.text3,
         )
         Spacer(Modifier.height(Spacing.s3))
-        RoleInput(value = draft, onValueChange = { draft = it }, palette = palette, onImeDone = { onSave(draft) })
+        RoleInput(value = draft, onValueChange = { draft = it }, palette = palette, onImeDone = { if (draft.isNotBlank()) onSave(draft) })
         Spacer(Modifier.height(Spacing.s2))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("Product Owner", "Software Engineer", "Designer", "Manager", "Analyst").forEach { ex ->

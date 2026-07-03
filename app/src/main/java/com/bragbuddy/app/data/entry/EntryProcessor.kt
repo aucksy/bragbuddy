@@ -62,17 +62,16 @@ class EntryProcessor @Inject constructor(
     }
 
     /**
-     * Replace an entry's text and re-file it from scratch (Home → Edit, or Redo's re-record). Runs
-     * under the same lock as processing, so it can't interleave with an in-flight categorization of
-     * the same row (which would otherwise clobber the edit). Clears any sibling rows a prior split
-     * produced first, so re-filing can't leave duplicates. No-op if the row is gone.
+     * Replace ONE entry's text and re-file it (Home → Edit, or Redo's re-record). Deliberately does
+     * NOT split or touch sibling rows: an edit fixes a single entry, so re-filing it must never
+     * delete/duplicate the other items from the same original capture. Runs under the processing lock
+     * so it can't be clobbered by an in-flight categorization of the same row. No-op if the row is gone.
      */
     suspend fun replace(id: Long, text: String) {
         val clean = text.trim()
         if (clean.isEmpty()) return
         mutex.withLock {
             val e = entryDao.getById(id) ?: return@withLock
-            entryDao.deleteSiblings(e.createdAt, id)
             val reset = e.copy(
                 rawTranscript = clean,
                 status = EntryStatus.RAW,
@@ -90,7 +89,7 @@ class EntryProcessor @Inject constructor(
                 suggestedProjects = emptyList(),
             )
             entryDao.update(reset)
-            runCatching { processEntry(reset) }
+            runCatching { refileSingle(reset) }
                 .onFailure { runCatching { entryDao.update(reset.copy(status = EntryStatus.FAILED)) } }
         }
     }
@@ -105,7 +104,10 @@ class EntryProcessor @Inject constructor(
         entryDao.observeIn(listOf(EntryStatus.FAILED)).first().forEach { process(it.id) }
     }
 
-    private suspend fun processEntry(entry: EntryEntity) {
+    /** Everything the categorizer call needs for one entry, plus the resolved anchor. */
+    private data class Prep(val request: CategorizeRequest, val anchor: String?, val anchorGoalArea: String?)
+
+    private suspend fun prepare(entry: EntryEntity): Prep {
         val role = settings.settings.first().jobRole
         val framework = frameworkStore.framework.first().toPromptBlock()
         val activeProjects = projectDao.observeActive().first()
@@ -118,17 +120,24 @@ class EntryProcessor @Inject constructor(
         // Folder-tap anchor: fixes the project for this whole capture (and its split siblings).
         val anchor = entry.anchorProject?.takeIf { it.isNotBlank() }
         val anchorGoalArea = anchor?.let { name -> activeProjects.firstOrNull { it.name.equals(name, ignoreCase = true) }?.goalArea }
-
-        val request = CategorizeRequest(
-            transcript = entry.rawTranscript,
-            today = LocalDate.now().toString(),
-            framework = framework,
-            projects = projects,
-            role = role,
-            projectAnchor = anchor,
+        return Prep(
+            CategorizeRequest(
+                transcript = entry.rawTranscript,
+                today = LocalDate.now().toString(),
+                framework = framework,
+                projects = projects,
+                role = role,
+                projectAnchor = anchor,
+            ),
+            anchor,
+            anchorGoalArea,
         )
+    }
 
-        aiProvider.categorize(request).fold(
+    /** Capture path: one transcript may describe several things — split into the row + sibling rows. */
+    private suspend fun processEntry(entry: EntryEntity) {
+        val p = prepare(entry)
+        aiProvider.categorize(p.request).fold(
             onSuccess = { result ->
                 if (result.entries.isEmpty()) {
                     // No usable work contribution — keep it, but hold it in the Inbox rather than
@@ -136,10 +145,10 @@ class EntryProcessor @Inject constructor(
                     entryDao.update(entry.copy(status = EntryStatus.INBOX, confidence = 0.0))
                 } else {
                     // First result updates the captured row; extras become sibling rows.
-                    entryDao.update(entry.applyCategorized(result.entries.first(), anchor, anchorGoalArea))
+                    entryDao.update(entry.applyCategorized(result.entries.first(), p.anchor, p.anchorGoalArea))
                     result.entries.drop(1).forEach { extra ->
                         entryDao.insert(
-                            entry.copy(id = 0, bullet = null).applyCategorized(extra, anchor, anchorGoalArea),
+                            entry.copy(id = 0, bullet = null).applyCategorized(extra, p.anchor, p.anchorGoalArea),
                         )
                     }
                 }
@@ -148,6 +157,23 @@ class EntryProcessor @Inject constructor(
                 // AI unreachable or unparseable → keep the transcript, route to Inbox for a later retry.
                 entryDao.update(entry.copy(status = EntryStatus.FAILED))
             },
+        )
+    }
+
+    /** Edit/redo path: re-file exactly this one row (take the first result only) — never split, never
+     *  insert siblings, never delete peers. Fixing one entry can't disturb the others. */
+    private suspend fun refileSingle(entry: EntryEntity) {
+        val p = prepare(entry)
+        aiProvider.categorize(p.request).fold(
+            onSuccess = { result ->
+                val first = result.entries.firstOrNull()
+                if (first == null) {
+                    entryDao.update(entry.copy(status = EntryStatus.INBOX, confidence = 0.0))
+                } else {
+                    entryDao.update(entry.applyCategorized(first, p.anchor, p.anchorGoalArea))
+                }
+            },
+            onFailure = { entryDao.update(entry.copy(status = EntryStatus.FAILED)) },
         )
     }
 

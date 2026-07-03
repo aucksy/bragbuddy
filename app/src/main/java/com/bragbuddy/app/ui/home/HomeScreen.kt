@@ -172,7 +172,9 @@ fun HomeScreen(
 
     editTarget?.let { target ->
         EditEntryDialog(
-            initial = target.rawTranscript,
+            // Show the cleaned bullet for a filed entry (editing it re-files just this one entry);
+            // fall back to the raw transcript for a still-processing / Inbox / failed row.
+            initial = target.bullet?.takeIf { it.isNotBlank() } ?: target.rawTranscript,
             palette = palette,
             onSave = { viewModel.editText(target.id, it); editTarget = null },
             onDismiss = { editTarget = null },
