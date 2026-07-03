@@ -12,9 +12,14 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.10.0 — UX batch (6 items) ⏳ (built + adversarially reviewed; tag pending CI)
+## Status: v0.10.0 — UX batch (6 items) ✅ DONE (verified green · signed)
 
-Second on-device-testing pass (creator, 6 items; scope locked via AskUserQuestion).
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.10.0/BragBuddy-v0.10.0.apk` (signed; `.aab`
+alongside). Second on-device-testing pass (creator, 6 items; scope locked via AskUserQuestion).
+CI note: took 3 CI round-trips — the "Run unit tests" step (compiles main+test) caught **two**
+missing-import errors in brand-new code the static reviews missed: `height`/`width` in
+`CategoryEditSheet`, then `mutableStateOf`/`setValue` in `CaptureScreen`'s "See an example" state.
+Reinforces: **the compiler is the only real gate**; grep/agent import checks are not sufficient.
 
 ### v0.10.0 — what changed (`versionCode 11`)
 1. **Collapsible sections everywhere, default collapsed** (less scrolling on long pages). Home
