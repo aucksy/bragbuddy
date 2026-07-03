@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bragbuddy.app.data.entry.EntryRepository
+import com.bragbuddy.app.data.impact.ImpactCheck
 import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.prefs.CaptureMode
 import com.bragbuddy.app.data.prefs.SettingsStore
@@ -44,6 +45,14 @@ data class CaptureUiState(
     val initialized: Boolean = false,
     /** When capturing into a folder, the project name this entry is anchored to (shown as a chip). */
     val anchorProject: String? = null,
+    // ---- Impact-coaching nudge (local, no AI) — shown AFTER a save with no measurable value ----
+    /** The entry is already saved; offer to add a number. Purely optional, never blocks. */
+    val savedNudge: Boolean = false,
+    /** The just-saved entry's id, so an added number can be appended + re-filed. */
+    val savedEntryId: Long = 0L,
+    /** True once the user taps "Add number" — shows a quick TYPED field (never records). */
+    val addingNumber: Boolean = false,
+    val numberDraft: String = "",
 )
 
 /**
@@ -74,6 +83,7 @@ class CaptureViewModel @Inject constructor(
     private var didSave = false
     private var lastAudio: File? = null
     private var useCloud = false
+    private var savedText = "" // the just-saved text, so an added number appends to it
 
     /** When set (Home → Redo), Add replaces this existing entry instead of inserting a new one. */
     private var replaceId: Long? = null
@@ -258,10 +268,33 @@ class CaptureViewModel @Inject constructor(
         if (didSave) return
         didSave = true
         viewModelScope.launch {
-            val id = replaceId
-            if (id != null) entries.replaceText(id, text) else entries.capture(text, source, anchorProject = anchorProject)
+            val replace = replaceId
+            val id = if (replace != null) { entries.replaceText(replace, text); replace }
+                     else entries.capture(text, source, anchorProject = anchorProject)
             onDone()
-            _saved.tryEmit(Unit)
+            // The entry is saved either way. If it already has a measurable value → dismiss instantly.
+            // If not → offer the free, local "add a number" nudge (never blocks; walking away keeps it).
+            if (ImpactCheck.hasMeasurable(text)) {
+                _saved.tryEmit(Unit)
+            } else {
+                savedText = text.trim()
+                _state.update { it.copy(savedNudge = true, savedEntryId = id) }
+            }
+        }
+    }
+
+    // ---------------- Impact-coaching nudge (local, no AI) ----------------
+
+    fun startAddNumber() = _state.update { it.copy(addingNumber = true) }
+
+    fun onNumberDraftChange(text: String) = _state.update { it.copy(numberDraft = text) }
+
+    /** Append the typed metric to the already-saved entry and re-file it through the normal pipeline. */
+    fun confirmNumber() {
+        val metric = _state.value.numberDraft.trim()
+        val id = _state.value.savedEntryId
+        if (metric.isNotBlank() && id > 0L) {
+            entries.replaceText(id, "$savedText $metric".trim())
         }
     }
 

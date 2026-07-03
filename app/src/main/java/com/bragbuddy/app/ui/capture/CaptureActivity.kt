@@ -86,10 +86,18 @@ class CaptureActivity : ComponentActivity() {
                     }
                 }
 
-                if (justSaved) {
-                    SavedConfirmation()
-                } else {
-                    CaptureScreen(
+                when {
+                    justSaved -> SavedConfirmation()
+                    // Post-save "add a number?" nudge (entry already saved; never blocks).
+                    state.savedNudge -> SavedNudgeSheet(
+                        state = state,
+                        onAddNumber = vm::startAddNumber,
+                        onNumberChange = vm::onNumberDraftChange,
+                        onConfirmNumber = { vm.confirmNumber(); finish() },
+                        onSkip = { finish() },
+                        onDismiss = { finish() },
+                    )
+                    else -> CaptureScreen(
                         state = state,
                         onSetMode = vm::setMode,
                         onStopSubmit = vm::stopAndSubmitVoice,

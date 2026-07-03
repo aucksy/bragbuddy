@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Keyboard
@@ -144,6 +145,18 @@ fun CaptureScreen(
                     onCancel = onDismiss,
                 )
                 CaptureMode.TYPE -> TypeContent(state, onTypedChange, onSubmitTyped)
+            }
+
+            // Persistent, faint impact-coaching hint (local, no AI). Shown while capturing.
+            if (state.phase == VoicePhase.IDLE || state.phase == VoicePhase.LISTENING) {
+                Spacer(Modifier.height(Spacing.s3))
+                Text(
+                    "Tip: add a number if you can — %, time, ₹, count, people.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.text3.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
             }
 
             // Sit above the nav bar / keyboard.
@@ -313,16 +326,6 @@ private fun VoiceContent(
             style = MaterialTheme.typography.bodySmall,
             color = palette.text3,
         )
-        if (state.anchorProject == null && state.partial.isBlank()) {
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Tip: start with a project name to file it fast",
-                style = MaterialTheme.typography.bodySmall,
-                color = palette.text3.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            )
-        }
         if (state.partial.isNotBlank()) {
             Spacer(Modifier.height(10.dp))
             Text(
@@ -515,6 +518,137 @@ private fun PillButton(label: String, primary: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 12.dp),
     )
+}
+
+/**
+ * Shown AFTER a save whose text had no measurable value (local check — no AI). The entry is already
+ * saved; this only offers to append a number. Never blocks: tap Skip or outside to leave.
+ */
+@Composable
+fun SavedNudgeSheet(
+    state: CaptureUiState,
+    onAddNumber: () -> Unit,
+    onNumberChange: (String) -> Unit,
+    onConfirmNumber: () -> Unit,
+    onSkip: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val palette = BragBuddyTheme.palette
+    val noRipple = remember { MutableInteractionSource() }
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(state.addingNumber) {
+        if (state.addingNumber) { focus.requestFocus(); keyboard?.show() }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0E0F1A).copy(alpha = 0.42f))
+                .clickable(interactionSource = noRipple, indication = null, onClick = onDismiss),
+        )
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = Radii.xl, topEnd = Radii.xl))
+                .background(palette.surface)
+                .clickable(interactionSource = noRipple, indication = null, onClick = {})
+                .padding(horizontal = 18.dp)
+                .padding(top = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(Modifier.width(42.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(palette.text3.copy(alpha = 0.35f)))
+            Spacer(Modifier.height(16.dp))
+
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(28.dp).clip(RoundedCornerShape(999.dp)).background(palette.positiveSoft),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Filled.Check, null, tint = palette.positive, modifier = Modifier.size(16.dp)) }
+                Spacer(Modifier.width(9.dp))
+                Text("Saved", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+            }
+            Spacer(Modifier.height(Spacing.s4))
+
+            Text(
+                "Add a measurable result?",
+                style = MaterialTheme.typography.titleMedium,
+                color = palette.text1,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                "A number makes it land — %, time saved, ₹, count, people.",
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.text3,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(Spacing.s3))
+
+            if (state.addingNumber) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 50.dp)
+                        .clip(RoundedCornerShape(Radii.md))
+                        .border(1.5.dp, palette.primary.copy(alpha = 0.45f), RoundedCornerShape(Radii.md))
+                        .background(palette.surface)
+                        .padding(14.dp),
+                ) {
+                    if (state.numberDraft.isEmpty()) {
+                        Text("e.g. cut time by ~30%, saved 2 hours", style = MaterialTheme.typography.bodyMedium, color = palette.text3)
+                    }
+                    BasicTextField(
+                        value = state.numberDraft,
+                        onValueChange = onNumberChange,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                        textStyle = LocalTextStyle.current.merge(TextStyle(color = palette.text1, fontSize = 14.sp)),
+                        cursorBrush = SolidColor(palette.primary),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onConfirmNumber() }),
+                    )
+                }
+                Spacer(Modifier.height(Spacing.s3))
+                NudgeButtons(primaryLabel = "Add", primaryEnabled = state.numberDraft.isNotBlank(), onPrimary = onConfirmNumber, onSkip = onSkip)
+            } else {
+                NudgeButtons(primaryLabel = "Add number", primaryEnabled = true, onPrimary = onAddNumber, onSkip = onSkip)
+            }
+
+            val bottomInset = maxOf(
+                WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                WindowInsets.ime.asPaddingValues().calculateBottomPadding(),
+            )
+            Spacer(Modifier.height(18.dp + bottomInset))
+        }
+    }
+}
+
+@Composable
+private fun NudgeButtons(primaryLabel: String, primaryEnabled: Boolean, onPrimary: () -> Unit, onSkip: () -> Unit) {
+    val palette = BragBuddyTheme.palette
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(999.dp))
+                .background(if (primaryEnabled) palette.primary else palette.primary.copy(alpha = 0.4f))
+                .clickable(enabled = primaryEnabled, onClick = onPrimary)
+                .padding(vertical = 13.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(primaryLabel, style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.width(Spacing.s3))
+        Text(
+            "Skip",
+            style = MaterialTheme.typography.titleSmall,
+            color = palette.text3,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.clip(RoundedCornerShape(999.dp)).clickable(onClick = onSkip).padding(horizontal = 16.dp, vertical = 12.dp),
+        )
+    }
 }
 
 private fun formatElapsed(sec: Int): String = "${sec / 60}:${(sec % 60).toString().padStart(2, '0')}"
