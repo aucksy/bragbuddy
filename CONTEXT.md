@@ -89,16 +89,21 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     versatile`) reusing the SINGLE on-device Groq key** — one key for AI + Cloud Whisper (Settings →
     AI brain (Groq)); no OpenRouter needed. Seam stays swappable (summary → paid provider at launch).
   - `v0.5.0` — post-testing **cleanup batch**: "pillar"→**"category"** (user-facing); **voice capture
-    review-before-Add** (Add/Re-record/Cancel; typed instant); Home entry **⋮ Edit/Redo/Delete**
-    (`replaceText` re-files under the processor mutex + clears split siblings); **editable category
-    descriptions** (feed the categorizer); **refine-by-voice via Groq cloud transcription** +
-    instruction-aware prompt (add/rename/remove/keep-the-rest) + distinct sheet; status-bar insets +
-    tab-label wrap fixed. Adversarial review caught + fixed 8 bugs pre-tag. Room DB still v1.
-- **Next: Phase 3 — Living document + Inbox.** Home becomes the **structured pillar document**
+    review-before-Add** (Add/Re-record/Cancel; typed instant); Home entry **⋮ Edit/Redo/Delete**;
+    **editable category descriptions**; **refine-by-voice via Groq cloud** + instruction-aware prompt +
+    distinct sheet; status-bar insets + tab-label wrap fixed. 8 review bugs fixed pre-tag. Room DB v1.
+  - `v0.6.0` — **Job role** (`SettingsStore.jobRole`, device-local, never company name; Settings card +
+    first-run Home prompt; `ui/role/RoleInput` type-or-speak) injected into **both prompts** +
+    framework-refine (core vs. beyond-scope). **Project folders** on Home (create + tap → capture into
+    it; `ProjectRepository`; managed in Settings) + **deterministic anchoring** (`EntryEntity.anchor
+    Project`, honoured in `EntryProcessor` for the row + siblings). **Room DB now v2** (additive
+    `ALTER TABLE entries ADD COLUMN anchorProject` migration in `BragBuddyDatabase.MIGRATION_1_2`;
+    exportSchema still off). Edit/redo now re-files a SINGLE entry (no split; fixed a data-loss trap).
+- **Next: Phase 3 — Living document + Inbox.** Home becomes the **structured category document**
   (goal areas → projects → bullets; behaviours gather evidence; Inbox last); **Inbox tap-to-resolve**
-  with `suggestedProjects` quick-confirm. The per-entry fields + DAO + Framework editor already exist;
-  this is mostly rendering/data-shaping + the resolve UX deferred from Phase 2. (No project-creation
-  UI yet → projects are empty, so placements are Outside-project/Inbox until it lands.)
+  with `suggestedProjects` quick-confirm. Per-entry fields + DAO + Framework editor + **project folders
+  (v0.6.0)** now exist, so projects are real — this is mostly rendering/data-shaping + the resolve UX
+  deferred from Phase 2.
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
   round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
   errors). Fix from the CI log via the **public** GitHub API (unauthenticated is enough for run status

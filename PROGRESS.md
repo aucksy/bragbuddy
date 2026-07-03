@@ -12,14 +12,56 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.5.0 — Phase 2 + cleanup batch ✅ DONE (verified green · signed · first-try CI)
+## Status: v0.6.0 — Job role + project folders/anchoring ✅ DONE (verified green · signed · first-try CI)
 
-**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.5.0/BragBuddy-v0.5.0.apk` (signed;
-`.aab` alongside). **To use it:** Settings → **AI brain (Groq)** → paste your **Groq key**
-(`gsk_…` from console.groq.com → API Keys) — the **same single key that powers Cloud Whisper**,
-stored on-device only. Then capture: after you stop a **voice** take, review/edit the transcript and
-tap **Add**; typed is instant. Home entries have a **⋮ menu** (Edit / Redo / Delete). Framework tab →
-**Refine by voice** reshapes your **categories** (add/rename/remove/re-describe).
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.6.0/BragBuddy-v0.6.0.apk` (signed;
+`.aab` alongside). Needs the **Groq key** (Settings → AI brain (Groq)). New: **Home Projects row**
+(create a folder, tap → capture into it), a first-run **"What's your role?"** prompt, and **Settings**
+gains **Your role** + **Project folders** cards.
+
+### v0.6.0 — two additive features (creator request)
+Answers via AskUserQuestion: role = **Settings + a gentle first-run prompt**; folders = **a Projects
+section on Home**. Both flagged as UI not in the design files before building.
+
+**Feature 1 — Job role (AI context; never the company name):**
+- `SettingsStore.jobRole` (device-local) + `rolePromptDismissed`. Editable in Settings ("Your role"
+  card — `ui/role/RoleInput` type-or-speak via on-device STT + example chips) and a dismissible
+  first-run prompt on Home (`HomeViewModel.showRolePrompt = jobRole blank && !dismissed`).
+- Injected into **both** prompts (categorizer + summary) **and** framework-refine. Sharpens core-duty
+  vs. beyond-scope/leadership + impact; **informs, never dictates** (doesn't move normal work out of
+  its goal area). `CategorizeRequest.role` / `SummaryRequest.role` / `FrameworkRefineRequest.role`.
+
+**Feature 2 — Project folders + low-friction anchoring:**
+- Projects (folders) on Home as cards (`FoldersRow`): create (`ProjectRepository` over the existing
+  `ProjectDao`; goal area defaults to the framework's first goal category) and **tap → capture
+  straight into that project** (`CaptureActivity.EXTRA_PROJECT`). Full management in Settings.
+- **Explicit anchor** stored on the entry: `EntryEntity.anchorProject` (**Room v1→v2** additive
+  `ALTER TABLE` migration — existing data preserved; `DatabaseModule.addMigrations`). The categorizer
+  is told the anchor and **`EntryProcessor` also honours it deterministically**: folder-tap fixes the
+  project (+ its goal area) on the row **and its split siblings** and marks them PROCESSED — the
+  folder wins even if the model drifts; behaviour/leadership tagging stays an AI call (role-helped).
+  A non-anchored capture behaves exactly as before (confidence < 0.6 / "Inbox" → Inbox).
+- Capture sheet: an **"In <project>" banner** when anchored; a **greyed optional** project hint when
+  not (never required — free talk/type still works, an entry may span projects or none).
+- Prompts: categorizer gains ROLE + an optional PROJECT ANCHOR it must honour (skip guessing);
+  summary + framework gain ROLE. `AiPromptsTest` extended.
+
+### Adversarial review before tagging (compile clean; 2 logic fixes pre-tag, commit `6adb12a`)
+- **Edit/Redo data-loss trap on multi-item captures:** split siblings all carry the full transcript,
+  the Edit dialog prefilled that full text on a card showing one bullet, and `replace()` ran
+  `deleteSiblings` — so trimming it dropped the peers. Fix: **`replace()` re-files as a SINGLE entry**
+  (no re-split, no sibling deletion; `deleteSiblings` retired along with the fragile
+  createdAt-as-group key), and **Edit prefills the bullet** for a filed entry. Editing one entry can
+  no longer disturb the others. (Trade-off: redo of a multi-item note becomes one entry — fine for a
+  fix-this-entry action.)
+- **Settings role blank-Done wiped the saved role** → guarded `onImeDone` with `isNotBlank`.
+
+---
+
+## v0.5.0 — Phase 2 + cleanup batch ✅ DONE (verified green · signed · first-try CI)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.5.0/BragBuddy-v0.5.0.apk`. Voice capture
+review-before-Add; Home ⋮ Edit/Redo/Delete; Framework "categories" + Refine by voice.
 
 ### v0.5.0 — post-testing cleanup batch (creator feedback, 9 items)
 Answers taken via AskUserQuestion: word = **"category"** (not "pillar"); Home = **Edit (retype+save)**
