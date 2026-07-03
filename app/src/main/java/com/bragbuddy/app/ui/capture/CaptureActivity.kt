@@ -107,6 +107,12 @@ class CaptureActivity : ComponentActivity() {
                         onReviewChange = vm::onReviewTextChange,
                         onConfirmAdd = vm::confirmAdd,
                         onReRecord = vm::reRecord,
+                        onStartVoiceNumber = vm::startVoiceNumber,
+                        onStopVoiceNumber = vm::stopVoiceNumber,
+                        onStartTypeNumber = vm::startTypeNumber,
+                        onNumberDraftChange = vm::onNumberDraftChange,
+                        onConfirmTypeNumber = vm::confirmTypeNumber,
+                        onCancelNumber = vm::cancelNumber,
                         onDismiss = { finish() },
                     )
                 }

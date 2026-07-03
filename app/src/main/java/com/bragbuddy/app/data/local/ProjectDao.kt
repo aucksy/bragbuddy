@@ -29,4 +29,12 @@ interface ProjectDao {
 
     @Query("DELETE FROM projects WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    /** Move every sub-folder from one category (pillar) to another — used when a category is renamed. */
+    @Query("UPDATE projects SET goalArea = :newCategory WHERE goalArea = :oldCategory")
+    suspend fun reassignCategory(oldCategory: String, newCategory: String)
+
+    /** Delete every sub-folder under a category — used when the category itself is removed. */
+    @Query("DELETE FROM projects WHERE goalArea = :category")
+    suspend fun deleteByCategory(category: String)
 }

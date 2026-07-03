@@ -3,12 +3,15 @@ package com.bragbuddy.app.data.entry
 import com.bragbuddy.app.data.ai.AiProvider
 import com.bragbuddy.app.data.ai.CategorizeRequest
 import com.bragbuddy.app.data.ai.CategorizedEntry
+import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.FrameworkStore
+import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.local.EntryDao
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.OUTSIDE_PROJECT
 import com.bragbuddy.app.data.local.ProjectDao
+import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.SettingsStore
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
@@ -142,14 +145,21 @@ class EntryProcessor @Inject constructor(
 
     private suspend fun prepare(entry: EntryEntity): Prep {
         val role = settings.settings.first().jobRole
-        val framework = frameworkStore.framework.first().toPromptBlock()
+        val fw = frameworkStore.framework.first()
         val activeProjects = projectDao.observeActive().first()
-        val projects = activeProjects.map { p ->
+        // Placement universe = sub-folders under GOAL_AREA categories only (what an entry's "project"
+        // can be). Behaviour/growth sub-folders are context, not a placement slot.
+        val goalNames = fw.pillars.filter { it.kind == PillarKind.GOAL_AREA }.map { it.name }
+        val placement = activeProjects.filter { p -> goalNames.any { it.equals(p.goalArea, ignoreCase = true) } }
+        val projects = placement.map { p ->
             buildString {
                 append("- ").append(p.name).append(" [").append(p.goalArea).append("]")
                 p.description?.takeIf { it.isNotBlank() }?.let { append(" — ").append(it) }
             }
         }
+        // The framework block is enriched with EVERY category's sub-folders (their names give the AI
+        // context to sharpen placement + behaviour judgement — Feature: "folder names feed the AI").
+        val framework = frameworkBlockWithFolders(fw, activeProjects)
         // Folder-tap anchor: fixes the project for this whole capture (and its split siblings).
         val anchor = entry.anchorProject?.takeIf { it.isNotBlank() }
         val anchorGoalArea = anchor?.let { name -> activeProjects.firstOrNull { it.name.equals(name, ignoreCase = true) }?.goalArea }
@@ -165,6 +175,29 @@ class EntryProcessor @Inject constructor(
             anchor,
             anchorGoalArea,
         )
+    }
+
+    /** The framework prompt block with each category's sub-folders appended as context. */
+    private fun frameworkBlockWithFolders(fw: Framework, projects: List<ProjectEntity>): String {
+        val byCategory = projects.groupBy { it.goalArea.trim().lowercase() }
+        fun subsOf(name: String): String =
+            byCategory[name.trim().lowercase()].orEmpty().joinToString(", ") { it.name }
+        fun StringBuilder.line(p: com.bragbuddy.app.data.framework.Pillar, label: String) {
+            append("- ").append(p.name).append(": ").append(p.blurb)
+            val s = subsOf(p.name)
+            if (s.isNotBlank()) append("  · ").append(label).append(": ").append(s)
+            appendLine()
+        }
+        return buildString {
+            appendLine("GOAL AREAS (results / projects map here):")
+            fw.goalAreas.forEach { line(it, "projects") }
+            appendLine("BEHAVIOURS / COMPETENCIES (tag work that demonstrates these):")
+            fw.behaviours.forEach { line(it, "focus areas") }
+            if (fw.development.isNotEmpty()) {
+                appendLine("DEVELOPMENT (optional):")
+                fw.development.forEach { line(it, "focus areas") }
+            }
+        }.trim()
     }
 
     /** Capture path: one transcript may describe several things — split into the row + sibling rows. */

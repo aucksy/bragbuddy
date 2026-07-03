@@ -3,6 +3,7 @@ package com.bragbuddy.app.ui.inbox
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,16 +21,24 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -65,6 +74,24 @@ fun InboxScreen(
     val entries by viewModel.entries.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
 
+    val selected = remember { mutableStateListOf<Long>() }
+    var selectionMode by remember { mutableStateOf(false) }
+    var showBulkDelete by remember { mutableStateOf(false) }
+    fun toggle(id: Long) {
+        if (selected.contains(id)) selected.remove(id) else selected.add(id)
+        if (selected.isEmpty()) selectionMode = false
+    }
+    fun enterSelection(id: Long) {
+        selectionMode = true
+        if (!selected.contains(id)) selected.add(id)
+    }
+    fun exitSelection() { selectionMode = false; selected.clear() }
+
+    // Drop from the selection any entry that has since left the Inbox (resolved/retried elsewhere).
+    val presentIds = entries.map { it.id }.toSet()
+    if (selectionMode) selected.retainAll(presentIds)
+    if (selectionMode && selected.isEmpty()) selectionMode = false
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -73,17 +100,36 @@ fun InboxScreen(
             .padding(horizontal = Spacing.screen),
     ) {
         Spacer(Modifier.height(Spacing.s4))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.padding(end = 8.dp).size(9.dp).clip(RoundedCornerShape(3.dp)).background(palette.inbox),
+        if (selectionMode) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { exitSelection() }) {
+                    Icon(Icons.Outlined.Close, "Cancel selection", tint = palette.text2)
+                }
+                Spacer(Modifier.size(4.dp))
+                Text(
+                    "${selected.size} selected",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = palette.text1,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { if (selected.isNotEmpty()) showBulkDelete = true }) {
+                    Icon(Icons.Outlined.Delete, "Delete selected", tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.padding(end = 8.dp).size(9.dp).clip(RoundedCornerShape(3.dp)).background(palette.inbox),
+                )
+                Text("Inbox", style = MaterialTheme.typography.headlineLarge, color = palette.text1)
+            }
+            Text(
+                "Entries I wasn't sure about wait here — file each in a tap, no capture ever interrupted.",
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.text3,
             )
-            Text("Inbox", style = MaterialTheme.typography.headlineLarge, color = palette.text1)
         }
-        Text(
-            "Entries I wasn't sure about wait here — file each in a tap, no capture ever interrupted.",
-            style = MaterialTheme.typography.bodySmall,
-            color = palette.text3,
-        )
         Spacer(Modifier.height(Spacing.s3))
 
         if (entries.isEmpty()) {
@@ -98,6 +144,10 @@ fun InboxScreen(
                         entry = entry,
                         folders = folders,
                         palette = palette,
+                        selectionMode = selectionMode,
+                        isSelected = selected.contains(entry.id),
+                        onToggleSelect = { toggle(entry.id) },
+                        onLongPress = { enterSelection(entry.id) },
                         onRetry = { viewModel.retry(entry.id) },
                         onAssign = { viewModel.resolveToProject(entry, it) },
                         onOutside = { viewModel.resolveOutside(entry) },
@@ -105,6 +155,24 @@ fun InboxScreen(
                 }
             }
         }
+    }
+
+    if (showBulkDelete) {
+        val n = selected.size
+        AlertDialog(
+            onDismissRequest = { showBulkDelete = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteMany(selected.toList())
+                    showBulkDelete = false
+                    exitSelection()
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { showBulkDelete = false }) { Text("Cancel") } },
+            title = { Text("Delete $n ${if (n == 1) "entry" else "entries"}?", color = palette.text1) },
+            text = { Text("This removes them for good. The record can't get them back.", color = palette.text3) },
+            containerColor = palette.surface,
+        )
     }
 }
 
@@ -114,6 +182,10 @@ private fun InboxCard(
     entry: EntryEntity,
     folders: List<ProjectEntity>,
     palette: BragPalette,
+    selectionMode: Boolean,
+    isSelected: Boolean,
+    onToggleSelect: () -> Unit,
+    onLongPress: () -> Unit,
     onRetry: () -> Unit,
     onAssign: (String) -> Unit,
     onOutside: () -> Unit,
@@ -130,13 +202,14 @@ private fun InboxCard(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Radii.lg))
-            .background(palette.surface)
-            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+            .background(if (isSelected) palette.primarySoft else palette.surface)
+            .border(1.dp, if (isSelected) palette.primary.copy(alpha = 0.5f) else palette.border, RoundedCornerShape(Radii.lg))
+            .combinedClickable(onClick = { if (selectionMode) onToggleSelect() }, onLongClick = onLongPress)
             .padding(Spacing.card),
     ) {
-        Row {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.padding(top = 6.dp).size(6.dp).clip(RoundedCornerShape(2.dp)).background(palette.inbox),
+                Modifier.padding(top = 6.dp).size(6.dp).clip(RoundedCornerShape(2.dp)).background(palette.inbox).align(Alignment.Top),
             )
             Spacer(Modifier.size(Spacing.s3))
             Text(
@@ -145,38 +218,47 @@ private fun InboxCard(
                 color = palette.text1,
                 modifier = Modifier.weight(1f),
             )
+            if (selectionMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onToggleSelect() },
+                    colors = CheckboxDefaults.colors(checkedColor = palette.primary, uncheckedColor = palette.text3),
+                )
+            }
         }
 
         Spacer(Modifier.height(Spacing.s2))
         Pill(reason, palette.inboxSoft, palette.inboxInk)
 
-        // Resolve: the AI's guesses first (quick-confirm), then any folder, then Outside project.
-        Spacer(Modifier.height(Spacing.s3))
-        Text("File into", style = MaterialTheme.typography.labelSmall, color = palette.text3, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(Spacing.s2))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            entry.suggestedProjects.take(2).forEach { suggestion ->
-                ActionChip(suggestion, palette.primarySoft, palette.primary, onClick = { onAssign(suggestion) })
-            }
-            if (folders.isNotEmpty()) {
-                FolderPickerChip(folders = folders, palette = palette, onPick = onAssign)
-            }
-            ActionChip("Outside project", palette.surface2, palette.text2, onClick = onOutside)
-        }
-
-        if (failed) {
+        // Resolve controls hide while multi-selecting (the whole card is a selection target then).
+        if (!selectionMode) {
             Spacer(Modifier.height(Spacing.s3))
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(palette.primarySoft)
-                    .clickable(onClick = onRetry)
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Outlined.Refresh, null, tint = palette.primary, modifier = Modifier.size(15.dp))
-                Spacer(Modifier.size(6.dp))
-                Text("Try again", style = MaterialTheme.typography.labelLarge, color = palette.primary, fontWeight = FontWeight.Bold)
+            Text("File into", style = MaterialTheme.typography.labelSmall, color = palette.text3, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(Spacing.s2))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                entry.suggestedProjects.take(2).forEach { suggestion ->
+                    ActionChip(suggestion, palette.primarySoft, palette.primary, onClick = { onAssign(suggestion) })
+                }
+                if (folders.isNotEmpty()) {
+                    FolderPickerChip(folders = folders, palette = palette, onPick = onAssign)
+                }
+                ActionChip("Outside project", palette.surface2, palette.text2, onClick = onOutside)
+            }
+
+            if (failed) {
+                Spacer(Modifier.height(Spacing.s3))
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(palette.primarySoft)
+                        .clickable(onClick = onRetry)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Outlined.Refresh, null, tint = palette.primary, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text("Try again", style = MaterialTheme.typography.labelLarge, color = palette.primary, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

@@ -10,11 +10,11 @@ import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.framework.slug
+import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.SettingsStore
+import com.bragbuddy.app.data.project.ProjectRepository
 import com.bragbuddy.app.data.speech.AudioRecorder
 import com.bragbuddy.app.data.speech.GroqTranscriber
-import com.bragbuddy.app.data.speech.SpeechToText
-import com.bragbuddy.app.data.speech.SttEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -64,18 +64,22 @@ class FrameworkViewModel @Inject constructor(
     private val aiProvider: AiProvider,
     private val settings: SettingsStore,
     private val groqTranscriber: GroqTranscriber,
+    private val projects: ProjectRepository,
 ) : ViewModel() {
 
-    private val stt by lazy { SpeechToText(appContext) }
     private val recorder by lazy { AudioRecorder(appContext) }
     private var refineAudio: File? = null
-    private var useCloud = false
     // The in-flight transcription / AI coroutine — cancelled on dismiss/reopen so a late callback
     // can't write into a sheet the user already closed or restarted.
     private var refineJob: Job? = null
 
     val framework: StateFlow<Framework> = frameworkStore.framework
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Framework.DEFAULT)
+
+    /** All sub-folders (across every category) — filtered per-category in the UI. Shared with Home:
+     *  both read the one projects table, so adding/removing a folder in either place is in sync. */
+    val folders: StateFlow<List<ProjectEntity>> = projects.observeActive()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _refine = MutableStateFlow<RefineState>(RefineState.Hidden)
     val refine: StateFlow<RefineState> = _refine.asStateFlow()
@@ -84,12 +88,30 @@ class FrameworkViewModel @Inject constructor(
 
     fun editCategory(id: String, name: String, description: String) {
         val n = name.trim().ifBlank { return }
+        val old = framework.value.pillars.firstOrNull { it.id == id } ?: return
         persist(framework.value.pillars.map { if (it.id == id) it.copy(name = n, blurb = description.trim()) else it })
+        // A renamed category must carry its sub-folders with it (their goalArea = the category name).
+        if (old.name != n) viewModelScope.launch { projects.renameCategory(old.name, n) }
     }
 
     fun remove(id: String) {
+        val p = framework.value.pillars.firstOrNull { it.id == id }
         persist(framework.value.pillars.filterNot { it.id == id })
+        // Removing a category also removes its sub-folders (entries already filed stay in the record).
+        if (p != null) viewModelScope.launch { projects.deleteByCategory(p.name) }
     }
+
+    // ---------------- Sub-folders under a category ----------------
+
+    fun addSubFolder(category: String, name: String) = viewModelScope.launch {
+        projects.create(name, category)
+    }
+
+    fun renameSubFolder(project: ProjectEntity, name: String) = viewModelScope.launch {
+        projects.update(project.id, name, project.goalArea, project.description)
+    }
+
+    fun deleteSubFolder(id: Long) = viewModelScope.launch { projects.delete(id) }
 
     fun addCategory(name: String, description: String, kind: PillarKind) {
         val clean = name.trim().ifBlank { return }
@@ -113,7 +135,6 @@ class FrameworkViewModel @Inject constructor(
 
     fun cancelRefine() {
         refineJob?.cancel(); refineJob = null
-        stt.cancelAndRelease()
         runCatching { recorder.cancel() }
         refineAudio?.delete(); refineAudio = null
         _refine.value = RefineState.Hidden
@@ -121,7 +142,7 @@ class FrameworkViewModel @Inject constructor(
 
     fun setRefineMode(mode: RefineMode) {
         val s = _refine.value as? RefineState.Input ?: return
-        if (mode == RefineMode.TYPE) { stt.cancelAndRelease(); runCatching { recorder.cancel() } }
+        if (mode == RefineMode.TYPE) runCatching { recorder.cancel() }
         _refine.value = s.copy(mode = mode, listening = false, transcribing = false, error = null)
     }
 
@@ -130,16 +151,20 @@ class FrameworkViewModel @Inject constructor(
         _refine.value = s.copy(text = text)
     }
 
-    /** Called once mic permission is granted. */
+    /** Called once mic permission is granted. Refine-by-voice is cloud-only (Groq); without a key it
+     *  points the user to Settings and typing stays available. */
     fun startVoice() {
         val s = _refine.value as? RefineState.Input ?: return
         viewModelScope.launch {
-            // Use Groq cloud Whisper for refine whenever a key exists — regardless of the capture
-            // engine preference — so refine-by-voice is reliable for anyone with a Groq key.
-            // On-device STT is only the no-key fallback (the AI step will then fail with a clear hint).
-            useCloud = settings.settings.first().groqApiKey.isNotBlank()
+            if (settings.settings.first().groqApiKey.isBlank()) {
+                _refine.value = s.copy(
+                    mode = RefineMode.SPEAK, listening = false, transcribing = false,
+                    error = "Add your Groq key in Settings to refine by voice — or type it instead.",
+                )
+                return@launch
+            }
             _refine.value = s.copy(mode = RefineMode.SPEAK, listening = true, transcribing = false, error = null)
-            if (useCloud) startRecording() else stt.start { handleStt(it) }
+            startRecording()
         }
     }
 
@@ -152,45 +177,30 @@ class FrameworkViewModel @Inject constructor(
     }
 
     fun stopVoice() {
-        if (useCloud) {
-            val file = runCatching { recorder.stop() }.getOrNull()
-            refineAudio = file
-            val s = _refine.value as? RefineState.Input ?: return
-            if (file == null) {
-                _refine.value = s.copy(listening = false, error = "Didn't catch that — try again or type it")
-                return
-            }
-            _refine.value = s.copy(listening = false, transcribing = true, error = null)
-            refineJob = viewModelScope.launch {
-                groqTranscriber.transcribe(file).fold(
-                    onSuccess = { text ->
-                        file.delete(); refineAudio = null
-                        val cur = _refine.value as? RefineState.Input ?: return@fold
-                        _refine.value = if (text.isBlank()) {
-                            cur.copy(transcribing = false, error = "Didn't catch that — try again or type it")
-                        } else {
-                            cur.copy(text = text, transcribing = false)
-                        }
-                    },
-                    onFailure = {
-                        val cur = _refine.value as? RefineState.Input ?: return@fold
-                        _refine.value = cur.copy(transcribing = false, error = it.message ?: "Couldn't transcribe — try again or type it")
-                    },
-                )
-            }
-        } else {
-            stt.stop()
-            (_refine.value as? RefineState.Input)?.let { _refine.value = it.copy(listening = false) }
-        }
-    }
-
-    private fun handleStt(event: SttEvent) {
+        val file = runCatching { recorder.stop() }.getOrNull()
+        refineAudio = file
         val s = _refine.value as? RefineState.Input ?: return
-        when (event) {
-            is SttEvent.Partial -> _refine.value = s.copy(text = event.text)
-            is SttEvent.Final -> _refine.value = s.copy(text = event.text.ifBlank { s.text }, listening = false)
-            is SttEvent.Error -> _refine.value = s.copy(listening = false, error = event.message)
-            else -> {}
+        if (file == null) {
+            _refine.value = s.copy(listening = false, error = "Didn't catch that — try again or type it")
+            return
+        }
+        _refine.value = s.copy(listening = false, transcribing = true, error = null)
+        refineJob = viewModelScope.launch {
+            groqTranscriber.transcribe(file).fold(
+                onSuccess = { text ->
+                    file.delete(); refineAudio = null
+                    val cur = _refine.value as? RefineState.Input ?: return@fold
+                    _refine.value = if (text.isBlank()) {
+                        cur.copy(transcribing = false, error = "Didn't catch that — try again or type it")
+                    } else {
+                        cur.copy(text = text, transcribing = false)
+                    }
+                },
+                onFailure = {
+                    val cur = _refine.value as? RefineState.Input ?: return@fold
+                    _refine.value = cur.copy(transcribing = false, error = it.message ?: "Couldn't transcribe — try again or type it")
+                },
+            )
         }
     }
 
@@ -198,7 +208,6 @@ class FrameworkViewModel @Inject constructor(
     fun buildFromDescription() {
         val text = (_refine.value as? RefineState.Input)?.text?.trim().orEmpty()
         if (text.isBlank()) return
-        stt.cancelAndRelease()
         _refine.value = RefineState.Thinking
         refineJob = viewModelScope.launch {
             val current = frameworkStore.framework.first().toPromptBlock()
@@ -257,7 +266,6 @@ class FrameworkViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        stt.cancelAndRelease()
         runCatching { recorder.cancel() }
         refineAudio?.delete()
     }

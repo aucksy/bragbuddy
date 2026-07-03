@@ -10,8 +10,6 @@ import com.bragbuddy.app.data.prefs.CaptureMode
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.speech.AudioRecorder
 import com.bragbuddy.app.data.speech.GroqTranscriber
-import com.bragbuddy.app.data.speech.SpeechToText
-import com.bragbuddy.app.data.speech.SttEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -29,36 +27,42 @@ import javax.inject.Inject
 
 enum class VoicePhase { IDLE, LISTENING, TRANSCRIBING, REVIEW, ERROR }
 
+/** The optional "add a number" sub-flow shown on the review screen after a voice take. */
+enum class NumberStage { NONE, TYPING, RECORDING, TRANSCRIBING }
+
 data class CaptureUiState(
     val mode: CaptureMode = CaptureMode.SPEAK,
     val phase: VoicePhase = VoicePhase.IDLE,
     val elapsedSec: Int = 0,
-    val partial: String = "",
     val typed: String = "",
     /** The transcript shown for review/edit after a voice capture, before the user taps Add. */
     val reviewText: String = "",
     val levels: List<Float> = emptyList(),
     val error: String? = null,
-    /** True while the engine is cloud Whisper (affects the recorder/live-partials behaviour). */
-    val cloud: Boolean = false,
-    /** Set once settings (last mode / engine) have loaded — the host waits for this before auto-starting voice. */
+    /** True when voice was attempted with no Groq key set — the sheet points the user to Settings. */
+    val needsKey: Boolean = false,
+    /** Set once settings (last mode) have loaded — the host waits for this before auto-starting voice. */
     val initialized: Boolean = false,
     /** When capturing into a folder, the project name this entry is anchored to (shown as a chip). */
     val anchorProject: String? = null,
-    // ---- Impact-coaching nudge (local, no AI) — shown AFTER a save with no measurable value ----
-    /** The entry is already saved; offer to add a number. Purely optional, never blocks. */
+    // ---- Review-stage number nudge (voice): record again just for the metric, or type it ----
+    val numberStage: NumberStage = NumberStage.NONE,
+    // ---- Post-save number nudge (TYPED capture only; voice handles it at review) ----
     val savedNudge: Boolean = false,
-    /** The just-saved entry's id, so an added number can be appended + re-filed. */
     val savedEntryId: Long = 0L,
-    /** True once the user taps "Add number" — shows a quick TYPED field (never records). */
     val addingNumber: Boolean = false,
     val numberDraft: String = "",
 )
 
 /**
  * Drives the capture sheet. **Fire-and-forget:** on submit it saves the raw transcript and signals
- * [saved] so the surface can toast + dismiss. Two voice engines: **on-device** (Android STT, live
- * partials) or **cloud Whisper** (record → upload to Groq → text). Typing is always an equal peer.
+ * [saved] so the surface can toast + dismiss. Voice = **cloud Whisper (Groq)** only — record → upload
+ * → text (on-device STT was removed; too inaccurate). Voice needs a Groq key; without one the sheet
+ * points to Settings and typing (always an equal peer) still works.
+ *
+ * After a voice take, the review screen offers an optional **"add a number"** — record a short second
+ * clip (or type) and it's appended to the transcript, then Add files the combined text so the AI
+ * cleans it into one bullet. This never blocks and is always available (never gated by a guess).
  */
 @HiltViewModel
 class CaptureViewModel @Inject constructor(
@@ -68,7 +72,6 @@ class CaptureViewModel @Inject constructor(
     private val groqTranscriber: GroqTranscriber,
 ) : ViewModel() {
 
-    private val stt by lazy { SpeechToText(appContext) }
     private val recorder by lazy { AudioRecorder(appContext) }
 
     private val _state = MutableStateFlow(CaptureUiState())
@@ -82,8 +85,8 @@ class CaptureViewModel @Inject constructor(
     private var submitting = false
     private var didSave = false
     private var lastAudio: File? = null
-    private var useCloud = false
-    private var savedText = "" // the just-saved text, so an added number appends to it
+    private var numberAudio: File? = null
+    private var savedText = "" // the just-saved text, so an added number appends to it (typed path)
 
     /** When set (Home → Redo), Add replaces this existing entry instead of inserting a new one. */
     private var replaceId: Long? = null
@@ -101,20 +104,19 @@ class CaptureViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val s = settings.settings.first()
-            useCloud = s.cloudTranscription
-            _state.update { it.copy(mode = s.lastCaptureMode, cloud = useCloud, initialized = true) }
+            _state.update { it.copy(mode = s.lastCaptureMode, initialized = true) }
         }
     }
 
     fun setMode(mode: CaptureMode) {
         if (_state.value.mode == mode) return
-        _state.update { it.copy(mode = mode, error = null) }
+        _state.update { it.copy(mode = mode, error = null, needsKey = false) }
         viewModelScope.launch { settings.setLastCaptureMode(mode) }
         if (mode == CaptureMode.TYPE) stopVoiceInternal() else _state.update { it.copy(phase = VoicePhase.IDLE) }
     }
 
-    /** Called once mic permission is confirmed. Reads the engine fresh (avoids a first-capture race
-     *  with the async init), then branches to cloud recording or on-device STT. */
+    /** Called once mic permission is confirmed. Voice is cloud-only — it needs a Groq key; without one
+     *  the sheet shows a "set it up" prompt and typing remains available. */
     fun startVoice() {
         val phase = _state.value.phase
         if (phase == VoicePhase.LISTENING || phase == VoicePhase.TRANSCRIBING) return
@@ -122,12 +124,17 @@ class CaptureViewModel @Inject constructor(
         didSave = false
         lastAudio = null
         viewModelScope.launch {
-            useCloud = settings.settings.first().cloudTranscription
+            if (settings.settings.first().groqApiKey.isBlank()) {
+                _state.update {
+                    it.copy(phase = VoicePhase.ERROR, needsKey = true, error = "Voice needs your transcription key.")
+                }
+                return@launch
+            }
             _state.update {
-                it.copy(phase = VoicePhase.LISTENING, cloud = useCloud, elapsedSec = 0, partial = "", error = null, levels = emptyList())
+                it.copy(phase = VoicePhase.LISTENING, needsKey = false, elapsedSec = 0, error = null, levels = emptyList())
             }
             startTimer()
-            if (useCloud) startRecording() else startListening()
+            startRecording()
         }
     }
 
@@ -138,6 +145,11 @@ class CaptureViewModel @Inject constructor(
             fail("Couldn't start recording")
             return
         }
+        startAmpLoop()
+    }
+
+    private fun startAmpLoop() {
+        ampJob?.cancel()
         ampJob = viewModelScope.launch {
             while (true) {
                 delay(90)
@@ -173,58 +185,13 @@ class CaptureViewModel @Inject constructor(
         }
     }
 
-    // ---------------- On-device (live STT) ----------------
-
-    private fun startListening() {
-        stt.start { event -> handle(event) }
-    }
-
-    private fun handle(event: SttEvent) {
-        when (event) {
-            is SttEvent.Ready -> {}
-            is SttEvent.Rms -> {
-                val norm = ((event.db + 2f) / 12f).coerceIn(0f, 1f)
-                _state.update { s -> s.copy(levels = (s.levels + norm).takeLast(MAX_LEVELS)) }
-            }
-            is SttEvent.Partial -> _state.update { it.copy(partial = event.text) }
-            is SttEvent.Final -> {
-                if (event.text.isNotBlank()) _state.update { it.copy(partial = event.text) }
-                if (submitting) finishOnDeviceSubmit()
-            }
-            is SttEvent.EndOfSpeech -> {}
-            is SttEvent.Error -> {
-                if (submitting && _state.value.partial.isNotBlank()) finishOnDeviceSubmit()
-                else fail(event.message)
-                stopTimer()
-            }
-        }
-    }
-
-    private fun finishOnDeviceSubmit() {
-        val text = _state.value.partial.trim()
-        if (text.isBlank()) { fail("Didn't catch that — try again or type it"); submitting = false; return }
-        stt.cancelAndRelease()
-        enterReview(text)
-    }
-
     // ---------------- Shared ----------------
 
-    /** Stop = finish the take → review. Cloud → stop recording + transcribe; on-device → finalize STT. */
+    /** Stop = finish the take → review (stop recording + transcribe). */
     fun stopAndSubmitVoice() {
         if (submitting || didSave) return
-        submitting = true // guards a double-tap on Stop for both engines
-        if (useCloud) {
-            stopAndTranscribe()
-        } else {
-            stopTimer()
-            stt.stop()
-            viewModelScope.launch {
-                delay(1500)
-                // Only the genuine "STT never returned a Final" fallback: once we've entered review
-                // (enterReview clears `submitting`) this must NOT fire and tear the review down.
-                if (!didSave && submitting) finishOnDeviceSubmit()
-            }
-        }
+        submitting = true // guards a double-tap on Stop
+        stopAndTranscribe()
     }
 
     // ---------------- Review before Add (voice) ----------------
@@ -232,23 +199,101 @@ class CaptureViewModel @Inject constructor(
     /** After a voice take, show the transcript editable; nothing is saved until [confirmAdd]. */
     private fun enterReview(text: String) {
         submitting = false
-        _state.update { it.copy(phase = VoicePhase.REVIEW, reviewText = text, partial = "", error = null) }
+        _state.update { it.copy(phase = VoicePhase.REVIEW, reviewText = text, error = null, numberStage = NumberStage.NONE) }
     }
 
     fun onReviewTextChange(text: String) = _state.update { it.copy(reviewText = text) }
 
-    /** Add = commit the (possibly edited) transcript. */
+    /** Add = commit the (possibly edited) transcript, plus any number appended at review. */
     fun confirmAdd() {
+        if (didSave) return
+        // Fold in a number the user typed but didn't explicitly "Add to note" before tapping Add.
+        if (_state.value.numberStage == NumberStage.TYPING && _state.value.numberDraft.isNotBlank()) {
+            appendToReview(_state.value.numberDraft)
+            _state.update { it.copy(numberStage = NumberStage.NONE, numberDraft = "") }
+        }
         val text = _state.value.reviewText.trim()
-        if (text.isBlank() || didSave) return
+        if (text.isBlank()) return
         save(text, EntrySource.VOICE) { lastAudio?.delete(); lastAudio = null }
     }
 
     /** Discard this take and record again from scratch. */
     fun reRecord() {
-        _state.update { it.copy(reviewText = "", partial = "", error = null) }
+        cancelNumber()
+        _state.update { it.copy(reviewText = "", error = null) }
         startVoice()
     }
+
+    // ---------------- Review-stage "add a number" (voice or type) ----------------
+
+    fun startTypeNumber() = _state.update { it.copy(numberStage = NumberStage.TYPING, numberDraft = "") }
+
+    fun onNumberDraftChange(text: String) = _state.update { it.copy(numberDraft = text) }
+
+    /** Append the typed metric to the transcript being reviewed, then collapse the number field. */
+    fun confirmTypeNumber() {
+        appendToReview(_state.value.numberDraft)
+        _state.update { it.copy(numberStage = NumberStage.NONE, numberDraft = "") }
+    }
+
+    /** Record a short second clip just for the metric; on stop it's transcribed and appended. */
+    fun startVoiceNumber() {
+        viewModelScope.launch {
+            if (settings.settings.first().groqApiKey.isBlank()) {
+                // No key → fall back to typing the number rather than failing.
+                _state.update { it.copy(numberStage = NumberStage.TYPING, numberDraft = "") }
+                return@launch
+            }
+            runCatching { numberAudio = recorder.start() }.onFailure {
+                _state.update { it.copy(numberStage = NumberStage.NONE) }
+                return@launch
+            }
+            _state.update { it.copy(numberStage = NumberStage.RECORDING, elapsedSec = 0, levels = emptyList()) }
+            startTimer()
+            startAmpLoop()
+        }
+    }
+
+    fun stopVoiceNumber() {
+        stopTimer()
+        ampJob?.cancel(); ampJob = null
+        val file = runCatching { recorder.stop() }.getOrNull()
+        numberAudio = file
+        if (file == null) { _state.update { it.copy(numberStage = NumberStage.NONE) }; return }
+        _state.update { it.copy(numberStage = NumberStage.TRANSCRIBING) }
+        viewModelScope.launch {
+            groqTranscriber.transcribe(file).fold(
+                onSuccess = { text ->
+                    file.delete(); numberAudio = null
+                    appendToReview(text)
+                    _state.update { it.copy(numberStage = NumberStage.NONE) }
+                },
+                // Silently return to review (the note is intact) — the user can retry or just Add.
+                onFailure = { file.delete(); numberAudio = null; _state.update { it.copy(numberStage = NumberStage.NONE) } },
+            )
+        }
+    }
+
+    /** Cancel the number sub-flow (also stops a number recording if one is running). */
+    fun cancelNumber() {
+        if (_state.value.numberStage == NumberStage.RECORDING) {
+            stopTimer(); ampJob?.cancel(); ampJob = null
+            runCatching { recorder.cancel() }
+            numberAudio?.delete(); numberAudio = null
+        }
+        _state.update { it.copy(numberStage = NumberStage.NONE, numberDraft = "") }
+    }
+
+    private fun appendToReview(extra: String) {
+        val add = extra.trim()
+        if (add.isBlank()) return
+        _state.update { s ->
+            val base = s.reviewText.trim()
+            s.copy(reviewText = if (base.isEmpty()) add else "$base $add")
+        }
+    }
+
+    // ---------------- Typed ----------------
 
     fun onTypedChange(text: String) = _state.update { it.copy(typed = text) }
 
@@ -259,9 +304,9 @@ class CaptureViewModel @Inject constructor(
     }
 
     fun retryVoice() {
-        _state.update { it.copy(error = null) }
+        _state.update { it.copy(error = null, needsKey = false) }
         val audio = lastAudio
-        if (useCloud && audio != null && audio.exists()) transcribe(audio) else startVoice()
+        if (audio != null && audio.exists()) transcribe(audio) else startVoice()
     }
 
     private fun save(text: String, source: EntrySource, onDone: () -> Unit = {}) {
@@ -272,22 +317,20 @@ class CaptureViewModel @Inject constructor(
             val id = if (replace != null) { entries.replaceText(replace, text); replace }
                      else entries.capture(text, source, anchorProject = anchorProject)
             onDone()
-            // The entry is saved either way. If it already has a measurable value → dismiss instantly.
-            // If not → offer the free, local "add a number" nudge (never blocks; walking away keeps it).
-            if (ImpactCheck.hasMeasurable(text)) {
-                _saved.tryEmit(Unit)
-            } else {
-                savedText = text.trim()
-                _state.update { it.copy(savedNudge = true, savedEntryId = id) }
+            when {
+                // Voice offered the number at review already → just dismiss.
+                source == EntrySource.VOICE -> _saved.tryEmit(Unit)
+                // Typed with a measurable value → dismiss instantly.
+                ImpactCheck.hasMeasurable(text) -> _saved.tryEmit(Unit)
+                // Typed with no number → the free, local post-save nudge (never blocks).
+                else -> { savedText = text.trim(); _state.update { it.copy(savedNudge = true, savedEntryId = id) } }
             }
         }
     }
 
-    // ---------------- Impact-coaching nudge (local, no AI) ----------------
+    // ---------------- Post-save nudge (TYPED capture only) ----------------
 
     fun startAddNumber() = _state.update { it.copy(addingNumber = true) }
-
-    fun onNumberDraftChange(text: String) = _state.update { it.copy(numberDraft = text) }
 
     /** Append the typed metric to the already-saved entry and re-file it through the normal pipeline. */
     fun confirmNumber() {
@@ -306,7 +349,6 @@ class CaptureViewModel @Inject constructor(
     private fun stopVoiceInternal() {
         stopTimer()
         ampJob?.cancel(); ampJob = null
-        stt.cancelAndRelease()
         runCatching { recorder.cancel() }
         if (_state.value.phase == VoicePhase.LISTENING) _state.update { it.copy(phase = VoicePhase.IDLE) }
     }
@@ -329,10 +371,10 @@ class CaptureViewModel @Inject constructor(
     override fun onCleared() {
         stopTimer()
         ampJob?.cancel()
-        stt.cancelAndRelease()
         runCatching { recorder.cancel() }
-        // Always clean up any recorded temp file — after a successful save it's already null.
+        // Always clean up any recorded temp files — after a successful save they're already null.
         lastAudio?.delete()
+        numberAudio?.delete()
     }
 
     private companion object {

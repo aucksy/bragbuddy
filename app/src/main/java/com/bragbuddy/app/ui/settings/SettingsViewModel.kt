@@ -8,7 +8,6 @@ import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.AppSettings
 import com.bragbuddy.app.data.prefs.SettingsStore
-import com.bragbuddy.app.data.prefs.TranscriptionEngine
 import com.bragbuddy.app.data.project.ProjectRepository
 import com.bragbuddy.app.reminder.ReminderScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -53,10 +52,6 @@ class SettingsViewModel @Inject constructor(
         settingsStore.setReminderTime(hour, minute)
         val s = settingsStore.settings.first()
         if (s.reminderEnabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute)
-    }
-
-    fun setTranscriptionEngine(engine: TranscriptionEngine) = viewModelScope.launch {
-        settingsStore.setTranscriptionEngine(engine)
     }
 
     fun setGroqApiKey(key: String) = viewModelScope.launch {

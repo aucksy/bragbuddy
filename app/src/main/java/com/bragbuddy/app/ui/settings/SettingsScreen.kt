@@ -60,7 +60,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.BuildConfig
 import com.bragbuddy.app.R
 import com.bragbuddy.app.data.local.ProjectEntity
-import com.bragbuddy.app.data.prefs.TranscriptionEngine
 import com.bragbuddy.app.ui.role.RoleInput
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
@@ -171,45 +170,16 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(Spacing.s4))
 
-            // Transcription
+            // Voice transcription — cloud Whisper only (on-device removed; too inaccurate).
             Card(palette) {
-                Text("Transcription", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                Text("Voice transcription", style = MaterialTheme.typography.titleMedium, color = palette.text1)
                 Text(
-                    "On-device is free & offline. Cloud Whisper is far more accurate.",
+                    if (settings.groqApiKey.isBlank())
+                        "Voice notes are transcribed by cloud Whisper (Groq). Add your key under “AI brain (Groq)” below to enable voice — until then, typing always works."
+                    else "Powered by cloud Whisper using your Groq key ✓ — accurate and fast.",
                     style = MaterialTheme.typography.bodySmall,
                     color = palette.text3,
                 )
-                Spacer(Modifier.height(Spacing.s3))
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(palette.surface2)
-                        .padding(4.dp),
-                ) {
-                    EngineSegment(
-                        "On-device",
-                        settings.transcriptionEngine == TranscriptionEngine.ON_DEVICE,
-                        { viewModel.setTranscriptionEngine(TranscriptionEngine.ON_DEVICE) },
-                        Modifier.weight(1f), palette,
-                    )
-                    EngineSegment(
-                        "Cloud Whisper",
-                        settings.transcriptionEngine == TranscriptionEngine.CLOUD,
-                        { viewModel.setTranscriptionEngine(TranscriptionEngine.CLOUD) },
-                        Modifier.weight(1f), palette,
-                    )
-                }
-                if (settings.transcriptionEngine == TranscriptionEngine.CLOUD) {
-                    Spacer(Modifier.height(Spacing.s2))
-                    Text(
-                        if (settings.groqApiKey.isBlank())
-                            "Add your Groq key under “AI brain (Groq)” below — the one key runs Cloud Whisper too."
-                        else "Using your Groq key ✓ (set under “AI brain (Groq)” below).",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = palette.text3,
-                    )
-                }
             }
 
             Spacer(Modifier.height(Spacing.s4))
@@ -498,27 +468,6 @@ private fun InfoRow(label: String, value: String, palette: BragPalette) {
     Column(Modifier.fillMaxWidth()) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = palette.text3)
         Text(value, style = MaterialTheme.typography.titleMedium, color = palette.text1)
-    }
-}
-
-@Composable
-private fun EngineSegment(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier,
-    palette: BragPalette,
-) {
-    val content = if (selected) palette.primary else palette.text3
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) palette.surface else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(vertical = 9.dp),
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        Text(label, style = MaterialTheme.typography.titleSmall, color = content, fontWeight = FontWeight.Bold)
     }
 }
 

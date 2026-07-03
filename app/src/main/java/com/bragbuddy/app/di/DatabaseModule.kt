@@ -20,7 +20,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): BragBuddyDatabase =
         Room.databaseBuilder(context, BragBuddyDatabase::class.java, BragBuddyDatabase.NAME)
-            .addMigrations(BragBuddyDatabase.MIGRATION_1_2)
+            .addMigrations(BragBuddyDatabase.MIGRATION_1_2, BragBuddyDatabase.MIGRATION_2_3)
             .build()
 
     @Provides

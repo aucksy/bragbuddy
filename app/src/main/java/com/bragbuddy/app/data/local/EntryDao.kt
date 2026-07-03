@@ -38,6 +38,9 @@ interface EntryDao {
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    @Query("DELETE FROM entries WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+
     @Query("SELECT COUNT(*) FROM entries")
     fun observeCount(): Flow<Int>
 }

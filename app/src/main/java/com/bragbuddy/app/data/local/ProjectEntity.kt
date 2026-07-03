@@ -14,13 +14,15 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "projects",
-    indices = [Index(value = ["name"], unique = true)],
+    // Unique per (name, category) — the same folder name may exist under different categories
+    // (e.g. "Reviews" under both a goal area and a behaviour). goalArea holds the category name.
+    indices = [Index(value = ["name", "goalArea"], unique = true)],
 )
 data class ProjectEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    /** Display name, exactly as fed to the categorizer. Unique. */
+    /** Display name, exactly as fed to the categorizer. Unique within its category. */
     val name: String,
-    /** The goal-area pillar this project rolls up to. */
+    /** The category (pillar) this folder sits under — any category, not only goal areas. */
     val goalArea: String,
     /** One-line description that rides along in the prompt to aid placement. */
     val description: String? = null,

@@ -103,6 +103,8 @@ class PillarDetailViewModel @Inject constructor(
 
     fun delete(id: Long) = repository.delete(id)
 
+    fun deleteMany(ids: Collection<Long>) = repository.deleteMany(ids.toList())
+
     /** Add a project folder under this pillar's goal area (goal / growth pillars only). */
     fun createFolder(name: String) {
         val area = detail.value.name.ifBlank { return }

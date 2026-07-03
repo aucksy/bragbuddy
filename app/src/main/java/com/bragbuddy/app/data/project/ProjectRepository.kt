@@ -7,9 +7,11 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The one place projects (a.k.a. **folders**) are created and read. A folder's name *is* its project
- * name — the same string the categorizer places entries into. Kept low-friction: a project needs
- * only a name; its goal area defaults to the framework's first goal category (editable in Settings).
+ * The one place projects (a.k.a. **folders / sub-folders**) are created and read. A folder's name
+ * *is* its name — the same string that gives the AI context (and, for goal-area folders, the
+ * "project" the categorizer files entries into). [ProjectEntity.goalArea] holds the **category
+ * (pillar) name** the folder sits under — any category, not only goal areas — so the Framework editor
+ * and Home both manage the same folders (they stay in sync because they read this one table).
  */
 @Singleton
 class ProjectRepository @Inject constructor(
@@ -50,4 +52,18 @@ class ProjectRepository @Inject constructor(
     suspend fun delete(id: Long) = dao.deleteById(id)
 
     suspend fun goalAreaOf(name: String): String? = dao.getByName(name)?.goalArea
+
+    /** Re-home every sub-folder when its category (pillar) is renamed, so folders don't orphan. */
+    suspend fun renameCategory(oldName: String, newName: String) {
+        val a = oldName.trim()
+        val b = newName.trim()
+        if (a.isEmpty() || b.isEmpty() || a == b) return
+        dao.reassignCategory(a, b)
+    }
+
+    /** Remove every sub-folder under a category when the category itself is deleted. */
+    suspend fun deleteByCategory(name: String) {
+        val n = name.trim().ifBlank { return }
+        dao.deleteByCategory(n)
+    }
 }

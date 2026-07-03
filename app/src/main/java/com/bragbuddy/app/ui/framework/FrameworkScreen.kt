@@ -10,6 +10,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -53,6 +56,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
+import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
 import com.bragbuddy.app.ui.theme.PillarColor
@@ -75,11 +79,15 @@ fun FrameworkScreen(
     val palette = BragBuddyTheme.palette
     val framework by viewModel.framework.collectAsStateWithLifecycle()
     val refine by viewModel.refine.collectAsStateWithLifecycle()
+    val folders by viewModel.folders.collectAsStateWithLifecycle()
 
     var editTarget by remember { mutableStateOf<Pillar?>(null) }
     var showAdd by remember { mutableStateOf(false) }
+    var addSubFolderFor by remember { mutableStateOf<String?>(null) } // category name
+    var renameSub by remember { mutableStateOf<ProjectEntity?>(null) }
 
     val hueOf: (Pillar) -> PillarColor = { p -> pillarColor(framework.pillars.indexOfFirst { it.id == p.id }) }
+    val subsOf: (Pillar) -> List<ProjectEntity> = { p -> folders.filter { it.goalArea.equals(p.name, ignoreCase = true) } }
 
     Box(Modifier.fillMaxSize().background(palette.bg)) {
         Column(
@@ -101,7 +109,13 @@ fun FrameworkScreen(
             if (framework.goalAreas.isNotEmpty()) {
                 AxisLabel("What you did")
                 framework.goalAreas.forEach { p ->
-                    CategoryRow(p, hueOf(p), palette, onEdit = { editTarget = p }, onRemove = { viewModel.remove(p.id) })
+                    CategoryRow(
+                        p, hueOf(p), subsOf(p), palette,
+                        onEdit = { editTarget = p }, onRemove = { viewModel.remove(p.id) },
+                        onAddSubFolder = { addSubFolderFor = p.name },
+                        onRenameSubFolder = { renameSub = it },
+                        onDeleteSubFolder = { viewModel.deleteSubFolder(it) },
+                    )
                     Spacer(Modifier.height(Spacing.s3))
                 }
             }
@@ -111,7 +125,13 @@ fun FrameworkScreen(
                 Spacer(Modifier.height(Spacing.s2))
                 AxisLabel("How you did it")
                 howPillars.forEach { p ->
-                    CategoryRow(p, hueOf(p), palette, onEdit = { editTarget = p }, onRemove = { viewModel.remove(p.id) })
+                    CategoryRow(
+                        p, hueOf(p), subsOf(p), palette,
+                        onEdit = { editTarget = p }, onRemove = { viewModel.remove(p.id) },
+                        onAddSubFolder = { addSubFolderFor = p.name },
+                        onRenameSubFolder = { renameSub = it },
+                        onDeleteSubFolder = { viewModel.deleteSubFolder(it) },
+                    )
                     Spacer(Modifier.height(Spacing.s3))
                 }
             }
@@ -179,6 +199,26 @@ fun FrameworkScreen(
             onDismiss = { showAdd = false },
         )
     }
+
+    addSubFolderFor?.let { category ->
+        NameDialog(
+            title = "New folder in $category",
+            initial = "",
+            palette = palette,
+            onConfirm = { viewModel.addSubFolder(category, it); addSubFolderFor = null },
+            onDismiss = { addSubFolderFor = null },
+        )
+    }
+
+    renameSub?.let { p ->
+        NameDialog(
+            title = "Rename folder",
+            initial = p.name,
+            palette = palette,
+            onConfirm = { viewModel.renameSubFolder(p, it); renameSub = null },
+            onDismiss = { renameSub = null },
+        )
+    }
 }
 
 @Composable
@@ -193,36 +233,98 @@ private fun AxisLabel(text: String) {
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CategoryRow(
     pillar: Pillar,
     hue: PillarColor,
+    subFolders: List<ProjectEntity>,
     palette: BragPalette,
     onEdit: () -> Unit,
     onRemove: () -> Unit,
+    onAddSubFolder: () -> Unit,
+    onRenameSubFolder: (ProjectEntity) -> Unit,
+    onDeleteSubFolder: (Long) -> Unit,
 ) {
-    Row(
+    val subLabel = if (pillar.kind == PillarKind.GOAL_AREA) "Projects" else "Focus areas"
+    Column(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Radii.lg))
             .background(palette.surface)
             .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
             .padding(Spacing.card),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.padding(top = 2.dp).size(11.dp).clip(RoundedCornerShape(3.dp)).background(hue.solid))
+            Spacer(Modifier.size(Spacing.s3))
+            Column(Modifier.weight(1f)) {
+                Text(pillar.name, style = MaterialTheme.typography.titleSmall, color = palette.text1, fontWeight = FontWeight.Bold)
+                if (pillar.blurb.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(pillar.blurb, style = MaterialTheme.typography.bodySmall, color = palette.text3)
+                }
+            }
+            Spacer(Modifier.size(Spacing.s2))
+            IconTap(Icons.Outlined.Edit, palette.primary, onEdit)
+            Spacer(Modifier.size(Spacing.s1))
+            IconTap(Icons.Outlined.Close, palette.text3, onRemove)
+        }
+
+        Spacer(Modifier.height(Spacing.s3))
+        Text(
+            subLabel.uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            color = palette.text3,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(Spacing.s2))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            subFolders.forEach { f ->
+                SubFolderChip(f.name, palette, onClick = { onRenameSubFolder(f) }, onDelete = { onDeleteSubFolder(f.id) })
+            }
+            AddSubFolderChip(palette, onClick = onAddSubFolder)
+        }
+    }
+}
+
+@Composable
+private fun SubFolderChip(name: String, palette: BragPalette, onClick: () -> Unit, onDelete: () -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(palette.surface2)
+            .padding(start = 10.dp, end = 4.dp, top = 5.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.padding(top = 2.dp).size(11.dp).clip(RoundedCornerShape(3.dp)).background(hue.solid))
-        Spacer(Modifier.size(Spacing.s3))
-        Column(Modifier.weight(1f)) {
-            Text(pillar.name, style = MaterialTheme.typography.titleSmall, color = palette.text1, fontWeight = FontWeight.Bold)
-            if (pillar.blurb.isNotBlank()) {
-                Spacer(Modifier.height(2.dp))
-                Text(pillar.blurb, style = MaterialTheme.typography.bodySmall, color = palette.text3)
-            }
-        }
-        Spacer(Modifier.size(Spacing.s2))
-        IconTap(Icons.Outlined.Edit, palette.primary, onEdit)
-        Spacer(Modifier.size(Spacing.s1))
-        IconTap(Icons.Outlined.Close, palette.text3, onRemove)
+        Text(
+            name,
+            style = MaterialTheme.typography.labelMedium,
+            color = palette.text1,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick),
+        )
+        Spacer(Modifier.width(2.dp))
+        Box(
+            Modifier.size(20.dp).clip(RoundedCornerShape(999.dp)).clickable(onClick = onDelete),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Outlined.Close, "Delete folder", tint = palette.text3, modifier = Modifier.size(13.dp)) }
+    }
+}
+
+@Composable
+private fun AddSubFolderChip(palette: BragPalette, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .border(1.dp, palette.primary.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Add, null, tint = palette.primary, modifier = Modifier.size(13.dp))
+        Spacer(Modifier.width(4.dp))
+        Text("Add", style = MaterialTheme.typography.labelMedium, color = palette.primary, fontWeight = FontWeight.Bold)
     }
 }
 

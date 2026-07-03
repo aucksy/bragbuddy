@@ -38,6 +38,8 @@ class InboxViewModel @Inject constructor(
 
     fun retry(id: Long) = repository.retry(id)
 
+    fun deleteMany(ids: Collection<Long>) = repository.deleteMany(ids.toList())
+
     /** Resolve an entry into [projectName] — a suggested project or a chosen folder. If the tapped
      *  name isn't a folder yet (an AI suggestion for a project the user never created), create it
      *  first so the entry lands under that real folder instead of collapsing into "Outside project". */

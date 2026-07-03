@@ -5,6 +5,7 @@ import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,12 +24,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -39,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -82,6 +87,28 @@ fun PillarDetailScreen(
     var deleteTarget by remember { mutableStateOf<EntryEntity?>(null) }
     var showAddProject by remember { mutableStateOf(false) }
 
+    // Multi-select bulk delete.
+    val selected = remember { mutableStateListOf<Long>() }
+    var selectionMode by remember { mutableStateOf(false) }
+    var showBulkDelete by remember { mutableStateOf(false) }
+    fun toggle(id: Long) {
+        if (selected.contains(id)) selected.remove(id) else selected.add(id)
+        if (selected.isEmpty()) selectionMode = false
+    }
+    fun enterSelection(id: Long) {
+        selectionMode = true
+        if (!selected.contains(id)) selected.add(id)
+    }
+    fun exitSelection() { selectionMode = false; selected.clear() }
+
+    // Drop from the selection any entry that has since left this pillar (edited/re-filed elsewhere),
+    // so the count and checkboxes never go stale.
+    val presentIds = (detail.projects.flatMap { it.entries } + detail.evidence).map { it.id }.toSet()
+    if (selectionMode) {
+        selected.retainAll(presentIds)
+        if (selected.isEmpty()) selectionMode = false
+    }
+
     fun capture(project: String?) {
         val intent = Intent(context, CaptureActivity::class.java)
         if (project != null) intent.putExtra(CaptureActivity.EXTRA_PROJECT, project)
@@ -97,19 +124,38 @@ fun PillarDetailScreen(
         Modifier.fillMaxSize().background(palette.bg).statusBarsPadding().padding(horizontal = Spacing.screen),
     ) {
         Spacer(Modifier.height(Spacing.s2))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = palette.text2)
+        if (selectionMode) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { exitSelection() }) {
+                    Icon(Icons.Outlined.Close, "Cancel selection", tint = palette.text2)
+                }
+                Spacer(Modifier.size(Spacing.s1))
+                Text(
+                    "${selected.size} selected",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = palette.text1,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { if (selected.isNotEmpty()) showBulkDelete = true }) {
+                    Icon(Icons.Outlined.Delete, "Delete selected", tint = MaterialTheme.colorScheme.error)
+                }
             }
-            Spacer(Modifier.size(Spacing.s1))
-            Box(Modifier.size(11.dp).clip(RoundedCornerShape(3.dp)).background(hue.solid))
-            Spacer(Modifier.size(Spacing.s2))
-            Text(
-                detail.name.ifBlank { "Pillar" },
-                style = MaterialTheme.typography.headlineSmall,
-                color = palette.text1,
-                fontWeight = FontWeight.Bold,
-            )
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = palette.text2)
+                }
+                Spacer(Modifier.size(Spacing.s1))
+                Box(Modifier.size(11.dp).clip(RoundedCornerShape(3.dp)).background(hue.solid))
+                Spacer(Modifier.size(Spacing.s2))
+                Text(
+                    detail.name.ifBlank { "Pillar" },
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = palette.text1,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
         Spacer(Modifier.height(Spacing.s3))
 
@@ -152,6 +198,10 @@ fun PillarDetailScreen(
                             hue = hue.solid,
                             palette = palette,
                             showFromProject = true,
+                            selectionMode = selectionMode,
+                            isSelected = selected.contains(entry.id),
+                            onToggleSelect = { toggle(entry.id) },
+                            onLongPress = { enterSelection(entry.id) },
                             onEdit = { editTarget = entry },
                             onRedo = { redo(entry) },
                             onDelete = { deleteTarget = entry },
@@ -170,6 +220,10 @@ fun PillarDetailScreen(
                             hue = hue.solid,
                             palette = palette,
                             showFromProject = false,
+                            selectionMode = selectionMode,
+                            isSelected = selected.contains(entry.id),
+                            onToggleSelect = { toggle(entry.id) },
+                            onLongPress = { enterSelection(entry.id) },
                             onEdit = { editTarget = entry },
                             onRedo = { redo(entry) },
                             onDelete = { deleteTarget = entry },
@@ -218,6 +272,23 @@ fun PillarDetailScreen(
             onDismiss = { showAddProject = false },
         )
     }
+    if (showBulkDelete) {
+        val n = selected.size
+        AlertDialog(
+            onDismissRequest = { showBulkDelete = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteMany(selected.toList())
+                    showBulkDelete = false
+                    exitSelection()
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { showBulkDelete = false }) { Text("Cancel") } },
+            title = { Text("Delete $n ${if (n == 1) "entry" else "entries"}?", color = palette.text1) },
+            text = { Text("This removes them for good. The record can't get them back.", color = palette.text3) },
+            containerColor = palette.surface,
+        )
+    }
 }
 
 @Composable
@@ -257,6 +328,10 @@ private fun BulletRow(
     hue: Color,
     palette: BragPalette,
     showFromProject: Boolean,
+    selectionMode: Boolean,
+    isSelected: Boolean,
+    onToggleSelect: () -> Unit,
+    onLongPress: () -> Unit,
     onEdit: () -> Unit,
     onRedo: () -> Unit,
     onDelete: () -> Unit,
@@ -268,8 +343,12 @@ private fun BulletRow(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Radii.lg))
-            .background(palette.surface)
-            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+            .background(if (isSelected) palette.primarySoft else palette.surface)
+            .border(1.dp, if (isSelected) palette.primary.copy(alpha = 0.5f) else palette.border, RoundedCornerShape(Radii.lg))
+            .combinedClickable(
+                onClick = { if (selectionMode) onToggleSelect() },
+                onLongClick = onLongPress,
+            )
             .padding(start = Spacing.card, top = Spacing.card, bottom = Spacing.card, end = 4.dp),
     ) {
         Box(Modifier.padding(top = 6.dp).size(6.dp).clip(RoundedCornerShape(2.dp)).background(hue))
@@ -319,7 +398,15 @@ private fun BulletRow(
                 Text(date, style = MaterialTheme.typography.bodySmall, color = palette.text3)
             }
         }
-        BulletMenu(onEdit = onEdit, onRedo = onRedo, onDelete = onDelete)
+        if (selectionMode) {
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onToggleSelect() },
+                colors = CheckboxDefaults.colors(checkedColor = palette.primary, uncheckedColor = palette.text3),
+            )
+        } else {
+            BulletMenu(onEdit = onEdit, onRedo = onRedo, onDelete = onDelete)
+        }
     }
 }
 

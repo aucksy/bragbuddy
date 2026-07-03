@@ -12,7 +12,52 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.8.0 — Phase 3 · Living document + Inbox resolve ✅ DONE (verified green · signed · first-try CI)
+## Status: v0.9.0 — Cleanup batch (5 items) ⏳ (built + adversarially reviewed; tag pending CI)
+
+Pre-Phase-4 cleanup from on-device testing (creator, 5 items; scope locked via AskUserQuestion).
+
+### v0.9.0 — what changed (`versionCode 10`)
+1. **Multi-select + bulk delete** in the **deep pillar view** and the **Inbox** (long-press → checkboxes
+   → "N selected" bar → Delete). `EntryDao.deleteByIds` / `EntryRepository.deleteMany`; both screens
+   guard against stale selection (`retainAll(presentIds)`). Resolve chips / ⋮ menus still work (child
+   taps aren't swallowed by the selection `combinedClickable`).
+2. **On-device transcription removed** (creator: "it's crap"). `SpeechToText` deleted; voice is
+   **cloud Whisper (Groq) only**. No key → a clear **"add your key / type instead"** state (never a
+   dead mic); typing always works. Settings engine toggle gone (one cloud-only note). Framework
+   refine-by-voice and the role field also drop on-device (role field is now **type-only**).
+3. **Sub-folders under ANY framework category** (creator: flexible folders whose names feed the AI).
+   `ProjectEntity.goalArea` now means *category (any pillar)*, not just goal areas. The **Framework
+   editor** manages each category's sub-folders (add/rename/delete chips); **Home ⇄ Framework stay in
+   sync** (one `projects` table). Renaming a category **cascades** to its folders
+   (`renameCategory`); deleting a category deletes its folders (`deleteByCategory`). **Room v2→v3**:
+   `projects` unique index is now composite **`(name, goalArea)`** so the same folder name can live
+   under different categories (`MIGRATION_2_3` drops `index_projects_name`, creates
+   `index_projects_name_goalArea`).
+4. **Home ⇄ Framework project sync** — automatic (both read `ProjectDao`): a folder added on Home
+   under a goal area shows in the Framework editor and vice-versa.
+   **AI context:** the categorizer's framework block is enriched with **every category's sub-folder
+   names** (`EntryProcessor.frameworkBlockWithFolders`); the `{{PROJECTS}}` *placement* list stays
+   goal-area folders only (behaviour/growth folders are context, not a new placement slot).
+5. **Number nudge rebuilt at the transcript** (the old post-save nudge silently skipped when a spoken
+   number-word made `hasMeasurable` true). Now, on the **review screen**, an always-available
+   **"Add a number?"** → **record a short second clip** (Groq) *or* type → appended to the
+   transcript → **Add** files the combined text so the AI cleans it into one bullet. Never blocks;
+   Add is disabled only while a number clip is recording/transcribing; a typed-but-uncommitted number
+   is folded in on Add. Typed capture keeps its post-save nudge.
+
+### Adversarial review before tagging (compile + logic; fixed pre-tag)
+Compile: **clean**. Logic: 1 MED + 2 LOW, all fixed:
+- **[MED]** a duplicate sub-folder name silently no-op'd (global-unique index) → fixed by the composite
+  `(name, goalArea)` unique index + migration (same name allowed across categories).
+- **[LOW]** pillar multi-select lacked the Inbox's stale-selection guard → added `retainAll`.
+- **[LOW]** tapping Add with a typed-but-uncommitted number dropped it → `confirmAdd` now folds it in.
+- Verified fine: no-key voice path (no crash/loop), recorder reuse + temp-file cleanup across
+  main/number takes, refine-replace folder-orphaning is cosmetic (entries survive via the
+  Uncategorized catch-all), `combinedClickable` doesn't swallow child taps.
+
+---
+
+## v0.8.0 — Phase 3 · Living document + Inbox resolve ✅ DONE (verified green · signed · first-try CI)
 
 **APK:** `github.com/aucksy/bragbuddy/releases/download/v0.8.0/BragBuddy-v0.8.0.apk` (signed; `.aab`
 alongside). Built green in CI first try (run `28660160397`) — unit tests incl. the new `HomeDocTest`,

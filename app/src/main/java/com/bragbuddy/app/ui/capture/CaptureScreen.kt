@@ -77,6 +77,12 @@ fun CaptureScreen(
     onReviewChange: (String) -> Unit,
     onConfirmAdd: () -> Unit,
     onReRecord: () -> Unit,
+    onStartVoiceNumber: () -> Unit,
+    onStopVoiceNumber: () -> Unit,
+    onStartTypeNumber: () -> Unit,
+    onNumberDraftChange: (String) -> Unit,
+    onConfirmTypeNumber: () -> Unit,
+    onCancelNumber: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val palette = BragBuddyTheme.palette
@@ -142,6 +148,12 @@ fun CaptureScreen(
                     onReviewChange = onReviewChange,
                     onConfirmAdd = onConfirmAdd,
                     onReRecord = onReRecord,
+                    onStartVoiceNumber = onStartVoiceNumber,
+                    onStopVoiceNumber = onStopVoiceNumber,
+                    onStartTypeNumber = onStartTypeNumber,
+                    onNumberDraftChange = onNumberDraftChange,
+                    onConfirmTypeNumber = onConfirmTypeNumber,
+                    onCancelNumber = onCancelNumber,
                     onCancel = onDismiss,
                 )
                 CaptureMode.TYPE -> TypeContent(state, onTypedChange, onSubmitTyped)
@@ -256,12 +268,22 @@ private fun VoiceContent(
     onReviewChange: (String) -> Unit,
     onConfirmAdd: () -> Unit,
     onReRecord: () -> Unit,
+    onStartVoiceNumber: () -> Unit,
+    onStopVoiceNumber: () -> Unit,
+    onStartTypeNumber: () -> Unit,
+    onNumberDraftChange: (String) -> Unit,
+    onConfirmTypeNumber: () -> Unit,
+    onCancelNumber: () -> Unit,
     onCancel: () -> Unit,
 ) {
     val palette = BragBuddyTheme.palette
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         if (state.phase == VoicePhase.REVIEW) {
-            ReviewContent(state, onReviewChange, onConfirmAdd, onReRecord, onCancel)
+            ReviewContent(
+                state, onReviewChange, onConfirmAdd, onReRecord, onCancel,
+                onStartVoiceNumber, onStopVoiceNumber, onStartTypeNumber,
+                onNumberDraftChange, onConfirmTypeNumber, onCancelNumber,
+            )
             return
         }
 
@@ -273,6 +295,20 @@ private fun VoiceContent(
                 color = palette.text1,
                 textAlign = TextAlign.Center,
             )
+            if (state.needsKey) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Add your free Groq key in Settings → Voice transcription. Or type it below.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.text3,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                Spacer(Modifier.height(14.dp))
+                PillButton("Type instead", primary = true, onClick = onSwitchToType)
+                Spacer(Modifier.height(8.dp))
+                return
+            }
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 PillButton("Try again", primary = true, onClick = onRetry)
@@ -326,16 +362,6 @@ private fun VoiceContent(
             style = MaterialTheme.typography.bodySmall,
             color = palette.text3,
         )
-        if (state.partial.isNotBlank()) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                state.partial,
-                style = MaterialTheme.typography.bodyMedium,
-                color = palette.text2,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 8.dp),
-            )
-        }
     }
 }
 
@@ -346,6 +372,12 @@ private fun ReviewContent(
     onConfirmAdd: () -> Unit,
     onReRecord: () -> Unit,
     onCancel: () -> Unit,
+    onStartVoiceNumber: () -> Unit,
+    onStopVoiceNumber: () -> Unit,
+    onStartTypeNumber: () -> Unit,
+    onNumberDraftChange: (String) -> Unit,
+    onConfirmTypeNumber: () -> Unit,
+    onCancelNumber: () -> Unit,
 ) {
     val palette = BragBuddyTheme.palette
     Column(Modifier.fillMaxWidth()) {
@@ -374,9 +406,22 @@ private fun ReviewContent(
                 cursorBrush = SolidColor(palette.primary),
             )
         }
+
+        Spacer(Modifier.height(Spacing.s3))
+        NumberNudge(
+            state = state,
+            onStartVoiceNumber = onStartVoiceNumber,
+            onStopVoiceNumber = onStopVoiceNumber,
+            onStartTypeNumber = onStartTypeNumber,
+            onNumberDraftChange = onNumberDraftChange,
+            onConfirmTypeNumber = onConfirmTypeNumber,
+            onCancelNumber = onCancelNumber,
+        )
+
         Spacer(Modifier.height(Spacing.s4))
-        // Add (primary, full-width)
-        val canAdd = state.reviewText.isNotBlank()
+        // Add (primary, full-width). Disabled while a number take is mid-flight.
+        val busy = state.numberStage == NumberStage.RECORDING || state.numberStage == NumberStage.TRANSCRIBING
+        val canAdd = state.reviewText.isNotBlank() && !busy
         Box(
             Modifier
                 .fillMaxWidth()
@@ -395,6 +440,114 @@ private fun ReviewContent(
             TextAction("Cancel", onCancel)
         }
     }
+}
+
+/**
+ * The optional "add a number" affordance on the review screen — record a short clip just for the
+ * metric, or type it. Either way it's appended to the transcript above, then Add files the combined
+ * text. Always available; never gated by a guess about whether a number is already present.
+ */
+@Composable
+private fun NumberNudge(
+    state: CaptureUiState,
+    onStartVoiceNumber: () -> Unit,
+    onStopVoiceNumber: () -> Unit,
+    onStartTypeNumber: () -> Unit,
+    onNumberDraftChange: (String) -> Unit,
+    onConfirmTypeNumber: () -> Unit,
+    onCancelNumber: () -> Unit,
+) {
+    val palette = BragBuddyTheme.palette
+    when (state.numberStage) {
+        NumberStage.NONE -> {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radii.md))
+                    .background(palette.surface2)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Add a number?  (optional)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.text3,
+                    modifier = Modifier.weight(1f),
+                )
+                MiniIconButton(Icons.Outlined.Mic, "Say a number", onStartVoiceNumber)
+                Spacer(Modifier.width(8.dp))
+                MiniIconButton(Icons.Outlined.Keyboard, "Type a number", onStartTypeNumber)
+            }
+        }
+        NumberStage.TYPING -> {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .clip(RoundedCornerShape(Radii.md))
+                    .border(1.5.dp, palette.primary.copy(alpha = 0.45f), RoundedCornerShape(Radii.md))
+                    .background(palette.surface)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (state.numberDraft.isEmpty()) {
+                    Text("e.g. cut time ~30%, saved 2 hours", style = MaterialTheme.typography.bodyMedium, color = palette.text3)
+                }
+                BasicTextField(
+                    value = state.numberDraft,
+                    onValueChange = onNumberDraftChange,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = LocalTextStyle.current.merge(TextStyle(color = palette.text1, fontSize = 14.sp)),
+                    cursorBrush = SolidColor(palette.primary),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onConfirmTypeNumber() }),
+                )
+            }
+            Spacer(Modifier.height(Spacing.s2))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                TextAction("Add to note", onConfirmTypeNumber)
+                Spacer(Modifier.width(24.dp))
+                TextAction("Cancel", onCancelNumber)
+            }
+        }
+        NumberStage.RECORDING -> {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radii.md))
+                    .background(palette.primarySoft)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Recording the number… ${formatElapsed(state.elapsedSec)}", style = MaterialTheme.typography.bodySmall, color = palette.primary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Box(
+                    Modifier.size(38.dp).clip(RoundedCornerShape(999.dp)).background(palette.primary).clickable(onClick = onStopVoiceNumber),
+                    contentAlignment = Alignment.Center,
+                ) { Box(Modifier.size(14.dp).clip(RoundedCornerShape(4.dp)).background(Color.White)) }
+            }
+        }
+        NumberStage.TRANSCRIBING -> {
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(color = palette.primary, strokeWidth = 2.5.dp, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Adding the number…", style = MaterialTheme.typography.bodySmall, color = palette.text3)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, onClick: () -> Unit) {
+    val palette = BragBuddyTheme.palette
+    Box(
+        Modifier.size(34.dp).clip(RoundedCornerShape(999.dp)).background(palette.surface).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, desc, tint = palette.primary, modifier = Modifier.size(17.dp)) }
 }
 
 @Composable

@@ -80,6 +80,12 @@ class EntryRepository @Inject constructor(
         appScope.launch { entryDao.deleteById(id) }
     }
 
+    /** Delete several entries at once (multi-select bulk delete). No-op on an empty selection. */
+    fun deleteMany(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        appScope.launch { entryDao.deleteByIds(ids) }
+    }
+
     /**
      * Replace an entry's text and re-file it from scratch (Home → Edit, or Redo's re-record). The
      * reset + re-categorize runs inside [EntryProcessor] under its lock, so it can't be clobbered by
