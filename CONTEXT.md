@@ -122,6 +122,16 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     enriched with every category's **sub-folder names as AI context** (placement stays goal-area only).
     **Number nudge rebuilt at the transcript** — record a 2nd clip (or type) → appended → AI cleans the
     combined text (replaced the post-save nudge that silently skipped on spoken number-words).
+  - `v0.10.0` — **UX batch (6).** **Collapsible sections** (default collapsed) on Home / pillar
+    deep-view / Framework (selection mode force-expands the pillar view). **Framework editor rebuilt**:
+    "Refine by voice" removed; compact collapsible category rows → **Edit opens a full sheet** with a
+    **category summary** (voice or text) and **projects each with their own summary** (voice/text,
+    "Add your performance metrics…"); pills moved inside; project summaries → `ProjectEntity.description`
+    (+ AI context). Per-field cloud dictation (`fieldVoice`/`fieldTranscript`); type-only without a key.
+    **"Extra" → "★ Standout"** (tap = explanation). **Impact nudge** always-on + **pulses**/stronger when
+    no number + richer copy + inline **"See an example"** (weak→strong). Unique category/project names
+    validated in the editor (Save gated) + DAO `IGNORE`/`runCatching` backstop against unique-index
+    crashes. **Room stays v3**; no schema change.
 - **Next: Phase 4 — Edit, reassign, copy-out.** Tap an entry → raw + cleaned; edit/move/toggle
   Extra/pin/delete; **copy a section or the whole doc as clean text** for Word/Docs. Per-entry
   edit/redo/delete + Inbox resolve already exist; `isPinned`/`isExtra` fields exist (no toggle UI
