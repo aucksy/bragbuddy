@@ -12,9 +12,11 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.9.0 — Cleanup batch (5 items) ⏳ (built + adversarially reviewed; tag pending CI)
+## Status: v0.9.0 — Cleanup batch (5 items) ✅ DONE (verified green · signed · first-try CI)
 
-Pre-Phase-4 cleanup from on-device testing (creator, 5 items; scope locked via AskUserQuestion).
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.9.0/BragBuddy-v0.9.0.apk` (signed; `.aab`
+alongside). Built green in CI first try (run `28665167434`). Pre-Phase-4 cleanup from on-device
+testing (creator, 5 items; scope locked via AskUserQuestion).
 
 ### v0.9.0 — what changed (`versionCode 10`)
 1. **Multi-select + bulk delete** in the **deep pillar view** and the **Inbox** (long-press → checkboxes

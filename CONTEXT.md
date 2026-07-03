@@ -113,6 +113,15 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     folder / Outside project → PROCESSED. A **catch-all "Uncategorized"** section guarantees a
     renamed/refined framework can never hide filed entries (invariant). v0.6.0 horizontal folder row
     removed (projects live in the doc). **Room stays v2**; no schema change.
+  - `v0.9.0` — **Cleanup batch (5 items).** **Multi-select + bulk delete** in the deep pillar view +
+    Inbox (`deleteByIds`/`deleteMany`). **On-device transcription removed** (voice = Groq cloud only;
+    no key → "add key / type instead"; role field now type-only; `SpeechToText` deleted). **Sub-folders
+    under ANY framework category** (`ProjectEntity.goalArea` = category name) — managed in the Framework
+    editor + Home, **kept in sync** (one `projects` table); category rename/delete cascades; **Room
+    v2→v3** composite unique index `(name, goalArea)` (`MIGRATION_2_3`). Categorizer framework block
+    enriched with every category's **sub-folder names as AI context** (placement stays goal-area only).
+    **Number nudge rebuilt at the transcript** — record a 2nd clip (or type) → appended → AI cleans the
+    combined text (replaced the post-save nudge that silently skipped on spoken number-words).
 - **Next: Phase 4 — Edit, reassign, copy-out.** Tap an entry → raw + cleaned; edit/move/toggle
   Extra/pin/delete; **copy a section or the whole doc as clean text** for Word/Docs. Per-entry
   edit/redo/delete + Inbox resolve already exist; `isPinned`/`isExtra` fields exist (no toggle UI
