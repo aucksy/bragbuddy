@@ -104,11 +104,19 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     **in-sheet** "Add a measurable result?" nudge (`SavedNudgeSheet`; entry saved first, never blocks;
     Add number = typed-only, appends + re-files via the existing categorizer). Has-a-number captures
     dismiss instantly. Free/offline for all tiers; no LLM call added.
-- **Next: Phase 3 — Living document + Inbox.** Home becomes the **structured category document**
-  (goal areas → projects → bullets; behaviours gather evidence; Inbox last); **Inbox tap-to-resolve**
-  with `suggestedProjects` quick-confirm. Per-entry fields + DAO + Framework editor + **project folders
-  (v0.6.0)** now exist, so projects are real — this is mostly rendering/data-shaping + the resolve UX
-  deferred from Phase 2.
+  - `v0.8.0` — **Phase 3 · Living document + Inbox resolve.** Home is now the **structured document**
+    (`ui/home/HomeDoc.kt` pure builder → goal/growth pillars with **project cards**, behaviour pillars
+    gathering **evidence**, RAW "Filing…" strip, Inbox peek). **Deep pillar view** one tap in
+    (`ui/pillar/`, nav `pillar/{pillarId}`): blurb → projects → dated bullets ("also evidences" +
+    Extra) + add-entry(anchored)/add-project/add-detail + per-entry **edit/redo/delete** (moved off
+    Home). **Inbox tap-to-resolve** (`EntryProcessor.resolve`, no AI re-call): suggested chip / any
+    folder / Outside project → PROCESSED. A **catch-all "Uncategorized"** section guarantees a
+    renamed/refined framework can never hide filed entries (invariant). v0.6.0 horizontal folder row
+    removed (projects live in the doc). **Room stays v2**; no schema change.
+- **Next: Phase 4 — Edit, reassign, copy-out.** Tap an entry → raw + cleaned; edit/move/toggle
+  Extra/pin/delete; **copy a section or the whole doc as clean text** for Word/Docs. Per-entry
+  edit/redo/delete + Inbox resolve already exist; `isPinned`/`isExtra` fields exist (no toggle UI
+  yet); `buildHomeDoc`'s goal-area shaping makes a copy-out serializer straightforward.
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
   round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
   errors). Fix from the CI log via the **public** GitHub API (unauthenticated is enough for run status

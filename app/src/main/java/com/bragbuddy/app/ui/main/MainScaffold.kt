@@ -64,6 +64,7 @@ private enum class HomeTab(val label: String) { HOME("Home"), SUMMARY("Summary")
 @Composable
 fun MainScaffold(
     onOpenSettings: () -> Unit,
+    onOpenPillar: (String) -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val palette = BragBuddyTheme.palette
@@ -75,7 +76,12 @@ fun MainScaffold(
 
     Box(Modifier.fillMaxSize().background(palette.bg)) {
         when (tab) {
-            HomeTab.HOME -> HomeScreen(onOpenSettings = onOpenSettings, contentBottomPadding = contentBottom)
+            HomeTab.HOME -> HomeScreen(
+                onOpenSettings = onOpenSettings,
+                onOpenPillar = onOpenPillar,
+                onReviewInbox = { tab = HomeTab.INBOX },
+                contentBottomPadding = contentBottom,
+            )
             HomeTab.SUMMARY -> PlaceholderTab("Summary", "Your review-ready write-up lands here.", Icons.Outlined.Description, contentBottom)
             HomeTab.FRAMEWORK -> FrameworkScreen(contentBottomPadding = contentBottom)
             HomeTab.INBOX -> InboxScreen(contentBottomPadding = contentBottom)

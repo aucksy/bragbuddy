@@ -70,6 +70,11 @@ class EntryRepository @Inject constructor(
         appScope.launch { processor.process(id) }
     }
 
+    /** Resolve an Inbox entry to a project in one tap (Inbox quick-confirm). No AI re-call. */
+    fun resolve(id: Long, project: String, goalArea: String) {
+        appScope.launch { processor.resolve(id, project, goalArea) }
+    }
+
     /** Delete an entry outright (Home → Delete). Siblings of a split transcript are independent. */
     fun delete(id: Long) {
         appScope.launch { entryDao.deleteById(id) }

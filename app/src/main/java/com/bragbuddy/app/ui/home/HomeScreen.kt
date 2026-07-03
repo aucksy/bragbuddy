@@ -1,14 +1,13 @@
 package com.bragbuddy.app.ui.home
 
-import android.content.Intent
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,27 +16,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material.icons.outlined.Keyboard
-import androidx.compose.material.icons.outlined.Mic
-import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -53,7 +43,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -62,43 +51,37 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.R
 import com.bragbuddy.app.data.local.EntryEntity
-import com.bragbuddy.app.data.local.EntrySource
-import com.bragbuddy.app.data.local.EntryStatus
-import com.bragbuddy.app.data.local.ProjectEntity
-import com.bragbuddy.app.ui.capture.CaptureActivity
 import com.bragbuddy.app.ui.role.RoleInput
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
 import com.bragbuddy.app.ui.theme.Radii
 import com.bragbuddy.app.ui.theme.Spacing
+import com.bragbuddy.app.ui.theme.pillarColor
 
 /**
- * Home (Design System §1). Phase 2 shows the **categorized** result — cleaned bullet + placement
- * chip, or a processing/Inbox state. Adds project **folders** (tap → capture into that project) and,
- * on first run, a gentle "what's your role?" prompt. Flat entry list; the structured document is
- * Phase 3.
+ * Home (Design System §1 · "Home — your living document"). Phase 3 turns the flat list into the
+ * structured document: goal/growth **pillars** hold **project cards** (name · N entries · updated);
+ * behaviour pillars gather the entries that **evidence** them; the **Inbox** peek waits at the end.
+ * Tapping any section opens the deep pillar view ([onOpenPillar]) where the dated bullets live and
+ * entries are added/edited — Home stays an overview, the depth is one tap in.
+ *
+ * (The header's "Summarise" action from the design is a Phase 5 feature; the Settings gear stays
+ * here until the summary surface lands — a documented, pre-existing deviation.)
  */
 @Composable
 fun HomeScreen(
     onOpenSettings: () -> Unit,
+    onOpenPillar: (String) -> Unit,
+    onReviewInbox: () -> Unit,
     contentBottomPadding: androidx.compose.ui.unit.Dp,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val palette = BragBuddyTheme.palette
-    val context = LocalContext.current
-    val entries by viewModel.entries.collectAsStateWithLifecycle()
-    val folders by viewModel.folders.collectAsStateWithLifecycle()
+    val doc by viewModel.doc.collectAsStateWithLifecycle()
     val showRolePrompt by viewModel.showRolePrompt.collectAsStateWithLifecycle()
 
-    var editTarget by remember { mutableStateOf<EntryEntity?>(null) }
-    var deleteTarget by remember { mutableStateOf<EntryEntity?>(null) }
-    var showCreateFolder by remember { mutableStateOf(false) }
-
-    fun captureInto(project: String?) {
-        val intent = Intent(context, CaptureActivity::class.java)
-        if (project != null) intent.putExtra(CaptureActivity.EXTRA_PROJECT, project)
-        context.startActivity(intent)
-    }
+    // When set, the folder-create dialog is open for this goal area (null area = first goal area).
+    var createFolderFor by remember { mutableStateOf<CreateFolderTarget?>(null) }
 
     Column(
         modifier = Modifier
@@ -127,6 +110,7 @@ fun HomeScreen(
         }
         Spacer(Modifier.height(Spacing.s3))
 
+        // First-run role prompt sits above the document so a brand-new user (empty Home) still sees it.
         if (showRolePrompt) {
             RolePromptCard(
                 palette = palette,
@@ -136,174 +120,288 @@ fun HomeScreen(
             Spacer(Modifier.height(Spacing.s3))
         }
 
-        FoldersRow(
-            folders = folders,
-            palette = palette,
-            onOpen = { captureInto(it.name) },
-            onCreate = { showCreateFolder = true },
-        )
-        Spacer(Modifier.height(Spacing.s3))
+        if (doc.isEmpty) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyState(onNewProject = { createFolderFor = CreateFolderTarget(null) })
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(Spacing.s4),
+                contentPadding = PaddingValues(top = Spacing.s1, bottom = contentBottomPadding + Spacing.s4),
+            ) {
+                if (doc.processing.isNotEmpty()) {
+                    item(key = "processing") { ProcessingCard(doc.processing, palette) }
+                }
 
-        Box(Modifier.weight(1f)) {
-            if (entries.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyState() }
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(Spacing.s3),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = contentBottomPadding + Spacing.s4),
-                ) {
-                    items(entries, key = { it.id }) { entry ->
-                        EntryCard(
-                            entry = entry,
-                            onEdit = { editTarget = entry },
-                            onRedo = {
-                                context.startActivity(
-                                    Intent(context, CaptureActivity::class.java)
-                                        .putExtra(CaptureActivity.EXTRA_REPLACE_ID, entry.id),
-                                )
-                            },
-                            onDelete = { deleteTarget = entry },
-                        )
-                    }
+                items(doc.goals, key = { "goal-" + it.pillar.id }) { section ->
+                    GoalSectionView(
+                        section = section,
+                        palette = palette,
+                        onOpen = { onOpenPillar(section.pillar.id) },
+                        onAddProject = { createFolderFor = CreateFolderTarget(section.pillar.name) },
+                    )
+                }
+
+                items(doc.behaviours, key = { "beh-" + it.pillar.id }) { section ->
+                    BehaviourSectionView(section = section, palette = palette, onOpen = { onOpenPillar(section.pillar.id) })
+                }
+
+                doc.inbox?.let { peek ->
+                    item(key = "inbox-peek") { InboxPeekCard(peek, palette, onReview = onReviewInbox) }
                 }
             }
         }
     }
 
-    editTarget?.let { target ->
-        EditEntryDialog(
-            // Show the cleaned bullet for a filed entry (editing it re-files just this one entry);
-            // fall back to the raw transcript for a still-processing / Inbox / failed row.
-            initial = target.bullet?.takeIf { it.isNotBlank() } ?: target.rawTranscript,
-            palette = palette,
-            onSave = { viewModel.editText(target.id, it); editTarget = null },
-            onDismiss = { editTarget = null },
-        )
-    }
-
-    deleteTarget?.let { target ->
-        AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            confirmButton = {
-                TextButton(onClick = { viewModel.delete(target.id); deleteTarget = null }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
-            title = { Text("Delete this entry?", color = palette.text1) },
-            text = { Text("This removes it for good. The record can't get it back.", color = palette.text3) },
-            containerColor = palette.surface,
-        )
-    }
-
-    if (showCreateFolder) {
+    createFolderFor?.let { target ->
         CreateFolderDialog(
             palette = palette,
-            onConfirm = { viewModel.createFolder(it); showCreateFolder = false },
-            onDismiss = { showCreateFolder = false },
+            onConfirm = { viewModel.createFolder(it, target.goalArea); createFolderFor = null },
+            onDismiss = { createFolderFor = null },
         )
     }
 }
 
-// ---------------- Project folders ----------------
+private data class CreateFolderTarget(val goalArea: String?)
+
+// ---------------- Goal / growth pillar section ----------------
 
 @Composable
-private fun FoldersRow(
-    folders: List<ProjectEntity>,
+private fun GoalSectionView(
+    section: GoalSection,
     palette: BragPalette,
-    onOpen: (ProjectEntity) -> Unit,
-    onCreate: () -> Unit,
+    onOpen: () -> Unit,
+    onAddProject: () -> Unit,
 ) {
-    Column {
-        Text(
-            "PROJECTS",
-            style = MaterialTheme.typography.labelSmall,
-            color = palette.text3,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 2.dp, bottom = Spacing.s2),
+    val hue = pillarColor(section.colorIndex)
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        SectionHeader(
+            dot = hue.solid,
+            name = section.pillar.name,
+            trailing = if (section.namedProjectCount > 0) {
+                "${section.namedProjectCount} ${plural(section.namedProjectCount, "project")}"
+            } else {
+                "${section.entryCount} ${plural(section.entryCount, "entry", "entries")}"
+            },
+            palette = palette,
+            onClick = onOpen,
         )
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            folders.forEach { FolderCard(it.name, palette) { onOpen(it) } }
-            NewFolderCard(hasFolders = folders.isNotEmpty(), palette = palette, onClick = onCreate)
+        section.projects.forEach { project ->
+            ProjectCard(project = project, palette = palette, onClick = onOpen)
+        }
+        AddRow(text = "Add project", palette = palette, onClick = onAddProject)
+    }
+}
+
+@Composable
+private fun ProjectCard(project: ProjectBullets, palette: BragPalette, onClick: () -> Unit) {
+    val subtitle = when {
+        project.entryCount == 0 -> "No entries yet"
+        else -> {
+            val rel = DateUtils.getRelativeTimeSpanString(
+                project.lastUpdated, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
+            ).toString()
+            "${project.entryCount} ${plural(project.entryCount, "entry", "entries")} · updated $rel"
         }
     }
-}
-
-@Composable
-private fun FolderCard(name: String, palette: BragPalette, onClick: () -> Unit) {
     Row(
         Modifier
-            .widthIn(max = 200.dp)
+            .fillMaxWidth()
             .clip(RoundedCornerShape(Radii.lg))
             .background(palette.surface)
             .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.s3, vertical = 10.dp),
+            .padding(horizontal = Spacing.card, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).background(palette.primarySoft),
+            Modifier.size(30.dp).clip(RoundedCornerShape(9.dp))
+                .background(if (project.isOutside) palette.surface2 else palette.primarySoft),
             contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Outlined.Folder, null, tint = palette.primary, modifier = Modifier.size(15.dp)) }
-        Spacer(Modifier.size(Spacing.s2))
-        Text(
-            name,
-            style = MaterialTheme.typography.titleSmall,
-            color = palette.text1,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
+        ) {
+            Icon(
+                Icons.Outlined.Folder,
+                null,
+                tint = if (project.isOutside) palette.text3 else palette.primary,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+        Spacer(Modifier.size(Spacing.s3))
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (project.isOutside) OUTSIDE_PROJECT_LABEL else project.name,
+                style = MaterialTheme.typography.titleSmall,
+                color = palette.text1,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = palette.text3, maxLines = 1)
+        }
+        Icon(Icons.Outlined.ChevronRight, null, tint = palette.text3, modifier = Modifier.size(20.dp))
+    }
+}
+
+// ---------------- Behaviour pillar section ----------------
+
+@Composable
+private fun BehaviourSectionView(section: BehaviourSection, palette: BragPalette, onOpen: () -> Unit) {
+    val hue = pillarColor(section.colorIndex)
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        SectionHeader(
+            dot = hue.solid,
+            name = section.pillar.name,
+            trailing = "${section.evidenceCount} ${plural(section.evidenceCount, "entry", "entries")}",
+            palette = palette,
+            onClick = onOpen,
         )
+        section.sample?.let { sample ->
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radii.lg))
+                    .background(palette.surface)
+                    .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+                    .clickable(onClick = onOpen)
+                    .padding(Spacing.card),
+            ) {
+                Text(
+                    sample.headline(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.text1,
+                )
+                val from = sample.project?.takeIf { it.isNotBlank() && !it.equals("Outside-project", true) && !it.equals("Inbox", true) }
+                if (from != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Text("from $from", style = MaterialTheme.typography.bodySmall, color = palette.text3)
+                }
+                if (section.moreCount > 0) {
+                    Spacer(Modifier.height(Spacing.s2))
+                    Text(
+                        "+${section.moreCount} more evidence this",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = hue.solid,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ---------------- Inbox peek ----------------
+
+@Composable
+private fun InboxPeekCard(peek: InboxPeek, palette: BragPalette, onReview: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(palette.inboxSoft)
+            .clickable(onClick = onReview)
+            .padding(Spacing.card),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(9.dp).clip(RoundedCornerShape(3.dp)).background(palette.inbox))
+            Spacer(Modifier.size(Spacing.s2))
+            Text("Inbox", style = MaterialTheme.typography.titleSmall, color = palette.inboxInk, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${peek.count} ${plural(peek.count, "needs", "need")} a project",
+                style = MaterialTheme.typography.labelMedium,
+                color = palette.inboxInk,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        peek.first?.let {
+            Spacer(Modifier.height(Spacing.s2))
+            Text(it.headline(), style = MaterialTheme.typography.bodyMedium, color = palette.text1, maxLines = 2)
+        }
+        Spacer(Modifier.height(Spacing.s2))
+        Text("Review →", style = MaterialTheme.typography.labelLarge, color = palette.inbox, fontWeight = FontWeight.Bold)
+    }
+}
+
+// ---------------- Processing (just-captured) ----------------
+
+@Composable
+private fun ProcessingCard(processing: List<EntryEntity>, palette: BragPalette) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+            .padding(Spacing.card),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s2),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Filing ${processing.size} new ${plural(processing.size, "entry", "entries")}…",
+                style = MaterialTheme.typography.titleSmall,
+                color = palette.text2,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.weight(1f))
+            Chip("Processing…", palette.surface2, palette.text3)
+        }
+        processing.take(3).forEach {
+            Text("• ${it.rawTranscript}", style = MaterialTheme.typography.bodySmall, color = palette.text3, maxLines = 1)
+        }
+    }
+}
+
+// ---------------- Shared bits ----------------
+
+@Composable
+private fun SectionHeader(dot: Color, name: String, trailing: String, palette: BragPalette, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.sm)).clickable(onClick = onClick).padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(11.dp).clip(RoundedCornerShape(3.dp)).background(dot))
+        Spacer(Modifier.size(Spacing.s2))
+        Text(name, style = MaterialTheme.typography.titleMedium, color = palette.text1, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.weight(1f))
+        Text(trailing, style = MaterialTheme.typography.bodySmall, color = palette.text3)
     }
 }
 
 @Composable
-private fun NewFolderCard(hasFolders: Boolean, palette: BragPalette, onClick: () -> Unit) {
+private fun AddRow(text: String, palette: BragPalette, onClick: () -> Unit) {
     Row(
         Modifier
+            .fillMaxWidth()
             .clip(RoundedCornerShape(Radii.lg))
-            .border(1.5.dp, palette.primary.copy(alpha = 0.4f), RoundedCornerShape(Radii.lg))
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.s3, vertical = 10.dp),
+            .padding(horizontal = Spacing.card, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Outlined.Add, null, tint = palette.primary, modifier = Modifier.size(16.dp))
         Spacer(Modifier.size(6.dp))
-        Text(
-            if (hasFolders) "New" else "New project",
-            style = MaterialTheme.typography.titleSmall,
-            color = palette.primary,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-        )
+        Text(text, style = MaterialTheme.typography.labelLarge, color = palette.primary, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
-private fun CreateFolderDialog(palette: BragPalette, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) { Text("Create") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("New project folder", color = palette.text1) },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                singleLine = true,
-                placeholder = { Text("e.g. Raven Migration", color = palette.text3) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        },
-        containerColor = palette.surface,
+private fun Chip(text: String, fill: Color, ink: Color) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = ink,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .wrapContentWidth()
+            .clip(RoundedCornerShape(Radii.sm))
+            .background(fill)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
     )
 }
 
-// ---------------- First-run role prompt ----------------
+private fun EntryEntity.headline(): String = bullet?.takeIf { it.isNotBlank() } ?: rawTranscript
+
+private fun plural(n: Int, one: String, many: String = one + "s"): String = if (n == 1) one else many
+
+// ---------------- First-run role prompt (unchanged from v0.6.0) ----------------
 
 @Composable
 private fun RolePromptCard(palette: BragPalette, onSave: (String) -> Unit, onDismiss: () -> Unit) {
@@ -357,171 +455,33 @@ private fun RolePromptCard(palette: BragPalette, onSave: (String) -> Unit, onDis
     }
 }
 
-// ---------------- Entry cards (unchanged from v0.5.0) ----------------
+// ---------------- Create-folder dialog ----------------
 
 @Composable
-private fun EntryCard(
-    entry: EntryEntity,
-    onEdit: () -> Unit,
-    onRedo: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val palette = BragBuddyTheme.palette
-    val relTime = DateUtils.getRelativeTimeSpanString(
-        entry.createdAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
-    ).toString()
-    val sourceLabel = if (entry.source == EntrySource.VOICE) "Voice" else "Typed"
-
-    val headline = entry.bullet?.takeIf { it.isNotBlank() } ?: entry.rawTranscript
-    val dotColor = when (entry.status) {
-        EntryStatus.PROCESSED -> palette.primary
-        EntryStatus.INBOX, EntryStatus.FAILED -> palette.inbox
-        EntryStatus.RAW -> palette.text3
-    }
-
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.lg))
-            .background(palette.surface)
-            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
-            .padding(start = Spacing.card, top = Spacing.card, bottom = Spacing.card, end = 4.dp),
-    ) {
-        Box(
-            Modifier
-                .padding(top = 6.dp)
-                .size(7.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(dotColor),
-        )
-        Spacer(Modifier.size(Spacing.s3))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = headline,
-                style = MaterialTheme.typography.bodyMedium,
-                color = palette.text1,
-            )
-
-            val chips = statusChips(entry, palette)
-            if (chips.isNotEmpty()) {
-                Spacer(Modifier.height(Spacing.s2))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    chips.forEach { Chip(it.text, it.fill, it.ink) }
-                }
-            }
-
-            Spacer(Modifier.height(Spacing.s2))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = if (entry.source == EntrySource.VOICE) Icons.Outlined.Mic else Icons.Outlined.Keyboard,
-                    contentDescription = null,
-                    tint = palette.text3,
-                    modifier = Modifier.size(13.dp),
-                )
-                Spacer(Modifier.size(5.dp))
-                Text(
-                    text = "$relTime · $sourceLabel",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = palette.text3,
-                )
-            }
-        }
-        EntryMenu(onEdit = onEdit, onRedo = onRedo, onDelete = onDelete)
-    }
-}
-
-@Composable
-private fun EntryMenu(onEdit: () -> Unit, onRedo: () -> Unit, onDelete: () -> Unit) {
-    val palette = BragBuddyTheme.palette
-    var open by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Outlined.MoreVert, "More", tint = palette.text3, modifier = Modifier.size(19.dp))
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(
-                text = { Text("Edit text") },
-                onClick = { open = false; onEdit() },
-                leadingIcon = { Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp)) },
-            )
-            DropdownMenuItem(
-                text = { Text("Redo (re-record)") },
-                onClick = { open = false; onRedo() },
-                leadingIcon = { Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(18.dp)) },
-            )
-            DropdownMenuItem(
-                text = { Text("Delete") },
-                onClick = { open = false; onDelete() },
-                leadingIcon = { Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(18.dp)) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun EditEntryDialog(
-    initial: String,
-    palette: BragPalette,
-    onSave: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var text by remember { mutableStateOf(initial) }
+private fun CreateFolderDialog(palette: BragPalette, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = { onSave(text) }, enabled = text.isNotBlank()) { Text("Save & re-file") }
-        },
+        confirmButton = { TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) { Text("Create") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Edit entry", color = palette.text1) },
+        title = { Text("New project folder", color = palette.text1) },
         text = {
             OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                placeholder = { Text("e.g. Raven Migration", color = palette.text3) },
                 modifier = Modifier.fillMaxWidth(),
-                minLines = 3,
             )
         },
         containerColor = palette.surface,
     )
 }
 
-private data class ChipSpec(val text: String, val fill: Color, val ink: Color)
-
-private fun statusChips(entry: EntryEntity, palette: BragPalette): List<ChipSpec> {
-    val chips = mutableListOf<ChipSpec>()
-    when (entry.status) {
-        EntryStatus.RAW -> chips += ChipSpec("Processing…", palette.surface2, palette.text3)
-        EntryStatus.FAILED -> chips += ChipSpec("Waiting for AI", palette.inboxSoft, palette.inboxInk)
-        EntryStatus.INBOX -> chips += ChipSpec("Inbox", palette.inboxSoft, palette.inboxInk)
-        EntryStatus.PROCESSED -> {
-            entry.goalCategory?.takeIf { it.isNotBlank() && !it.equals("Inbox", true) }
-                ?.let { chips += ChipSpec(it, palette.primarySoft, palette.primary) }
-            entry.project
-                ?.takeIf { it.isNotBlank() && !it.equals("Inbox", true) && !it.equals("Outside-project", true) }
-                ?.let { chips += ChipSpec(it, palette.surface2, palette.text2) }
-        }
-    }
-    if (entry.isExtra) chips += ChipSpec("Extra", palette.extraSoft, palette.extraInk)
-    return chips
-}
+// ---------------- Empty state ----------------
 
 @Composable
-private fun Chip(text: String, fill: Color, ink: Color) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        color = ink,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-            .wrapContentWidth()
-            .clip(RoundedCornerShape(Radii.sm))
-            .background(fill)
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-    )
-}
-
-@Composable
-private fun EmptyState() {
+private fun EmptyState(onNewProject: () -> Unit) {
     val palette = BragBuddyTheme.palette
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -546,5 +506,7 @@ private fun EmptyState() {
             color = palette.text3,
             textAlign = TextAlign.Center,
         )
+        Spacer(Modifier.height(Spacing.s1))
+        AddRow(text = "New project", palette = palette, onClick = onNewProject)
     }
 }

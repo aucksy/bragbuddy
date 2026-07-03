@@ -7,6 +7,7 @@ import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.local.EntryDao
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
+import com.bragbuddy.app.data.local.OUTSIDE_PROJECT
 import com.bragbuddy.app.data.local.ProjectDao
 import com.bragbuddy.app.data.prefs.SettingsStore
 import kotlinx.coroutines.flow.first
@@ -91,6 +92,38 @@ class EntryProcessor @Inject constructor(
             entryDao.update(reset)
             runCatching { refileSingle(reset) }
                 .onFailure { runCatching { entryDao.update(reset.copy(status = EntryStatus.FAILED)) } }
+        }
+    }
+
+    /**
+     * Resolve an Inbox entry in one tap (Inbox → quick-confirm). Assigns the [project] the user
+     * picked and files it — no AI re-call: the cleaned bullet, behaviours and impact the model
+     * already produced are kept; only the placement (project + goal area) is set and the row goes
+     * PROCESSED. Runs under the lock and only touches an unresolved row (INBOX / FAILED), so it can't
+     * race an in-flight categorization. Assigning a real project also records it as the [anchorProject]
+     * so a later edit re-files back into the same folder.
+     *
+     * [project] blank or [OUTSIDE_PROJECT] means "no named project" (kept under [goalArea] only).
+     */
+    suspend fun resolve(id: Long, project: String, goalArea: String) {
+        mutex.withLock {
+            val e = entryDao.getById(id) ?: return@withLock
+            if (e.status != EntryStatus.INBOX && e.status != EntryStatus.FAILED) return@withLock
+            val clean = project.trim()
+            val isOutside = clean.isBlank() || clean.equals(OUTSIDE_PROJECT, ignoreCase = true)
+            val area = goalArea.trim().ifBlank { e.goalCategory?.takeIf { it.isNotBlank() } ?: INBOX_LABEL }
+            entryDao.update(
+                e.copy(
+                    status = EntryStatus.PROCESSED,
+                    project = if (isOutside) OUTSIDE_PROJECT else clean,
+                    goalCategory = area,
+                    // A named project becomes the deterministic anchor (edit re-files here); Outside
+                    // keeps whatever anchor it had (usually none).
+                    anchorProject = if (isOutside) e.anchorProject else clean,
+                    confidence = 1.0,
+                    suggestedProjects = emptyList(),
+                ),
+            )
         }
     }
 

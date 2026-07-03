@@ -12,7 +12,59 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.7.0 — Static impact coaching (no AI) ✅ DONE (verified green · signed · first-try CI)
+## Status: v0.8.0 — Phase 3 · Living document + Inbox resolve ⏳ (built + adversarially reviewed; tag pending CI)
+
+**Home is now the structured document** (Design System §1 · "Home — your living document"): goal /
+growth **pillars** hold **project cards** (name · N entries · updated); behaviour pillars gather the
+entries that **evidence** them; the **Inbox** peek waits at the end. Tapping any pillar/project opens
+the **deep pillar view** (blurb → projects → dated bullets with "also evidences" cross-links + Extra
+chips; add-entry-to-project = anchored capture; per-entry edit/redo/delete live here now). The
+**Inbox resolves in a tap** — a suggested project, any folder, or "Outside project" — no AI re-call.
+
+### v0.8.0 — what was built (`versionCode 9`)
+Creator answers via AskUserQuestion: Home depth = **full deep pillar screen**; Inbox resolve targets =
+**suggested + folders + Outside project**.
+- **`ui/home/HomeDoc.kt`** — pure, unit-tested shaping (`buildHomeDoc` + `goalProjectGroups` /
+  `behaviourEvidence` / `uncategorizedEntries`). Groups PROCESSED entries under goal pillars by
+  project (folder names canonicalised; blank/`Outside-project`/`Inbox`/unknown → one **Outside
+  project** bucket; empty folders still shown). Behaviour pillars gather entries via `demonstrates`.
+  RAW → a **"Filing…" processing** strip; INBOX+FAILED → the **Inbox peek**. **One entry, two places**
+  is a computed view, never a duplicated row. Pillar dot colours = `pillarColor(indexInFramework)`.
+- **`HomeScreen` rewritten** to the overview (sections → cards; role prompt hoisted above so a new
+  user still sees it; empty-state gains a "New project"). The v0.6.0 horizontal folder row is **gone**
+  — projects now live in the document; anchored capture moved to the deep view's "Add entry to
+  <project>" (mechanism unchanged: `EXTRA_PROJECT`). **Flag:** one-tap folder capture is now two taps
+  (open pillar → Add entry); say the word to add a shortcut back.
+- **`ui/pillar/PillarDetailScreen` + `PillarDetailViewModel`** (NEW, nav route `pillar/{pillarId}`,
+  `SavedStateHandle`) — the depth "one tap in": About-this-pillar blurb, projects with dated bullets
+  (or behaviour evidence), add-entry (anchored) / add-project / add-detail, and **edit / redo /
+  delete per entry** (reuses `EntryRepository.replaceText` → single-row re-file; the v0.6.0 split-
+  sibling data-loss trap is **not** reintroduced).
+- **Inbox tap-to-resolve** (`InboxScreen` + `InboxViewModel`): suggested-project chips + an "Other
+  folder ▾" picker + "Outside project", each files in one tap via **`EntryProcessor.resolve` /
+  `EntryRepository.resolve`** — sets project + goal area, keeps the model's bullet/behaviours, marks
+  PROCESSED, **no AI re-call**, under the same processing `Mutex` (INBOX/FAILED-only guard, can't race
+  `process()`). A suggestion that isn't a folder yet is **created** so the entry lands where tapped.
+  FAILED entries keep **Try again**. **No Room schema change** — DB stays v2.
+- **Nav:** `Routes.pillar()` + a pillar `composable` in `BragNavHost`; `MainScaffold` threads
+  `onOpenPillar` and wires Home's "Review →" to switch to the Inbox tab. Summary tab still a Phase-5
+  placeholder; the design's header "Summarise" button stays deferred (Settings gear remains).
+
+### Adversarial review before tagging (compile + logic; fixed pre-tag)
+Ran both passes per the protocol. Compile: **1** breaker (missing `lazy.items` import in
+`PillarDetailScreen`) → fixed. Logic:
+- **[HIGH · invariant]** a PROCESSED entry whose `goalCategory` matched no pillar and evidenced no
+  behaviour (framework renamed/refined after filing, or model drift) vanished from every Home
+  surface. **Fix:** `uncategorizedEntries` catch-all → a synthetic, navigable **"Uncategorized"**
+  section (triage-only deep view: re-home via edit/redo). Nothing filed can disappear. Unit-tested.
+- **[MED]** resolving via a suggested chip that wasn't an existing folder collapsed the entry into
+  "Outside project" (contradicting the tap) → now creates the folder first (idempotent).
+- **[LOW]** Home's `stateIn` initial no longer asserts `isEmpty=true` (was flashing the empty CTA on
+  cold start). Two Outside-bucket edge collisions noted as acceptable/cosmetic.
+
+---
+
+## v0.7.0 — Static impact coaching (no AI) ✅ DONE (verified green · signed · first-try CI)
 
 **APK:** `github.com/aucksy/bragbuddy/releases/download/v0.7.0/BragBuddy-v0.7.0.apk` (signed;
 `.aab` alongside). New: a **free, local** nudge to add numbers to entries — a persistent capture hint
@@ -370,13 +422,17 @@ The full PRD and a revised brief landed after the initial scaffold. Reviewed aga
 
 ---
 
-## Next — Phase 3: Living document + Inbox (Build Brief phase list)
-Turn **Home into the structured pillar document** (goal areas → projects → bullets; behaviour
-pillars gather evidence; Inbox sits last) — the AI-derived fields are already stored per entry, so
-this is a rendering/data-shaping phase over the flat list Phase 2 ships. Add the **Inbox
-tap-to-resolve**: `suggestedProjects` quick-confirm buttons (assign a project/goal in one tap → set
-status PROCESSED). This is the resolve UX deliberately deferred from Phase 2. *Testable: entries
-appear in the structured doc; unclear ones resolve from the Inbox in a tap.*
+## Next — Phase 4: Edit, reassign, copy-out (Build Brief phase list)
+Phase 3 landed the living document + Inbox resolve. Phase 4 = **make it a usable v1 before the
+summary**: tap an entry to see raw transcript + cleaned bullet; **edit / move (reassign project or
+goal) / toggle Extra / pin / delete**; and **copy-out** — a section or the whole document as clean
+text for Word / Google Docs. Groundwork already here: per-entry edit/redo/delete + Inbox resolve (a
+form of "move") exist; `isPinned` and `isExtra` fields exist (no pin/Extra-toggle UI yet); the
+document is already shaped by goal area (`buildHomeDoc`) so a "copy section / copy all" serializer is
+straightforward. *Testable: you can correct/move anything and paste a clean document elsewhere.*
+
+**Note for Phase 4:** a **move/reassign** action on a filed entry (not just Inbox) would let the user
+fix a mis-placed bullet without re-recording — worth adding alongside copy-out.
 
 **Groundwork already in place for Phase 3:** `EntryEntity` carries every field (bullet, project,
 goalCategory, demonstrates, isExtra, impact, routine/routineType, metric, confidence,
