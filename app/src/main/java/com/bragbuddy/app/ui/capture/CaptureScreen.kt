@@ -1,6 +1,12 @@
 package com.bragbuddy.app.ui.capture
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -53,6 +60,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import com.bragbuddy.app.data.impact.ImpactCheck
 import com.bragbuddy.app.data.prefs.CaptureMode
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BricolageGrotesque
@@ -460,23 +468,67 @@ private fun NumberNudge(
     val palette = BragBuddyTheme.palette
     when (state.numberStage) {
         NumberStage.NONE -> {
-            Row(
+            // Always shown. When the note has no measurable value yet, it pulses and styles stronger
+            // to coach the user; once a number is present it stays available but calms down.
+            val hasNumber = ImpactCheck.hasMeasurable(state.reviewText)
+            var showExample by remember { mutableStateOf(false) }
+            val pulse = if (!hasNumber) {
+                val t = rememberInfiniteTransition(label = "nudge")
+                t.animateFloat(
+                    initialValue = 1f, targetValue = 1.025f,
+                    animationSpec = infiniteRepeatable(tween(680), RepeatMode.Reverse),
+                    label = "nudgeScale",
+                ).value
+            } else 1f
+
+            Column(
                 Modifier
                     .fillMaxWidth()
+                    .scale(pulse)
                     .clip(RoundedCornerShape(Radii.md))
-                    .background(palette.surface2)
+                    .background(if (!hasNumber) palette.primarySoft else palette.surface2)
+                    .then(
+                        if (!hasNumber) Modifier.border(1.5.dp, palette.primary.copy(alpha = 0.55f), RoundedCornerShape(Radii.md))
+                        else Modifier,
+                    )
                     .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (!hasNumber) "Add numbers & impact" else "Add more impact?",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (!hasNumber) palette.primary else palette.text2,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            "%, time saved, ₹, people, before → after",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.text3,
+                        )
+                    }
+                    MiniIconButton(Icons.Outlined.Mic, "Say the numbers", onStartVoiceNumber)
+                    Spacer(Modifier.width(8.dp))
+                    MiniIconButton(Icons.Outlined.Keyboard, "Type the numbers", onStartTypeNumber)
+                }
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    "Add a number?  (optional)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = palette.text3,
-                    modifier = Modifier.weight(1f),
+                    if (showExample) "Hide example" else "See an example",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = palette.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { showExample = !showExample }
+                        .padding(vertical = 3.dp, horizontal = 2.dp),
                 )
-                MiniIconButton(Icons.Outlined.Mic, "Say a number", onStartVoiceNumber)
-                Spacer(Modifier.width(8.dp))
-                MiniIconButton(Icons.Outlined.Keyboard, "Type a number", onStartTypeNumber)
+                AnimatedVisibility(visible = showExample) {
+                    Column(Modifier.padding(top = 6.dp)) {
+                        ExampleLine("Vague", "“Improved the onboarding flow.”", palette, strong = false)
+                        Spacer(Modifier.height(6.dp))
+                        ExampleLine("Strong", "“Cut onboarding drop-off 18% — across 2,000+ users, in 6 weeks.”", palette, strong = true)
+                    }
+                }
             }
         }
         NumberStage.TYPING -> {
@@ -548,6 +600,26 @@ private fun MiniIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector
         Modifier.size(34.dp).clip(RoundedCornerShape(999.dp)).background(palette.surface).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, desc, tint = palette.primary, modifier = Modifier.size(17.dp)) }
+}
+
+/** One weak→strong coaching example row inside the impact nudge. */
+@Composable
+private fun ExampleLine(label: String, text: String, palette: com.bragbuddy.app.ui.theme.BragPalette, strong: Boolean) {
+    Row(verticalAlignment = Alignment.Top) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (strong) palette.positive else palette.text3,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.width(46.dp),
+        )
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (strong) palette.text1 else palette.text3,
+            modifier = Modifier.weight(1f),
+        )
+    }
 }
 
 @Composable

@@ -27,6 +27,8 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Refresh
@@ -86,6 +88,12 @@ fun PillarDetailScreen(
     var editTarget by remember { mutableStateOf<EntryEntity?>(null) }
     var deleteTarget by remember { mutableStateOf<EntryEntity?>(null) }
     var showAddProject by remember { mutableStateOf(false) }
+
+    // Collapsible groups (default collapsed). Selection mode forces everything open so bullets are
+    // reachable to select.
+    val expandedProjects = remember { mutableStateListOf<String>() }
+    var evidenceExpanded by remember { mutableStateOf(false) }
+    fun toggleProject(name: String) { if (expandedProjects.contains(name)) expandedProjects.remove(name) else expandedProjects.add(name) }
 
     // Multi-select bulk delete.
     val selected = remember { mutableStateListOf<Long>() }
@@ -191,21 +199,26 @@ fun PillarDetailScreen(
                 if (detail.evidence.isEmpty()) {
                     item(key = "beh-empty") { PillarEmpty("No evidence yet. Log work that shows this and it lands here.", palette) }
                 } else {
-                    item(key = "evidence-label") { GroupLabel("EVIDENCE", palette) }
-                    items(detail.evidence, key = { "e-" + it.id }) { entry ->
-                        BulletRow(
-                            entry = entry,
-                            hue = hue.solid,
-                            palette = palette,
-                            showFromProject = true,
-                            selectionMode = selectionMode,
-                            isSelected = selected.contains(entry.id),
-                            onToggleSelect = { toggle(entry.id) },
-                            onLongPress = { enterSelection(entry.id) },
-                            onEdit = { editTarget = entry },
-                            onRedo = { redo(entry) },
-                            onDelete = { deleteTarget = entry },
-                        )
+                    val show = selectionMode || evidenceExpanded
+                    item(key = "evidence-label") {
+                        GroupHeader("Evidence", detail.evidence.size, show, palette) { evidenceExpanded = !evidenceExpanded }
+                    }
+                    if (show) {
+                        items(detail.evidence, key = { "e-" + it.id }) { entry ->
+                            BulletRow(
+                                entry = entry,
+                                hue = hue.solid,
+                                palette = palette,
+                                showFromProject = true,
+                                selectionMode = selectionMode,
+                                isSelected = selected.contains(entry.id),
+                                onToggleSelect = { toggle(entry.id) },
+                                onLongPress = { enterSelection(entry.id) },
+                                onEdit = { editTarget = entry },
+                                onRedo = { redo(entry) },
+                                onDelete = { deleteTarget = entry },
+                            )
+                        }
                     }
                 }
                 item(key = "add-note") {
@@ -213,25 +226,30 @@ fun PillarDetailScreen(
                 }
             } else {
                 detail.projects.forEach { project ->
-                    item(key = "proj-" + project.name) { ProjectHeader(project, palette) }
-                    items(project.entries, key = { "e-" + it.id }) { entry ->
-                        BulletRow(
-                            entry = entry,
-                            hue = hue.solid,
-                            palette = palette,
-                            showFromProject = false,
-                            selectionMode = selectionMode,
-                            isSelected = selected.contains(entry.id),
-                            onToggleSelect = { toggle(entry.id) },
-                            onLongPress = { enterSelection(entry.id) },
-                            onEdit = { editTarget = entry },
-                            onRedo = { redo(entry) },
-                            onDelete = { deleteTarget = entry },
-                        )
+                    val show = selectionMode || expandedProjects.contains(project.name)
+                    item(key = "proj-" + project.name) {
+                        ProjectHeader(project, show, palette) { toggleProject(project.name) }
                     }
-                    if (!project.isOutside) {
-                        item(key = "add-" + project.name) {
-                            AddRow("Add entry to ${project.name}", palette) { capture(project.name) }
+                    if (show) {
+                        items(project.entries, key = { "e-" + it.id }) { entry ->
+                            BulletRow(
+                                entry = entry,
+                                hue = hue.solid,
+                                palette = palette,
+                                showFromProject = false,
+                                selectionMode = selectionMode,
+                                isSelected = selected.contains(entry.id),
+                                onToggleSelect = { toggle(entry.id) },
+                                onLongPress = { enterSelection(entry.id) },
+                                onEdit = { editTarget = entry },
+                                onRedo = { redo(entry) },
+                                onDelete = { deleteTarget = entry },
+                            )
+                        }
+                        if (!project.isOutside) {
+                            item(key = "add-" + project.name) {
+                                AddRow("Add entry to ${project.name}", palette) { capture(project.name) }
+                            }
                         }
                     }
                 }
@@ -292,8 +310,11 @@ fun PillarDetailScreen(
 }
 
 @Composable
-private fun ProjectHeader(project: ProjectBullets, palette: BragPalette) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Spacing.s2)) {
+private fun ProjectHeader(project: ProjectBullets, expanded: Boolean, palette: BragPalette, onToggle: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.sm)).clickable(onClick = onToggle).padding(top = Spacing.s2, bottom = 2.dp),
+    ) {
         Box(
             Modifier.size(26.dp).clip(RoundedCornerShape(8.dp))
                 .background(if (project.isOutside) palette.surface2 else palette.primarySoft),
@@ -312,12 +333,38 @@ private fun ProjectHeader(project: ProjectBullets, palette: BragPalette) {
             style = MaterialTheme.typography.titleSmall,
             color = palette.text1,
             fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f),
         )
-        Spacer(Modifier.weight(1f))
         Text(
             "${project.entryCount}",
             style = MaterialTheme.typography.bodySmall,
             color = palette.text3,
+        )
+        Spacer(Modifier.size(Spacing.s2))
+        Icon(
+            if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+            if (expanded) "Collapse" else "Expand",
+            tint = palette.text3,
+            modifier = Modifier.size(19.dp),
+        )
+    }
+}
+
+@Composable
+private fun GroupHeader(text: String, count: Int, expanded: Boolean, palette: BragPalette, onToggle: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.sm)).clickable(onClick = onToggle).padding(top = Spacing.s1, bottom = 2.dp),
+    ) {
+        Text(text.uppercase(), style = MaterialTheme.typography.labelSmall, color = palette.text3, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.size(Spacing.s2))
+        Text("· $count", style = MaterialTheme.typography.labelSmall, color = palette.text3)
+        Spacer(Modifier.weight(1f))
+        Icon(
+            if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+            if (expanded) "Collapse" else "Expand",
+            tint = palette.text3,
+            modifier = Modifier.size(19.dp),
         )
     }
 }
@@ -379,13 +426,32 @@ private fun BulletRow(
             Spacer(Modifier.height(Spacing.s2))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (entry.isExtra) {
+                    var showStandout by remember { mutableStateOf(false) }
                     Text(
-                        "Extra",
+                        "★ Standout",
                         style = MaterialTheme.typography.labelSmall,
                         color = palette.extraInk,
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clip(RoundedCornerShape(Radii.sm)).background(palette.extraSoft).padding(horizontal = 8.dp, vertical = 3.dp),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(Radii.sm))
+                            .background(palette.extraSoft)
+                            .clickable { showStandout = true }
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
                     )
+                    if (showStandout) {
+                        AlertDialog(
+                            onDismissRequest = { showStandout = false },
+                            confirmButton = { TextButton(onClick = { showStandout = false }) { Text("Got it") } },
+                            title = { Text("Standout", color = palette.text1) },
+                            text = {
+                                Text(
+                                    "Work beyond your normal role — mentoring, unblocking another team, an initiative you started. BragBuddy flags these so your leadership and standout wins are easy to spot at review time.",
+                                    color = palette.text3,
+                                )
+                            },
+                            containerColor = palette.surface,
+                        )
+                    }
                 }
                 entry.metric?.takeIf { it.isNotBlank() }?.let {
                     Text(
@@ -436,17 +502,6 @@ private fun BulletMenu(onEdit: () -> Unit, onRedo: () -> Unit, onDelete: () -> U
             )
         }
     }
-}
-
-@Composable
-private fun GroupLabel(text: String, palette: BragPalette) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelSmall,
-        color = palette.text3,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(top = Spacing.s1),
-    )
 }
 
 @Composable

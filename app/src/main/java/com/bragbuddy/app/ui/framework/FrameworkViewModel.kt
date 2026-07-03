@@ -3,13 +3,10 @@ package com.bragbuddy.app.ui.framework
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bragbuddy.app.data.ai.AiProvider
-import com.bragbuddy.app.data.ai.FrameworkRefineRequest
 import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
-import com.bragbuddy.app.data.framework.slug
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.project.ProjectRepository
@@ -18,100 +15,57 @@ import com.bragbuddy.app.data.speech.GroqTranscriber
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
 
-/** How the refine sheet takes the user's description of how they're reviewed. */
-enum class RefineMode { SPEAK, TYPE }
+/** A project row being edited in the category sheet ([id] null = a new, unsaved project). */
+data class ProjectDraft(val id: Long?, val name: String, val summary: String)
 
-/** The refine-by-voice flow (a modal over the editor). */
-sealed interface RefineState {
-    data object Hidden : RefineState
-    /** Collecting the spoken/typed instruction. */
-    data class Input(
-        val mode: RefineMode = RefineMode.SPEAK,
-        val listening: Boolean = false,
-        val transcribing: Boolean = false,
-        val text: String = "",
-        val error: String? = null,
-    ) : RefineState
-    /** Calling the model. */
-    data object Thinking : RefineState
-    /** The AI's proposed categories, editable before a one-tap confirm. */
-    data class Review(val pillars: List<Pillar>) : RefineState
-    data class Error(val message: String) : RefineState
-}
+/** State of the per-field voice dictation used inside the category edit sheet. */
+enum class FieldVoice { IDLE, RECORDING, TRANSCRIBING }
 
 /**
- * Drives the **Framework editor** (Design System §3) and its **refine-by-voice** flow (PART C). The
- * user's categories are the framework; they can be added, renamed, re-described, removed, or
- * reshaped by voice. Voice uses the SAME transcription path as capture — cloud Whisper (Groq) when a
- * key is set, on-device STT otherwise — so a working Groq key makes refine reliable. The AI is fed
- * the CURRENT framework + the instruction and returns the updated set (add / edit / remove), shown
- * as editable cards for a one-tap confirm. The company name is never asked.
+ * Drives the **Framework editor** (Design System §3). Categories are the framework; each category can
+ * be renamed, re-described, removed, and given **projects that each carry their own summary**. Editing
+ * happens in a dedicated sheet where every summary field takes **voice or text** (voice = cloud
+ * Whisper via the Groq key). The old "refine the whole framework by voice" flow was removed — editing
+ * is now direct and per-field. The company name is never asked.
  */
 @HiltViewModel
 class FrameworkViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val frameworkStore: FrameworkStore,
-    private val aiProvider: AiProvider,
     private val settings: SettingsStore,
     private val groqTranscriber: GroqTranscriber,
     private val projects: ProjectRepository,
 ) : ViewModel() {
 
     private val recorder by lazy { AudioRecorder(appContext) }
-    private var refineAudio: File? = null
-    // The in-flight transcription / AI coroutine — cancelled on dismiss/reopen so a late callback
-    // can't write into a sheet the user already closed or restarted.
-    private var refineJob: Job? = null
 
     val framework: StateFlow<Framework> = frameworkStore.framework
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Framework.DEFAULT)
 
-    /** All sub-folders (across every category) — filtered per-category in the UI. Shared with Home:
-     *  both read the one projects table, so adding/removing a folder in either place is in sync. */
+    /** All folders (projects) across every category; the UI filters per category. Shared with Home —
+     *  both read the one projects table, so edits stay in sync. */
     val folders: StateFlow<List<ProjectEntity>> = projects.observeActive()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val _refine = MutableStateFlow<RefineState>(RefineState.Hidden)
-    val refine: StateFlow<RefineState> = _refine.asStateFlow()
+    /** Whether voice dictation is available (a Groq key is set). Without it, the sheet is type-only. */
+    val voiceEnabled: StateFlow<Boolean> = settings.settings
+        .map { it.groqApiKey.isNotBlank() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    // ---------------- Direct editor (on the saved framework) ----------------
-
-    fun editCategory(id: String, name: String, description: String) {
-        val n = name.trim().ifBlank { return }
-        val old = framework.value.pillars.firstOrNull { it.id == id } ?: return
-        persist(framework.value.pillars.map { if (it.id == id) it.copy(name = n, blurb = description.trim()) else it })
-        // A renamed category must carry its sub-folders with it (their goalArea = the category name).
-        if (old.name != n) viewModelScope.launch { projects.renameCategory(old.name, n) }
-    }
-
-    fun remove(id: String) {
-        val p = framework.value.pillars.firstOrNull { it.id == id }
-        persist(framework.value.pillars.filterNot { it.id == id })
-        // Removing a category also removes its sub-folders (entries already filed stay in the record).
-        if (p != null) viewModelScope.launch { projects.deleteByCategory(p.name) }
-    }
-
-    // ---------------- Sub-folders under a category ----------------
-
-    fun addSubFolder(category: String, name: String) = viewModelScope.launch {
-        projects.create(name, category)
-    }
-
-    fun renameSubFolder(project: ProjectEntity, name: String) = viewModelScope.launch {
-        projects.update(project.id, name, project.goalArea, project.description)
-    }
-
-    fun deleteSubFolder(id: Long) = viewModelScope.launch { projects.delete(id) }
+    // ---------------- Category CRUD ----------------
 
     fun addCategory(name: String, description: String, kind: PillarKind) {
         val clean = name.trim().ifBlank { return }
@@ -124,150 +78,101 @@ class FrameworkViewModel @Inject constructor(
         persist(framework.value.pillars + pillar)
     }
 
+    fun remove(id: String) {
+        val p = framework.value.pillars.firstOrNull { it.id == id }
+        persist(framework.value.pillars.filterNot { it.id == id })
+        // Removing a category also removes its folders (entries already filed stay in the record).
+        if (p != null) viewModelScope.launch { projects.deleteByCategory(p.name) }
+    }
+
+    /**
+     * Save everything edited in the category sheet: the category's name/summary/kind, plus its
+     * projects (create new, update existing, delete removed). A rename carries the folders with it.
+     */
+    fun saveCategory(id: String, name: String, summary: String, kind: PillarKind, rows: List<ProjectDraft>) {
+        val n = name.trim().ifBlank { return }
+        val old = framework.value.pillars.firstOrNull { it.id == id } ?: return
+        // Don't let a duplicate category name through (the sheet also blocks it): keep the old name so
+        // renameCategory can't merge two categories' folder namespaces. Uniqueness is by pillar id +
+        // name; a collision here means the UI guard was bypassed — fail safe to the current name.
+        val finalName = if (framework.value.pillars.any { it.id != id && it.name.equals(n, ignoreCase = true) }) old.name else n
+        persist(framework.value.pillars.map { if (it.id == id) it.copy(name = finalName, blurb = summary.trim(), kind = kind) else it })
+        viewModelScope.launch {
+            // The whole project diff is best-effort and must never crash the app (unique-index
+            // violations are IGNOREd at the DAO; this catch is the final backstop).
+            runCatching {
+                if (old.name != finalName) projects.renameCategory(old.name, finalName)
+                val originalIds = folders.value
+                    .filter { it.goalArea.equals(old.name, ignoreCase = true) || it.goalArea.equals(finalName, ignoreCase = true) }
+                    .map { it.id }
+                val keptIds = rows.mapNotNull { it.id }.toSet()
+                // Delete removed rows first (so a re-added same name doesn't collide with a leftover).
+                originalIds.filterNot { it in keptIds }.forEach { projects.delete(it) }
+                rows.forEach { r ->
+                    val rn = r.name.trim()
+                    if (r.id == null) {
+                        if (rn.isNotBlank()) projects.create(rn, finalName, r.summary.trim().ifBlank { null })
+                    } else if (rn.isNotBlank()) {
+                        projects.update(r.id, rn, finalName, r.summary.trim().takeIf { it.isNotBlank() })
+                    }
+                }
+            }
+        }
+    }
+
     private fun persist(pillars: List<Pillar>) = viewModelScope.launch { frameworkStore.save(pillars) }
 
-    // ---------------- Refine-by-voice flow ----------------
+    // ---------------- Per-field voice dictation (category sheet) ----------------
 
-    fun openRefine() {
-        refineJob?.cancel(); refineJob = null
-        _refine.value = RefineState.Input()
-    }
+    private val _fieldVoice = MutableStateFlow(FieldVoice.IDLE)
+    val fieldVoice: StateFlow<FieldVoice> = _fieldVoice.asStateFlow()
 
-    fun cancelRefine() {
-        refineJob?.cancel(); refineJob = null
-        runCatching { recorder.cancel() }
-        refineAudio?.delete(); refineAudio = null
-        _refine.value = RefineState.Hidden
-    }
+    /** Emits the transcript of a completed dictation; the sheet appends it to the active field. */
+    private val _fieldTranscript = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val fieldTranscript: SharedFlow<String> = _fieldTranscript
 
-    fun setRefineMode(mode: RefineMode) {
-        val s = _refine.value as? RefineState.Input ?: return
-        if (mode == RefineMode.TYPE) runCatching { recorder.cancel() }
-        _refine.value = s.copy(mode = mode, listening = false, transcribing = false, error = null)
-    }
+    private var fieldAudio: File? = null
+    private var fieldJob: Job? = null
 
-    fun onDescriptionChange(text: String) {
-        val s = _refine.value as? RefineState.Input ?: return
-        _refine.value = s.copy(text = text)
-    }
-
-    /** Called once mic permission is granted. Refine-by-voice is cloud-only (Groq); without a key it
-     *  points the user to Settings and typing stays available. */
-    fun startVoice() {
-        val s = _refine.value as? RefineState.Input ?: return
+    fun startFieldVoice() {
+        if (_fieldVoice.value != FieldVoice.IDLE) return
+        // Flip to RECORDING synchronously so a fast second tap (on another field) is rejected before
+        // the async recorder start; revert if there's no key or the recorder won't start.
+        _fieldVoice.value = FieldVoice.RECORDING
         viewModelScope.launch {
-            if (settings.settings.first().groqApiKey.isBlank()) {
-                _refine.value = s.copy(
-                    mode = RefineMode.SPEAK, listening = false, transcribing = false,
-                    error = "Add your Groq key in Settings to refine by voice — or type it instead.",
-                )
-                return@launch
-            }
-            _refine.value = s.copy(mode = RefineMode.SPEAK, listening = true, transcribing = false, error = null)
-            startRecording()
+            if (settings.settings.first().groqApiKey.isBlank()) { _fieldVoice.value = FieldVoice.IDLE; return@launch }
+            runCatching { fieldAudio = recorder.start() }.onFailure { _fieldVoice.value = FieldVoice.IDLE }
         }
     }
 
-    private fun startRecording() {
-        runCatching { refineAudio = recorder.start() }.onFailure {
-            (_refine.value as? RefineState.Input)?.let {
-                _refine.value = it.copy(listening = false, error = "Couldn't start recording")
-            }
-        }
-    }
-
-    fun stopVoice() {
+    fun stopFieldVoice() {
+        if (_fieldVoice.value != FieldVoice.RECORDING) return
         val file = runCatching { recorder.stop() }.getOrNull()
-        refineAudio = file
-        val s = _refine.value as? RefineState.Input ?: return
-        if (file == null) {
-            _refine.value = s.copy(listening = false, error = "Didn't catch that — try again or type it")
-            return
-        }
-        _refine.value = s.copy(listening = false, transcribing = true, error = null)
-        refineJob = viewModelScope.launch {
+        fieldAudio = file
+        if (file == null) { _fieldVoice.value = FieldVoice.IDLE; return }
+        _fieldVoice.value = FieldVoice.TRANSCRIBING
+        fieldJob = viewModelScope.launch {
             groqTranscriber.transcribe(file).fold(
                 onSuccess = { text ->
-                    file.delete(); refineAudio = null
-                    val cur = _refine.value as? RefineState.Input ?: return@fold
-                    _refine.value = if (text.isBlank()) {
-                        cur.copy(transcribing = false, error = "Didn't catch that — try again or type it")
-                    } else {
-                        cur.copy(text = text, transcribing = false)
-                    }
+                    file.delete(); fieldAudio = null
+                    if (text.isNotBlank()) _fieldTranscript.tryEmit(text.trim())
+                    _fieldVoice.value = FieldVoice.IDLE
                 },
-                onFailure = {
-                    val cur = _refine.value as? RefineState.Input ?: return@fold
-                    _refine.value = cur.copy(transcribing = false, error = it.message ?: "Couldn't transcribe — try again or type it")
-                },
+                onFailure = { file.delete(); fieldAudio = null; _fieldVoice.value = FieldVoice.IDLE },
             )
         }
     }
 
-    /** Send the current framework + the instruction to the AI and move to Review. */
-    fun buildFromDescription() {
-        val text = (_refine.value as? RefineState.Input)?.text?.trim().orEmpty()
-        if (text.isBlank()) return
-        _refine.value = RefineState.Thinking
-        refineJob = viewModelScope.launch {
-            val current = frameworkStore.framework.first().toPromptBlock()
-            aiProvider.refineFramework(FrameworkRefineRequest(text, current)).fold(
-                onSuccess = { result ->
-                    // Ignore a late result if the user has since dismissed/restarted the sheet.
-                    if (_refine.value !is RefineState.Thinking) return@fold
-                    val pillars = result.pillars
-                        .filter { it.name.isNotBlank() }
-                        .mapIndexed { i, p ->
-                            val kind = runCatching { PillarKind.valueOf(p.kind.trim().uppercase()) }
-                                .getOrDefault(PillarKind.GOAL_AREA)
-                            Pillar(
-                                id = "refine-$i-${p.name.slug()}",
-                                name = p.name.trim(),
-                                kind = kind,
-                                blurb = p.blurb.trim().ifBlank { defaultBlurb(kind) },
-                            )
-                        }
-                    _refine.value = if (pillars.isEmpty()) {
-                        RefineState.Error("I couldn't turn that into categories. Try describing what you're measured on.")
-                    } else {
-                        RefineState.Review(pillars)
-                    }
-                },
-                onFailure = {
-                    if (_refine.value !is RefineState.Thinking) return@fold
-                    _refine.value = RefineState.Error(it.message ?: "Couldn't reach the AI. Check your Groq key in Settings and try again.")
-                },
-            )
-        }
-    }
-
-    fun renameReviewPillar(index: Int, name: String) {
-        val s = _refine.value as? RefineState.Review ?: return
-        val clean = name.trim().ifBlank { return }
-        _refine.value = s.copy(pillars = s.pillars.mapIndexed { i, p -> if (i == index) p.copy(name = clean) else p })
-    }
-
-    fun removeReviewPillar(index: Int) {
-        val s = _refine.value as? RefineState.Review ?: return
-        _refine.value = s.copy(pillars = s.pillars.filterIndexed { i, _ -> i != index })
-    }
-
-    /** One-tap confirm — replace the active framework with the reviewed categories. */
-    fun confirmReview() {
-        val s = _refine.value as? RefineState.Review ?: return
-        if (s.pillars.isEmpty()) return
-        persist(s.pillars)
-        _refine.value = RefineState.Hidden
-    }
-
-    fun backToInput() {
-        refineJob?.cancel(); refineJob = null
-        _refine.value = RefineState.Input()
+    /** Cancel any in-flight dictation (sheet dismissed). */
+    fun cancelFieldVoice() {
+        fieldJob?.cancel(); fieldJob = null
+        runCatching { recorder.cancel() }
+        fieldAudio?.delete(); fieldAudio = null
+        _fieldVoice.value = FieldVoice.IDLE
     }
 
     override fun onCleared() {
-        runCatching { recorder.cancel() }
-        refineAudio?.delete()
+        cancelFieldVoice()
     }
 
     private companion object {
@@ -278,11 +183,14 @@ class FrameworkViewModel @Inject constructor(
         }
 
         fun uniqueId(name: String, existing: List<Pillar>): String {
-            val base = name.slug()
+            val base = name.slugId()
             if (existing.none { it.id == base }) return base
             var i = 2
             while (existing.any { it.id == "$base-$i" }) i++
             return "$base-$i"
         }
+
+        private fun String.slugId(): String =
+            lowercase().trim().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifBlank { "category" }
     }
 }

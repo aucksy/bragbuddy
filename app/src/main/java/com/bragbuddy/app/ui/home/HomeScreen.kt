@@ -1,6 +1,7 @@
 package com.bragbuddy.app.ui.home
 
 import android.text.format.DateUtils
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +25,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Settings
@@ -36,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -82,6 +86,9 @@ fun HomeScreen(
 
     // When set, the folder-create dialog is open for this goal area (null area = first goal area).
     var createFolderFor by remember { mutableStateOf<CreateFolderTarget?>(null) }
+    // Collapsible sections — expanded ids; default = none (everything starts collapsed).
+    val expanded = remember { mutableStateListOf<String>() }
+    fun toggle(key: String) { if (expanded.contains(key)) expanded.remove(key) else expanded.add(key) }
 
     Column(
         modifier = Modifier
@@ -137,13 +144,21 @@ fun HomeScreen(
                     GoalSectionView(
                         section = section,
                         palette = palette,
+                        expanded = expanded.contains("goal-" + section.pillar.id),
+                        onToggle = { toggle("goal-" + section.pillar.id) },
                         onOpen = { onOpenPillar(section.pillar.id) },
                         onAddProject = { createFolderFor = CreateFolderTarget(section.pillar.name) },
                     )
                 }
 
                 items(doc.behaviours, key = { "beh-" + it.pillar.id }) { section ->
-                    BehaviourSectionView(section = section, palette = palette, onOpen = { onOpenPillar(section.pillar.id) })
+                    BehaviourSectionView(
+                        section = section,
+                        palette = palette,
+                        expanded = expanded.contains("beh-" + section.pillar.id),
+                        onToggle = { toggle("beh-" + section.pillar.id) },
+                        onOpen = { onOpenPillar(section.pillar.id) },
+                    )
                 }
 
                 doc.inbox?.let { peek ->
@@ -170,6 +185,8 @@ private data class CreateFolderTarget(val goalArea: String?)
 private fun GoalSectionView(
     section: GoalSection,
     palette: BragPalette,
+    expanded: Boolean,
+    onToggle: () -> Unit,
     onOpen: () -> Unit,
     onAddProject: () -> Unit,
 ) {
@@ -183,13 +200,18 @@ private fun GoalSectionView(
             } else {
                 "${section.entryCount} ${plural(section.entryCount, "entry", "entries")}"
             },
+            expanded = expanded,
             palette = palette,
-            onClick = onOpen,
+            onClick = onToggle,
         )
-        section.projects.forEach { project ->
-            ProjectCard(project = project, palette = palette, onClick = onOpen)
+        AnimatedVisibility(visible = expanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                section.projects.forEach { project ->
+                    ProjectCard(project = project, palette = palette, onClick = onOpen)
+                }
+                AddRow(text = "Add project", palette = palette, onClick = onAddProject)
+            }
         }
-        AddRow(text = "Add project", palette = palette, onClick = onAddProject)
     }
 }
 
@@ -244,44 +266,53 @@ private fun ProjectCard(project: ProjectBullets, palette: BragPalette, onClick: 
 // ---------------- Behaviour pillar section ----------------
 
 @Composable
-private fun BehaviourSectionView(section: BehaviourSection, palette: BragPalette, onOpen: () -> Unit) {
+private fun BehaviourSectionView(
+    section: BehaviourSection,
+    palette: BragPalette,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onOpen: () -> Unit,
+) {
     val hue = pillarColor(section.colorIndex)
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
         SectionHeader(
             dot = hue.solid,
             name = section.pillar.name,
             trailing = "${section.evidenceCount} ${plural(section.evidenceCount, "entry", "entries")}",
+            expanded = expanded,
             palette = palette,
-            onClick = onOpen,
+            onClick = onToggle,
         )
-        section.sample?.let { sample ->
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(Radii.lg))
-                    .background(palette.surface)
-                    .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
-                    .clickable(onClick = onOpen)
-                    .padding(Spacing.card),
-            ) {
-                Text(
-                    sample.headline(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = palette.text1,
-                )
-                val from = sample.project?.takeIf { it.isNotBlank() && !it.equals("Outside-project", true) && !it.equals("Inbox", true) }
-                if (from != null) {
-                    Spacer(Modifier.height(2.dp))
-                    Text("from $from", style = MaterialTheme.typography.bodySmall, color = palette.text3)
-                }
-                if (section.moreCount > 0) {
-                    Spacer(Modifier.height(Spacing.s2))
+        AnimatedVisibility(visible = expanded) {
+            section.sample?.let { sample ->
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Radii.lg))
+                        .background(palette.surface)
+                        .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+                        .clickable(onClick = onOpen)
+                        .padding(Spacing.card),
+                ) {
                     Text(
-                        "+${section.moreCount} more evidence this",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = hue.solid,
-                        fontWeight = FontWeight.SemiBold,
+                        sample.headline(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = palette.text1,
                     )
+                    val from = sample.project?.takeIf { it.isNotBlank() && !it.equals("Outside-project", true) && !it.equals("Inbox", true) }
+                    if (from != null) {
+                        Spacer(Modifier.height(2.dp))
+                        Text("from $from", style = MaterialTheme.typography.bodySmall, color = palette.text3)
+                    }
+                    if (section.moreCount > 0) {
+                        Spacer(Modifier.height(Spacing.s2))
+                        Text(
+                            "+${section.moreCount} more evidence this",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = hue.solid,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
             }
         }
@@ -353,9 +384,9 @@ private fun ProcessingCard(processing: List<EntryEntity>, palette: BragPalette) 
 // ---------------- Shared bits ----------------
 
 @Composable
-private fun SectionHeader(dot: Color, name: String, trailing: String, palette: BragPalette, onClick: () -> Unit) {
+private fun SectionHeader(dot: Color, name: String, trailing: String, expanded: Boolean, palette: BragPalette, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.sm)).clickable(onClick = onClick).padding(vertical = 2.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.sm)).clickable(onClick = onClick).padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(11.dp).clip(RoundedCornerShape(3.dp)).background(dot))
@@ -363,6 +394,13 @@ private fun SectionHeader(dot: Color, name: String, trailing: String, palette: B
         Text(name, style = MaterialTheme.typography.titleMedium, color = palette.text1, fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
         Text(trailing, style = MaterialTheme.typography.bodySmall, color = palette.text3)
+        Spacer(Modifier.size(Spacing.s2))
+        Icon(
+            if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+            if (expanded) "Collapse" else "Expand",
+            tint = palette.text3,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 

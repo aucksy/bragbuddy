@@ -12,7 +12,50 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.9.0 — Cleanup batch (5 items) ✅ DONE (verified green · signed · first-try CI)
+## Status: v0.10.0 — UX batch (6 items) ⏳ (built + adversarially reviewed; tag pending CI)
+
+Second on-device-testing pass (creator, 6 items; scope locked via AskUserQuestion).
+
+### v0.10.0 — what changed (`versionCode 11`)
+1. **Collapsible sections everywhere, default collapsed** (less scrolling on long pages). Home
+   goal/behaviour sections, the pillar deep-view's projects + evidence, and Framework categories all
+   collapse/expand via a chevron; expanded ids kept in a remembered set (start empty). Selection mode
+   in the pillar view **force-expands** so bullets stay selectable; Home's "Filing…" strip + Inbox
+   peek stay outside the collapsible sections so a fresh capture is always visible.
+2. **Removed "Refine by voice"** from the Framework page. Editing is now direct + per-field (voice/text
+   given inside the edit sheet). `AiProvider.refineFramework` stays in the seam (unused).
+3. **Notification** text → "Log today's work wins now / Before you forget them."
+4. **Framework category editor rebuilt** (creator: sub-folders were wrong). Category rows are compact
+   + collapsible; **Edit opens a full sheet** with a **category summary** (voice or text) and its
+   **projects**, each with a **name + its own summary** (voice or text; greyed "Add your performance
+   metrics for this project…"). The old always-visible project pills are gone (they live inside now).
+   Project summaries persist to `ProjectEntity.description` and feed the AI (`frameworkBlockWithFolders`
+   already carries folder names; descriptions ride in `{{PROJECTS}}`). Voice = per-field cloud dictation
+   (`FrameworkViewModel.fieldVoice`/`fieldTranscript`); type-only without a Groq key.
+5. **"Extra" → "★ Standout"** (clearer), tappable to a one-line explanation ("work beyond your normal
+   role — evidences leadership"). Internal `isExtra` + colour tokens unchanged.
+6. **Impact nudge much stronger**: always shown; **pulses** (subtle scale) + primary styling when the
+   note has no measurable value yet (calms once a number is present); richer copy ("Add numbers &
+   impact — %, time saved, ₹, people, before → after"); an inline **"See an example"** expands a
+   weak→strong before/after to coach users new to self-assessment.
+
+### Adversarial review before tagging (compile + logic; fixed pre-tag)
+Compile: 1 breaker (missing `Text` import in the new `CategoryEditSheet`) → fixed. Logic found real
+crash/data-loss risks in the new editor — all fixed:
+- **[HIGH]** renaming a project onto a sibling's name, or a category onto another category's name,
+  hit the `(name, goalArea)` unique index and **crashed** an unguarded coroutine mid-save (partial
+  writes). Fixed: **unique category/project names are validated in the sheet** (Save disabled + a
+  hint), the category keeps its old name on any residual collision, `@Update`/`reassignCategory` are
+  now `IGNORE`/`OR IGNORE`, and the whole project-diff is wrapped in `runCatching`. No crash path left.
+- **[MED]** duplicate category names would merge folder namespaces (and a remove could wipe another
+  category's folders) → duplicate category names are now blocked on add + edit.
+- **[LOW]** a new project duplicating a sibling was silently dropped → now blocked with a hint;
+  fast double-tap could start two field recordings → `startFieldVoice` flips state synchronously.
+No Room schema change (only `@Update` conflict strategy) — DB stays **v3**.
+
+---
+
+## v0.9.0 — Cleanup batch (5 items) ✅ DONE (verified green · signed · first-try CI)
 
 **APK:** `github.com/aucksy/bragbuddy/releases/download/v0.9.0/BragBuddy-v0.9.0.apk` (signed; `.aab`
 alongside). Built green in CI first try (run `28665167434`). Pre-Phase-4 cleanup from on-device

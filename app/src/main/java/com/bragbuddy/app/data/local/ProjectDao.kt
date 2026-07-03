@@ -12,7 +12,9 @@ interface ProjectDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(project: ProjectEntity): Long
 
-    @Update
+    // IGNORE so a rename that would collide with a sibling (name, goalArea) is a silent no-op rather
+    // than a crash; the UI validates uniqueness up front, this is the safety net.
+    @Update(onConflict = OnConflictStrategy.IGNORE)
     suspend fun update(project: ProjectEntity)
 
     @Query("SELECT * FROM projects WHERE archived = 0 ORDER BY sortOrder, name")
@@ -30,8 +32,10 @@ interface ProjectDao {
     @Query("DELETE FROM projects WHERE id = :id")
     suspend fun deleteById(id: Long)
 
-    /** Move every sub-folder from one category (pillar) to another — used when a category is renamed. */
-    @Query("UPDATE projects SET goalArea = :newCategory WHERE goalArea = :oldCategory")
+    /** Move every sub-folder from one category (pillar) to another — used when a category is renamed.
+     *  OR IGNORE: if a folder would collide with one already under the target category, skip it rather
+     *  than crash (the UI blocks renaming onto an existing category name; this is the safety net). */
+    @Query("UPDATE OR IGNORE projects SET goalArea = :newCategory WHERE goalArea = :oldCategory")
     suspend fun reassignCategory(oldCategory: String, newCategory: String)
 
     /** Delete every sub-folder under a category — used when the category itself is removed. */
