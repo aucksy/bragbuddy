@@ -99,6 +99,11 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     Project`, honoured in `EntryProcessor` for the row + siblings). **Room DB now v2** (additive
     `ALTER TABLE entries ADD COLUMN anchorProject` migration in `BragBuddyDatabase.MIGRATION_1_2`;
     exportSchema still off). Edit/redo now re-files a SINGLE entry (no split; fixed a data-loss trap).
+  - `v0.7.0` — **Static impact coaching (NO AI)**: `data/impact/ImpactCheck.hasMeasurable()` (local
+    regex — digits / `% ₹ $ € £` / number words) gates a persistent greyed capture hint + a post-save,
+    **in-sheet** "Add a measurable result?" nudge (`SavedNudgeSheet`; entry saved first, never blocks;
+    Add number = typed-only, appends + re-files via the existing categorizer). Has-a-number captures
+    dismiss instantly. Free/offline for all tiers; no LLM call added.
 - **Next: Phase 3 — Living document + Inbox.** Home becomes the **structured category document**
   (goal areas → projects → bullets; behaviours gather evidence; Inbox last); **Inbox tap-to-resolve**
   with `suggestedProjects` quick-confirm. Per-entry fields + DAO + Framework editor + **project folders

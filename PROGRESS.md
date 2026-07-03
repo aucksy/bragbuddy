@@ -12,12 +12,39 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.6.0 — Job role + project folders/anchoring ✅ DONE (verified green · signed · first-try CI)
+## Status: v0.7.0 — Static impact coaching (no AI) ✅ DONE (verified green · signed · first-try CI)
 
-**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.6.0/BragBuddy-v0.6.0.apk` (signed;
-`.aab` alongside). Needs the **Groq key** (Settings → AI brain (Groq)). New: **Home Projects row**
-(create a folder, tap → capture into it), a first-run **"What's your role?"** prompt, and **Settings**
-gains **Your role** + **Project folders** cards.
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.7.0/BragBuddy-v0.7.0.apk` (signed;
+`.aab` alongside). New: a **free, local** nudge to add numbers to entries — a persistent capture hint
+plus, after saving an entry with no number, a **skippable "Add a measurable result?"** sheet.
+
+### v0.7.0 — impact coaching (100% local, no LLM call)
+Creator answer via AskUserQuestion: nudge appears **in the capture sheet, before dismiss**. Design
+files have no such component (flagged) — built from existing tokens (sheet, pills, greyed hints).
+- **`data/impact/ImpactCheck.hasMeasurable(text)`** — local regex only: any **digit**, currency
+  (`% ₹ $ € £`), or a spelled-out **number word** (`one`–`twelve`, `dozen`, `couple`, `hundred`…),
+  word-boundaried so "someone"/"tension" don't false-positive. No network, instant, free, all tiers.
+  Unit-tested (`ImpactCheckTest`).
+- **Persistent greyed hint** in the capture field: "Tip: add a number if you can — %, time, ₹, count,
+  people." (replaced the v0.6.0 voice project-tip to avoid two "Tip:" lines; the type placeholder
+  keeps the project example).
+- **Post-save nudge (in-sheet):** `save()` runs the local check. Has a number → dismiss **instantly**
+  (unchanged `_saved` → toast → finish). No number → the sheet shows **"Saved ✓ · Add a measurable
+  result?"** with **[Add number] [Skip]** (`CaptureUiState.savedNudge`, `SavedNudgeSheet`). The entry
+  is **already saved** before the nudge — it never blocks; **Skip / tap-outside / back → dismiss**.
+  **Add number** opens a **TYPED** field (never records), appends the metric, and re-files through the
+  **existing** categorizer (`replaceText` — the nudge itself adds no LLM call). Redo/replace supported.
+- **Skipped** the optional "nudge less often for consistent users" (would add persisted streak state).
+- Categorizer / Inbox / raw-transcript safety nets untouched. Adversarial review (compile + logic)
+  came back **clean** — 0 findings.
+
+---
+
+## v0.6.0 — Job role + project folders/anchoring ✅ DONE (verified green · signed · first-try CI)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.6.0/BragBuddy-v0.6.0.apk`. Home Projects
+row (folder → capture into it), first-run role prompt, Settings **Your role** + **Project folders**.
+Room DB → **v2** (`anchorProject` migration).
 
 ### v0.6.0 — two additive features (creator request)
 Answers via AskUserQuestion: role = **Settings + a gentle first-run prompt**; folders = **a Projects
