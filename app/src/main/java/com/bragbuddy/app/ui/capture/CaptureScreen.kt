@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,8 +59,10 @@ import com.bragbuddy.app.ui.theme.Spacing
 
 /**
  * The capture bottom sheet (Design System §4 "Capture — speak or type"): a sheet over a dimmed
- * backdrop, a Speak/Type toggle, and either the voice recorder (timer + waveform + stop) or the
- * text composer. Stateless — the [CaptureViewModel] drives it; the host Activity owns permissions.
+ * backdrop, a Speak/Type toggle, and either the voice recorder or the text composer. After a voice
+ * take it shows the transcript for **review + edit** — nothing is saved until the user taps **Add**
+ * (they can Re-record or Cancel). A close ✕ is always available to cancel. Typed capture stays
+ * instant. Stateless — the [CaptureViewModel] drives it; the host Activity owns permissions.
  */
 @Composable
 fun CaptureScreen(
@@ -69,13 +72,18 @@ fun CaptureScreen(
     onRetry: () -> Unit,
     onTypedChange: (String) -> Unit,
     onSubmitTyped: () -> Unit,
+    onReviewChange: (String) -> Unit,
+    onConfirmAdd: () -> Unit,
+    onReRecord: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val palette = BragBuddyTheme.palette
     val noRipple = remember { MutableInteractionSource() }
+    // The toggle is only relevant while choosing/recording — hide it once we're transcribing/reviewing.
+    val showToggle = state.phase != VoicePhase.REVIEW && state.phase != VoicePhase.TRANSCRIBING
 
     Box(Modifier.fillMaxSize()) {
-        // Scrim — tap outside the sheet to dismiss.
+        // Scrim — tap outside the sheet to dismiss (cancel).
         Box(
             Modifier
                 .fillMaxSize()
@@ -92,23 +100,43 @@ fun CaptureScreen(
                 // Consume taps so they don't fall through to the scrim.
                 .clickable(interactionSource = noRipple, indication = null, onClick = {})
                 .padding(horizontal = 18.dp)
-                .padding(top = 14.dp),
+                .padding(top = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // drag handle
-            Box(
-                Modifier
-                    .width(42.dp).height(5.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(palette.text3.copy(alpha = 0.35f)),
-            )
-            Spacer(Modifier.height(14.dp))
+            // Handle (centered) + a close ✕ (cancel, always available).
+            Box(Modifier.fillMaxWidth()) {
+                Box(
+                    Modifier
+                        .align(Alignment.Center)
+                        .width(42.dp).height(5.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(palette.text3.copy(alpha = 0.35f)),
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .clickable(onClick = onDismiss),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Outlined.Close, "Cancel", tint = palette.text3, modifier = Modifier.size(18.dp)) }
+            }
+            Spacer(Modifier.height(12.dp))
 
-            SpeakTypeToggle(mode = state.mode, onSetMode = onSetMode)
-            Spacer(Modifier.height(Spacing.s4))
+            if (showToggle) {
+                SpeakTypeToggle(mode = state.mode, onSetMode = onSetMode)
+                Spacer(Modifier.height(Spacing.s4))
+            }
 
             when (state.mode) {
-                CaptureMode.SPEAK -> VoiceContent(state, onStopSubmit, onRetry, onSwitchToType = { onSetMode(CaptureMode.TYPE) })
+                CaptureMode.SPEAK -> VoiceContent(
+                    state, onStopSubmit, onRetry,
+                    onSwitchToType = { onSetMode(CaptureMode.TYPE) },
+                    onReviewChange = onReviewChange,
+                    onConfirmAdd = onConfirmAdd,
+                    onReRecord = onReRecord,
+                    onCancel = onDismiss,
+                )
                 CaptureMode.TYPE -> TypeContent(state, onTypedChange, onSubmitTyped)
             }
 
@@ -182,9 +210,18 @@ private fun VoiceContent(
     onStopSubmit: () -> Unit,
     onRetry: () -> Unit,
     onSwitchToType: () -> Unit,
+    onReviewChange: (String) -> Unit,
+    onConfirmAdd: () -> Unit,
+    onReRecord: () -> Unit,
+    onCancel: () -> Unit,
 ) {
     val palette = BragBuddyTheme.palette
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        if (state.phase == VoicePhase.REVIEW) {
+            ReviewContent(state, onReviewChange, onConfirmAdd, onReRecord, onCancel)
+            return
+        }
+
         if (state.phase == VoicePhase.ERROR) {
             Spacer(Modifier.height(6.dp))
             Text(
@@ -229,7 +266,7 @@ private fun VoiceContent(
         Spacer(Modifier.height(10.dp))
         Waveform(levels = state.levels, active = state.phase == VoicePhase.LISTENING)
         Spacer(Modifier.height(14.dp))
-        // Stop = submit
+        // Stop = finish the take → review
         Box(
             Modifier
                 .size(62.dp)
@@ -240,8 +277,14 @@ private fun VoiceContent(
         ) {
             Box(Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)).background(Color.White))
         }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Tap to finish",
+            style = MaterialTheme.typography.bodySmall,
+            color = palette.text3,
+        )
         if (state.partial.isNotBlank()) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
             Text(
                 state.partial,
                 style = MaterialTheme.typography.bodyMedium,
@@ -251,6 +294,76 @@ private fun VoiceContent(
             )
         }
     }
+}
+
+@Composable
+private fun ReviewContent(
+    state: CaptureUiState,
+    onReviewChange: (String) -> Unit,
+    onConfirmAdd: () -> Unit,
+    onReRecord: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val palette = BragBuddyTheme.palette
+    Column(Modifier.fillMaxWidth()) {
+        Text("Here's what I heard", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+        Text("Edit it if needed, then add it.", style = MaterialTheme.typography.bodySmall, color = palette.text3)
+        Spacer(Modifier.height(Spacing.s3))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 96.dp)
+                .clip(RoundedCornerShape(Radii.md))
+                .border(1.5.dp, palette.primary.copy(alpha = 0.45f), RoundedCornerShape(Radii.md))
+                .background(palette.surface)
+                .padding(14.dp),
+        ) {
+            if (state.reviewText.isEmpty()) {
+                Text("Type your update…", style = MaterialTheme.typography.bodyLarge, color = palette.text3)
+            }
+            BasicTextField(
+                value = state.reviewText,
+                onValueChange = onReviewChange,
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = LocalTextStyle.current.merge(
+                    TextStyle(color = palette.text1, fontSize = 14.sp, lineHeight = 21.sp),
+                ),
+                cursorBrush = SolidColor(palette.primary),
+            )
+        }
+        Spacer(Modifier.height(Spacing.s4))
+        // Add (primary, full-width)
+        val canAdd = state.reviewText.isNotBlank()
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(999.dp))
+                .background(if (canAdd) palette.primary else palette.primary.copy(alpha = 0.4f))
+                .clickable(enabled = canAdd, onClick = onConfirmAdd)
+                .padding(vertical = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Add", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(Spacing.s3))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            TextAction("Re-record", onReRecord)
+            Spacer(Modifier.width(28.dp))
+            TextAction("Cancel", onCancel)
+        }
+    }
+}
+
+@Composable
+private fun TextAction(label: String, onClick: () -> Unit) {
+    val palette = BragBuddyTheme.palette
+    Text(
+        label,
+        style = MaterialTheme.typography.titleSmall,
+        color = palette.text3,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.clip(RoundedCornerShape(999.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+    )
 }
 
 @Composable

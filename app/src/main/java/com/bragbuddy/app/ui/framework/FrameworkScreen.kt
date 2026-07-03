@@ -17,12 +17,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Stop
@@ -49,7 +51,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
@@ -60,11 +61,11 @@ import com.bragbuddy.app.ui.theme.Spacing
 import com.bragbuddy.app.ui.theme.pillarColor
 
 /**
- * The Framework editor (Design System §3): pillars grouped by the two axes — *What you did* (goal
- * areas) and *How you did it* (behaviours & growth) — each a card with a ramp colour, rename and
- * remove. "Refine by voice" opens a sheet to describe how you're reviewed; the AI builds pillars
- * shown as editable cards for a one-tap confirm. The company name is never asked. (Drag-to-reorder
- * is deferred — noted in PROGRESS.)
+ * The Framework editor (Design System §3): your **categories**, grouped by the two axes — *What you
+ * did* (goal categories) and *How you did it* (behaviour & growth). Each card shows a ramp colour,
+ * name, and an editable description. "Refine by voice" opens a distinct sheet to add / rename /
+ * remove / re-describe categories by speaking; the AI applies your instruction to the current set
+ * and shows editable cards for a one-tap confirm. The company name is never asked.
  */
 @Composable
 fun FrameworkScreen(
@@ -75,7 +76,7 @@ fun FrameworkScreen(
     val framework by viewModel.framework.collectAsStateWithLifecycle()
     val refine by viewModel.refine.collectAsStateWithLifecycle()
 
-    var renameTarget by remember { mutableStateOf<Pillar?>(null) }
+    var editTarget by remember { mutableStateOf<Pillar?>(null) }
     var showAdd by remember { mutableStateOf(false) }
 
     val hueOf: (Pillar) -> PillarColor = { p -> pillarColor(framework.pillars.indexOfFirst { it.id == p.id }) }
@@ -84,13 +85,14 @@ fun FrameworkScreen(
         Column(
             Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Spacing.screen),
         ) {
             Spacer(Modifier.height(Spacing.s4))
             Text("Your framework", style = MaterialTheme.typography.headlineLarge, color = palette.text1)
             Text(
-                "${framework.pillars.size} pillars · how your work is judged",
+                "${framework.pillars.size} categories · how your work is judged",
                 style = MaterialTheme.typography.bodySmall,
                 color = palette.text3,
             )
@@ -99,7 +101,7 @@ fun FrameworkScreen(
             if (framework.goalAreas.isNotEmpty()) {
                 AxisLabel("What you did")
                 framework.goalAreas.forEach { p ->
-                    PillarRow(p, hueOf(p), palette, onRename = { renameTarget = p }, onRemove = { viewModel.remove(p.id) })
+                    CategoryRow(p, hueOf(p), palette, onEdit = { editTarget = p }, onRemove = { viewModel.remove(p.id) })
                     Spacer(Modifier.height(Spacing.s3))
                 }
             }
@@ -109,13 +111,13 @@ fun FrameworkScreen(
                 Spacer(Modifier.height(Spacing.s2))
                 AxisLabel("How you did it")
                 howPillars.forEach { p ->
-                    PillarRow(p, hueOf(p), palette, onRename = { renameTarget = p }, onRemove = { viewModel.remove(p.id) })
+                    CategoryRow(p, hueOf(p), palette, onEdit = { editTarget = p }, onRemove = { viewModel.remove(p.id) })
                     Spacer(Modifier.height(Spacing.s3))
                 }
             }
 
-            DashedAddButton("Add a pillar", palette) { showAdd = true }
-            Spacer(Modifier.height(contentBottomPadding + 72.dp))
+            DashedAddButton("Add a category", palette) { showAdd = true }
+            Spacer(Modifier.height(contentBottomPadding + 76.dp))
         }
 
         // Pinned "Refine by voice" primary action.
@@ -123,7 +125,7 @@ fun FrameworkScreen(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = contentBottomPadding + Spacing.s3, start = Spacing.screen, end = Spacing.screen),
+                .padding(bottom = contentBottomPadding + Spacing.s4, start = Spacing.screen, end = Spacing.screen),
         ) {
             Row(
                 Modifier
@@ -159,20 +161,21 @@ fun FrameworkScreen(
         }
     }
 
-    renameTarget?.let { target ->
-        NameDialog(
-            title = "Rename pillar",
-            initial = target.name,
+    editTarget?.let { target ->
+        CategoryDialog(
+            title = "Edit category",
+            initialName = target.name,
+            initialDescription = target.blurb,
             palette = palette,
-            onConfirm = { viewModel.rename(target.id, it); renameTarget = null },
-            onDismiss = { renameTarget = null },
+            onConfirm = { name, desc -> viewModel.editCategory(target.id, name, desc); editTarget = null },
+            onDismiss = { editTarget = null },
         )
     }
 
     if (showAdd) {
-        AddPillarDialog(
+        AddCategoryDialog(
             palette = palette,
-            onConfirm = { name, kind -> viewModel.addPillar(name, kind); showAdd = false },
+            onConfirm = { name, desc, kind -> viewModel.addCategory(name, desc, kind); showAdd = false },
             onDismiss = { showAdd = false },
         )
     }
@@ -191,11 +194,11 @@ private fun AxisLabel(text: String) {
 }
 
 @Composable
-private fun PillarRow(
+private fun CategoryRow(
     pillar: Pillar,
     hue: PillarColor,
     palette: BragPalette,
-    onRename: () -> Unit,
+    onEdit: () -> Unit,
     onRemove: () -> Unit,
 ) {
     Row(
@@ -207,14 +210,18 @@ private fun PillarRow(
             .padding(Spacing.card),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(11.dp).clip(RoundedCornerShape(3.dp)).background(hue.solid))
+        Box(Modifier.padding(top = 2.dp).size(11.dp).clip(RoundedCornerShape(3.dp)).background(hue.solid))
         Spacer(Modifier.size(Spacing.s3))
         Column(Modifier.weight(1f)) {
             Text(pillar.name, style = MaterialTheme.typography.titleSmall, color = palette.text1, fontWeight = FontWeight.Bold)
-            Text(kindLabel(pillar.kind), style = MaterialTheme.typography.labelSmall, color = palette.text3)
+            if (pillar.blurb.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(pillar.blurb, style = MaterialTheme.typography.bodySmall, color = palette.text3)
+            }
         }
-        IconTap(Icons.Outlined.Edit, palette.primary, onRename)
         Spacer(Modifier.size(Spacing.s2))
+        IconTap(Icons.Outlined.Edit, palette.primary, onEdit)
+        Spacer(Modifier.size(Spacing.s1))
         IconTap(Icons.Outlined.Close, palette.text3, onRemove)
     }
 }
@@ -246,9 +253,9 @@ private fun DashedAddButton(text: String, palette: BragPalette, onClick: () -> U
 }
 
 private fun kindLabel(kind: PillarKind): String = when (kind) {
-    PillarKind.GOAL_AREA -> "Goal pillar · projects nest here"
-    PillarKind.BEHAVIOUR -> "Behaviour pillar · gathers evidence"
-    PillarKind.DEVELOPMENT -> "Growth pillar"
+    PillarKind.GOAL_AREA -> "Goal · projects nest here"
+    PillarKind.BEHAVIOUR -> "Behaviour · gathers evidence"
+    PillarKind.DEVELOPMENT -> "Growth"
 }
 
 // ---------------- Refine sheet ----------------
@@ -293,6 +300,20 @@ private fun RefineSheet(
             Box(Modifier.align(Alignment.CenterHorizontally).size(width = 42.dp, height = 5.dp).clip(RoundedCornerShape(3.dp)).background(palette.border))
             Spacer(Modifier.height(Spacing.s4))
 
+            // Distinct "refining your framework" banner so this never reads like logging an entry.
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(palette.primarySoft)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.Dashboard, null, tint = palette.primary, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.size(6.dp))
+                Text("REFINING YOUR FRAMEWORK", style = MaterialTheme.typography.labelSmall, color = palette.primary, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(Spacing.s4))
+
             when (state) {
                 is RefineState.Input -> RefineInput(
                     state, palette, onSetMode, onTextChange, onStopVoice, onBuild,
@@ -319,7 +340,7 @@ private fun RefineSheet(
 
     if (renameReviewIdx >= 0) {
         NameDialog(
-            title = "Rename pillar",
+            title = "Rename category",
             initial = renameReviewName,
             palette = palette,
             onConfirm = { onRenameReview(renameReviewIdx, it); renameReviewIdx = -1 },
@@ -340,13 +361,12 @@ private fun RefineInput(
 ) {
     Text("Tell me how you're reviewed", style = MaterialTheme.typography.titleLarge, color = palette.text1)
     Text(
-        "Say what you're measured on — goals, behaviours, growth. I'll shape it into pillars. No company name needed.",
+        "Add, rename, remove, or re-describe your categories — just say it (e.g. “add a category for customer focus”). No company name needed.",
         style = MaterialTheme.typography.bodySmall,
         color = palette.text3,
     )
     Spacer(Modifier.height(Spacing.s3))
 
-    // Speak / Type toggle
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(999.dp)).background(palette.surface2).padding(4.dp)) {
         SegToggle("Speak", state.mode == RefineMode.SPEAK, { onSetMode(RefineMode.SPEAK) }, Modifier.weight(1f), palette)
         SegToggle("Type", state.mode == RefineMode.TYPE, { onSetMode(RefineMode.TYPE) }, Modifier.weight(1f), palette)
@@ -355,19 +375,25 @@ private fun RefineInput(
 
     if (state.mode == RefineMode.SPEAK) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                if (state.listening) "Listening…" else "Tap to speak",
-                style = MaterialTheme.typography.bodySmall,
-                color = palette.text3,
-            )
-            Spacer(Modifier.height(Spacing.s2))
-            Box(
-                Modifier.size(64.dp).clip(RoundedCornerShape(999.dp))
-                    .background(if (state.listening) palette.primaryPress else palette.primary)
-                    .clickable { if (state.listening) onStopVoice() else onSpeak() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(if (state.listening) Icons.Outlined.Stop else Icons.Outlined.Mic, null, tint = Color.White, modifier = Modifier.size(26.dp))
+            if (state.transcribing) {
+                CircularProgressIndicator(color = palette.primary, strokeWidth = 3.dp, modifier = Modifier.size(30.dp))
+                Spacer(Modifier.height(Spacing.s2))
+                Text("Transcribing…", style = MaterialTheme.typography.bodySmall, color = palette.text3)
+            } else {
+                Text(
+                    if (state.listening) "Listening…" else "Tap to speak",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.text3,
+                )
+                Spacer(Modifier.height(Spacing.s2))
+                Box(
+                    Modifier.size(64.dp).clip(RoundedCornerShape(999.dp))
+                        .background(if (state.listening) palette.primaryPress else palette.primary)
+                        .clickable { if (state.listening) onStopVoice() else onSpeak() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(if (state.listening) Icons.Outlined.Stop else Icons.Outlined.Mic, null, tint = Color.White, modifier = Modifier.size(26.dp))
+                }
             }
             if (state.text.isNotBlank()) {
                 Spacer(Modifier.height(Spacing.s3))
@@ -390,7 +416,7 @@ private fun RefineInput(
     }
 
     Spacer(Modifier.height(Spacing.s4))
-    PrimaryButton("Build my framework", enabled = state.text.isNotBlank(), palette = palette, onClick = onBuild)
+    PrimaryButton("Update my framework", enabled = state.text.isNotBlank() && !state.transcribing, palette = palette, onClick = onBuild)
 }
 
 @Composable
@@ -514,25 +540,75 @@ private fun NameDialog(
 }
 
 @Composable
-private fun AddPillarDialog(
+private fun CategoryDialog(
+    title: String,
+    initialName: String,
+    initialDescription: String,
     palette: BragPalette,
-    onConfirm: (String, PillarKind) -> Unit,
+    onConfirm: (String, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var name by remember { mutableStateOf("") }
-    var kind by remember { mutableStateOf(PillarKind.GOAL_AREA) }
+    var name by remember { mutableStateOf(initialName) }
+    var desc by remember { mutableStateOf(initialDescription) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = { onConfirm(name, kind) }, enabled = name.isNotBlank()) { Text("Add") } },
+        confirmButton = { TextButton(onClick = { onConfirm(name, desc) }, enabled = name.isNotBlank()) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Add a pillar", color = palette.text1) },
+        title = { Text(title, color = palette.text1) },
         text = {
             Column {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     singleLine = true,
+                    label = { Text("Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(Spacing.s3))
+                OutlinedTextField(
+                    value = desc,
+                    onValueChange = { desc = it },
+                    minLines = 2,
+                    label = { Text("What it covers") },
+                    placeholder = { Text("A short description", color = palette.text3) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        containerColor = palette.surface,
+    )
+}
+
+@Composable
+private fun AddCategoryDialog(
+    palette: BragPalette,
+    onConfirm: (String, String, PillarKind) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var desc by remember { mutableStateOf("") }
+    var kind by remember { mutableStateOf(PillarKind.GOAL_AREA) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = { onConfirm(name, desc, kind) }, enabled = name.isNotBlank()) { Text("Add") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text("Add a category", color = palette.text1) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    label = { Text("Name") },
                     placeholder = { Text("e.g. Customer Focus", color = palette.text3) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(Spacing.s3))
+                OutlinedTextField(
+                    value = desc,
+                    onValueChange = { desc = it },
+                    minLines = 2,
+                    label = { Text("What it covers (optional)") },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(Spacing.s3))

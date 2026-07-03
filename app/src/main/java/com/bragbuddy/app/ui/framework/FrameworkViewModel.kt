@@ -10,8 +10,11 @@ import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.framework.slug
-import com.bragbuddy.app.data.speech.SttEvent
+import com.bragbuddy.app.data.prefs.SettingsStore
+import com.bragbuddy.app.data.speech.AudioRecorder
+import com.bragbuddy.app.data.speech.GroqTranscriber
 import com.bragbuddy.app.data.speech.SpeechToText
+import com.bragbuddy.app.data.speech.SttEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,8 +23,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
 /** How the refine sheet takes the user's description of how they're reviewed. */
@@ -30,34 +33,42 @@ enum class RefineMode { SPEAK, TYPE }
 /** The refine-by-voice flow (a modal over the editor). */
 sealed interface RefineState {
     data object Hidden : RefineState
-    /** Collecting the spoken/typed description. */
+    /** Collecting the spoken/typed instruction. */
     data class Input(
         val mode: RefineMode = RefineMode.SPEAK,
         val listening: Boolean = false,
+        val transcribing: Boolean = false,
         val text: String = "",
         val error: String? = null,
     ) : RefineState
     /** Calling the model. */
     data object Thinking : RefineState
-    /** The AI's proposed pillars, editable before a one-tap confirm. */
+    /** The AI's proposed categories, editable before a one-tap confirm. */
     data class Review(val pillars: List<Pillar>) : RefineState
     data class Error(val message: String) : RefineState
 }
 
 /**
- * Drives the **Framework editor** (Design System §3) and its **refine-by-voice** flow (PART C).
- * The user speaks/types how they're judged → the AI builds pillars → shown as editable cards for a
- * one-tap confirm. The company name is never asked. Edits and confirms persist via [FrameworkStore]
- * and take effect on the very next categorization.
+ * Drives the **Framework editor** (Design System §3) and its **refine-by-voice** flow (PART C). The
+ * user's categories are the framework; they can be added, renamed, re-described, removed, or
+ * reshaped by voice. Voice uses the SAME transcription path as capture — cloud Whisper (Groq) when a
+ * key is set, on-device STT otherwise — so a working Groq key makes refine reliable. The AI is fed
+ * the CURRENT framework + the instruction and returns the updated set (add / edit / remove), shown
+ * as editable cards for a one-tap confirm. The company name is never asked.
  */
 @HiltViewModel
 class FrameworkViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val frameworkStore: FrameworkStore,
     private val aiProvider: AiProvider,
+    private val settings: SettingsStore,
+    private val groqTranscriber: GroqTranscriber,
 ) : ViewModel() {
 
     private val stt by lazy { SpeechToText(appContext) }
+    private val recorder by lazy { AudioRecorder(appContext) }
+    private var refineAudio: File? = null
+    private var useCloud = false
 
     val framework: StateFlow<Framework> = frameworkStore.framework
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Framework.DEFAULT)
@@ -67,22 +78,22 @@ class FrameworkViewModel @Inject constructor(
 
     // ---------------- Direct editor (on the saved framework) ----------------
 
-    fun rename(id: String, newName: String) {
-        val name = newName.trim().ifBlank { return }
-        persist(framework.value.pillars.map { if (it.id == id) it.copy(name = name) else it })
+    fun editCategory(id: String, name: String, description: String) {
+        val n = name.trim().ifBlank { return }
+        persist(framework.value.pillars.map { if (it.id == id) it.copy(name = n, blurb = description.trim()) else it })
     }
 
     fun remove(id: String) {
         persist(framework.value.pillars.filterNot { it.id == id })
     }
 
-    fun addPillar(name: String, kind: PillarKind) {
+    fun addCategory(name: String, description: String, kind: PillarKind) {
         val clean = name.trim().ifBlank { return }
         val pillar = Pillar(
             id = uniqueId(clean, framework.value.pillars),
             name = clean,
             kind = kind,
-            blurb = defaultBlurb(kind),
+            blurb = description.trim().ifBlank { defaultBlurb(kind) },
         )
         persist(framework.value.pillars + pillar)
     }
@@ -91,19 +102,19 @@ class FrameworkViewModel @Inject constructor(
 
     // ---------------- Refine-by-voice flow ----------------
 
-    fun openRefine() {
-        _refine.value = RefineState.Input()
-    }
+    fun openRefine() { _refine.value = RefineState.Input() }
 
     fun cancelRefine() {
         stt.cancelAndRelease()
+        runCatching { recorder.cancel() }
+        refineAudio?.delete(); refineAudio = null
         _refine.value = RefineState.Hidden
     }
 
     fun setRefineMode(mode: RefineMode) {
         val s = _refine.value as? RefineState.Input ?: return
-        if (mode == RefineMode.TYPE) stt.cancelAndRelease()
-        _refine.value = s.copy(mode = mode, listening = false, error = null)
+        if (mode == RefineMode.TYPE) { stt.cancelAndRelease(); runCatching { recorder.cancel() } }
+        _refine.value = s.copy(mode = mode, listening = false, transcribing = false, error = null)
     }
 
     fun onDescriptionChange(text: String) {
@@ -114,13 +125,52 @@ class FrameworkViewModel @Inject constructor(
     /** Called once mic permission is granted. */
     fun startVoice() {
         val s = _refine.value as? RefineState.Input ?: return
-        _refine.value = s.copy(mode = RefineMode.SPEAK, listening = true, error = null)
-        stt.start { event -> handleStt(event) }
+        viewModelScope.launch {
+            useCloud = settings.settings.first().cloudTranscription
+            _refine.value = s.copy(mode = RefineMode.SPEAK, listening = true, transcribing = false, error = null)
+            if (useCloud) startRecording() else stt.start { handleStt(it) }
+        }
+    }
+
+    private fun startRecording() {
+        runCatching { refineAudio = recorder.start() }.onFailure {
+            (_refine.value as? RefineState.Input)?.let {
+                _refine.value = it.copy(listening = false, error = "Couldn't start recording")
+            }
+        }
     }
 
     fun stopVoice() {
-        stt.stop()
-        (_refine.value as? RefineState.Input)?.let { _refine.value = it.copy(listening = false) }
+        if (useCloud) {
+            val file = runCatching { recorder.stop() }.getOrNull()
+            refineAudio = file
+            val s = _refine.value as? RefineState.Input ?: return
+            if (file == null) {
+                _refine.value = s.copy(listening = false, error = "Didn't catch that — try again or type it")
+                return
+            }
+            _refine.value = s.copy(listening = false, transcribing = true, error = null)
+            viewModelScope.launch {
+                groqTranscriber.transcribe(file).fold(
+                    onSuccess = { text ->
+                        file.delete(); refineAudio = null
+                        val cur = _refine.value as? RefineState.Input ?: return@fold
+                        _refine.value = if (text.isBlank()) {
+                            cur.copy(transcribing = false, error = "Didn't catch that — try again or type it")
+                        } else {
+                            cur.copy(text = text, transcribing = false)
+                        }
+                    },
+                    onFailure = {
+                        val cur = _refine.value as? RefineState.Input ?: return@fold
+                        _refine.value = cur.copy(transcribing = false, error = it.message ?: "Couldn't transcribe — try again or type it")
+                    },
+                )
+            }
+        } else {
+            stt.stop()
+            (_refine.value as? RefineState.Input)?.let { _refine.value = it.copy(listening = false) }
+        }
     }
 
     private fun handleStt(event: SttEvent) {
@@ -133,7 +183,7 @@ class FrameworkViewModel @Inject constructor(
         }
     }
 
-    /** Send the collected description to the AI and move to Review. */
+    /** Send the current framework + the instruction to the AI and move to Review. */
     fun buildFromDescription() {
         val text = (_refine.value as? RefineState.Input)?.text?.trim().orEmpty()
         if (text.isBlank()) return
@@ -155,10 +205,10 @@ class FrameworkViewModel @Inject constructor(
                                 blurb = p.blurb.trim().ifBlank { defaultBlurb(kind) },
                             )
                         }
-                    if (pillars.isEmpty()) {
-                        _refine.value = RefineState.Error("I couldn't turn that into pillars. Try describing what you're measured on.")
+                    _refine.value = if (pillars.isEmpty()) {
+                        RefineState.Error("I couldn't turn that into categories. Try describing what you're measured on.")
                     } else {
-                        _refine.value = RefineState.Review(pillars)
+                        RefineState.Review(pillars)
                     }
                 },
                 onFailure = {
@@ -179,7 +229,7 @@ class FrameworkViewModel @Inject constructor(
         _refine.value = s.copy(pillars = s.pillars.filterIndexed { i, _ -> i != index })
     }
 
-    /** One-tap confirm — replace the active framework with the reviewed pillars. */
+    /** One-tap confirm — replace the active framework with the reviewed categories. */
     fun confirmReview() {
         val s = _refine.value as? RefineState.Review ?: return
         if (s.pillars.isEmpty()) return
@@ -187,12 +237,12 @@ class FrameworkViewModel @Inject constructor(
         _refine.value = RefineState.Hidden
     }
 
-    fun backToInput() {
-        _refine.value = RefineState.Input()
-    }
+    fun backToInput() { _refine.value = RefineState.Input() }
 
     override fun onCleared() {
         stt.cancelAndRelease()
+        runCatching { recorder.cancel() }
+        refineAudio?.delete()
     }
 
     private companion object {

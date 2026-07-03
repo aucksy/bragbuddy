@@ -179,9 +179,12 @@ private fun TabItem(
         }
         Text(
             tab.label,
-            style = MaterialTheme.typography.labelSmall,
+            fontSize = 9.5.sp,
+            lineHeight = 11.sp,
             color = tint,
             fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }

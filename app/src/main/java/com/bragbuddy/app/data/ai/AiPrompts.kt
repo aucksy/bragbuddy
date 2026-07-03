@@ -94,29 +94,36 @@ If there is no usable work contribution, return exactly: { "entries": [] }"""
             .replace("{{PROJECTS}}", projectBlock)
     }
 
-    // ---------------- PART C · framework refine (one-time setup call) ----------------
-    // Turns a plain-language description of how someone is reviewed into structured pillars.
-    private const val FRAMEWORK = """You build an employee's performance-appraisal FRAMEWORK from a plain-language
-description of how they are judged at work. Use their words plus sensible role/industry
-norms so they don't have to spell everything out.
+    // ---------------- PART C · framework refine (setup + ongoing voice edits) ----------------
+    // Applies a spoken/typed instruction to the CURRENT framework and returns the updated set.
+    private const val FRAMEWORK = """You maintain an employee's performance-appraisal FRAMEWORK — a short list of
+CATEGORIES (a.k.a. pillars) describing how their work is judged. You are given the
+CURRENT framework and an instruction (spoken or typed), and you return the UPDATED
+framework.
 
-A framework is a short list of PILLARS on two axes:
+Each category sits on one axis:
 - GOAL_AREA = the "what": results and delivery objectives; projects nest under these.
 - BEHAVIOUR = the "how": leadership, collaboration, communication, values/competencies.
 - DEVELOPMENT = optional growth/learning.
 
 CONTEXT
-- Their current framework (refine or replace it, keep what still fits):
+- The CURRENT framework:
 {{CURRENT}}
-- What they said about how they're reviewed:
+- The user's instruction:
 {{DESCRIPTION}}
 
-RULES
-- Produce 2-6 pillars, ordered goal areas first, then behaviours, then any development.
-- Each pillar: a short "name" (2-4 words, Title Case) and a one-line "blurb" describing
-  what it covers. "kind" is exactly one of: GOAL_AREA, BEHAVIOUR, DEVELOPMENT.
-- Keep at least one GOAL_AREA and one BEHAVIOUR unless they clearly describe otherwise.
-- NEVER ask for or include the company's name, and don't invent specifics they didn't imply.
+WHAT TO DO
+1. Start from the CURRENT framework and APPLY the user's instruction: add new categories,
+   remove ones they ask to remove, rename, and update descriptions as requested.
+2. KEEP every existing category the user did NOT mention, unchanged — same name, kind, and
+   description. Do not drop or silently rewrite them.
+3. If the instruction reads like a fresh description of their whole review (not targeted
+   edits), build the full framework from it using sensible role/industry norms.
+4. Keep at least one GOAL_AREA and one BEHAVIOUR unless the user clearly says otherwise.
+5. Each category: a short "name" (2-4 words, Title Case), a one-line "blurb" of what it
+   covers, and "kind" exactly one of: GOAL_AREA, BEHAVIOUR, DEVELOPMENT.
+6. NEVER ask for or include the company's name; don't invent specifics they didn't imply.
+7. Order goal areas first, then behaviours, then development. Return the COMPLETE updated list.
 - Output only the JSON below — no prose, no markdown, no code fences.
 
 OUTPUT

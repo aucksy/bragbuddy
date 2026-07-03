@@ -59,6 +59,9 @@ class CaptureActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Redo (from Home) re-records over an existing entry instead of creating a new one.
+        intent.getLongExtra(EXTRA_REPLACE_ID, 0L).let { if (it > 0L) vm.setReplaceId(it) }
+
         setContent {
             BragBuddyTheme {
                 val state by vm.state.collectAsStateWithLifecycle()
@@ -89,6 +92,9 @@ class CaptureActivity : ComponentActivity() {
                         onRetry = vm::retryVoice,
                         onTypedChange = vm::onTypedChange,
                         onSubmitTyped = vm::submitTyped,
+                        onReviewChange = vm::onReviewTextChange,
+                        onConfirmAdd = vm::confirmAdd,
+                        onReRecord = vm::reRecord,
                         onDismiss = { finish() },
                     )
                 }
@@ -98,6 +104,11 @@ class CaptureActivity : ComponentActivity() {
 
     private fun hasMic(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    companion object {
+        /** Long extra: the id of an entry to re-record over (Home → Redo). */
+        const val EXTRA_REPLACE_ID = "replace_entry_id"
+    }
 }
 
 /** The design-system "Saved" toast, shown briefly over the scrim before the surface dismisses. */

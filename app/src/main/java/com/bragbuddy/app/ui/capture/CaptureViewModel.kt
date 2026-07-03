@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
 
-enum class VoicePhase { IDLE, LISTENING, TRANSCRIBING, ERROR }
+enum class VoicePhase { IDLE, LISTENING, TRANSCRIBING, REVIEW, ERROR }
 
 data class CaptureUiState(
     val mode: CaptureMode = CaptureMode.SPEAK,
@@ -34,6 +34,8 @@ data class CaptureUiState(
     val elapsedSec: Int = 0,
     val partial: String = "",
     val typed: String = "",
+    /** The transcript shown for review/edit after a voice capture, before the user taps Add. */
+    val reviewText: String = "",
     val levels: List<Float> = emptyList(),
     val error: String? = null,
     /** True while the engine is cloud Whisper (affects the recorder/live-partials behaviour). */
@@ -68,6 +70,10 @@ class CaptureViewModel @Inject constructor(
     private var didSave = false
     private var lastAudio: File? = null
     private var useCloud = false
+
+    /** When set (Home → Redo), Add replaces this existing entry instead of inserting a new one. */
+    private var replaceId: Long? = null
+    fun setReplaceId(id: Long) { if (id > 0L) replaceId = id }
 
     init {
         viewModelScope.launch {
@@ -132,8 +138,12 @@ class CaptureViewModel @Inject constructor(
         viewModelScope.launch {
             groqTranscriber.transcribe(file).fold(
                 onSuccess = { text ->
-                    if (text.isBlank()) fail("Didn't catch that — try again or type it")
-                    else save(text, EntrySource.VOICE) { file.delete(); lastAudio = null }
+                    if (text.isBlank()) {
+                        fail("Didn't catch that — try again or type it") // keep the file so retry re-transcribes
+                    } else {
+                        file.delete(); lastAudio = null // have the text now; the audio isn't needed
+                        enterReview(text)
+                    }
                 },
                 onFailure = { fail(it.message ?: "Couldn't transcribe — try again or type it") },
             )
@@ -171,7 +181,7 @@ class CaptureViewModel @Inject constructor(
         val text = _state.value.partial.trim()
         if (text.isBlank()) { fail("Didn't catch that — try again or type it"); submitting = false; return }
         stt.cancelAndRelease()
-        save(text, EntrySource.VOICE)
+        enterReview(text)
     }
 
     // ---------------- Shared ----------------
@@ -192,6 +202,29 @@ class CaptureViewModel @Inject constructor(
         }
     }
 
+    // ---------------- Review before Add (voice) ----------------
+
+    /** After a voice take, show the transcript editable; nothing is saved until [confirmAdd]. */
+    private fun enterReview(text: String) {
+        submitting = false
+        _state.update { it.copy(phase = VoicePhase.REVIEW, reviewText = text, partial = "", error = null) }
+    }
+
+    fun onReviewTextChange(text: String) = _state.update { it.copy(reviewText = text) }
+
+    /** Add = commit the (possibly edited) transcript. */
+    fun confirmAdd() {
+        val text = _state.value.reviewText.trim()
+        if (text.isBlank() || didSave) return
+        save(text, EntrySource.VOICE) { lastAudio?.delete(); lastAudio = null }
+    }
+
+    /** Discard this take and record again from scratch. */
+    fun reRecord() {
+        _state.update { it.copy(reviewText = "", partial = "", error = null) }
+        startVoice()
+    }
+
     fun onTypedChange(text: String) = _state.update { it.copy(typed = text) }
 
     fun submitTyped() {
@@ -210,7 +243,8 @@ class CaptureViewModel @Inject constructor(
         if (didSave) return
         didSave = true
         viewModelScope.launch {
-            entries.capture(text, source)
+            val id = replaceId
+            if (id != null) entries.replaceText(id, text) else entries.capture(text, source)
             onDone()
             _saved.tryEmit(Unit)
         }

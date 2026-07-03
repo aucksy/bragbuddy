@@ -1,8 +1,10 @@
 package com.bragbuddy.app.ui.home
 
+import android.content.Intent
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,25 +15,39 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -42,15 +58,16 @@ import com.bragbuddy.app.R
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.local.EntryStatus
+import com.bragbuddy.app.ui.capture.CaptureActivity
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
 import com.bragbuddy.app.ui.theme.Radii
 import com.bragbuddy.app.ui.theme.Spacing
 
 /**
- * Home (Design System §1). Phase 1 showed raw transcripts; Phase 2 shows the **categorized** result
- * — the cleaned bullet with its placement chip, or a "processing / Inbox" state. It stays a flat,
- * newest-first list; the structured pillar document is Phase 3.
+ * Home (Design System §1). Phase 2 shows the **categorized** result — cleaned bullet with its
+ * placement chip, or a processing/Inbox state. Each entry can be edited (→ re-filed), re-recorded
+ * from scratch (Redo), or deleted. Flat list; the structured document is Phase 3.
  */
 @Composable
 fun HomeScreen(
@@ -59,12 +76,17 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val palette = BragBuddyTheme.palette
+    val context = LocalContext.current
     val entries by viewModel.entries.collectAsStateWithLifecycle()
+
+    var editTarget by remember { mutableStateOf<EntryEntity?>(null) }
+    var deleteTarget by remember { mutableStateOf<EntryEntity?>(null) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(palette.bg)
+            .statusBarsPadding()
             .padding(horizontal = Spacing.screen),
     ) {
         Spacer(Modifier.height(Spacing.s4))
@@ -96,14 +118,55 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.s3),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = contentBottomPadding + Spacing.s4),
             ) {
-                items(entries, key = { it.id }) { EntryCard(it) }
+                items(entries, key = { it.id }) { entry ->
+                    EntryCard(
+                        entry = entry,
+                        onEdit = { editTarget = entry },
+                        onRedo = {
+                            context.startActivity(
+                                Intent(context, CaptureActivity::class.java)
+                                    .putExtra(CaptureActivity.EXTRA_REPLACE_ID, entry.id),
+                            )
+                        },
+                        onDelete = { deleteTarget = entry },
+                    )
+                }
             }
         }
+    }
+
+    editTarget?.let { target ->
+        EditEntryDialog(
+            initial = target.rawTranscript,
+            palette = palette,
+            onSave = { viewModel.editText(target.id, it); editTarget = null },
+            onDismiss = { editTarget = null },
+        )
+    }
+
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            confirmButton = {
+                TextButton(onClick = { viewModel.delete(target.id); deleteTarget = null }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
+            title = { Text("Delete this entry?", color = palette.text1) },
+            text = { Text("This removes it for good. The record can't get it back.", color = palette.text3) },
+            containerColor = palette.surface,
+        )
     }
 }
 
 @Composable
-private fun EntryCard(entry: EntryEntity) {
+private fun EntryCard(
+    entry: EntryEntity,
+    onEdit: () -> Unit,
+    onRedo: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val palette = BragBuddyTheme.palette
     val relTime = DateUtils.getRelativeTimeSpanString(
         entry.createdAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
@@ -124,7 +187,7 @@ private fun EntryCard(entry: EntryEntity) {
             .clip(RoundedCornerShape(Radii.lg))
             .background(palette.surface)
             .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
-            .padding(Spacing.card),
+            .padding(start = Spacing.card, top = Spacing.card, bottom = Spacing.card, end = 4.dp),
     ) {
         Box(
             Modifier
@@ -141,7 +204,6 @@ private fun EntryCard(entry: EntryEntity) {
                 color = palette.text1,
             )
 
-            // Placement / status chips.
             val chips = statusChips(entry, palette)
             if (chips.isNotEmpty()) {
                 Spacer(Modifier.height(Spacing.s2))
@@ -166,7 +228,63 @@ private fun EntryCard(entry: EntryEntity) {
                 )
             }
         }
+        EntryMenu(onEdit = onEdit, onRedo = onRedo, onDelete = onDelete)
     }
+}
+
+@Composable
+private fun EntryMenu(onEdit: () -> Unit, onRedo: () -> Unit, onDelete: () -> Unit) {
+    val palette = BragBuddyTheme.palette
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Outlined.MoreVert, "More", tint = palette.text3, modifier = Modifier.size(19.dp))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Edit text") },
+                onClick = { open = false; onEdit() },
+                leadingIcon = { Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp)) },
+            )
+            DropdownMenuItem(
+                text = { Text("Redo (re-record)") },
+                onClick = { open = false; onRedo() },
+                leadingIcon = { Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(18.dp)) },
+            )
+            DropdownMenuItem(
+                text = { Text("Delete") },
+                onClick = { open = false; onDelete() },
+                leadingIcon = { Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(18.dp)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditEntryDialog(
+    initial: String,
+    palette: BragPalette,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { onSave(text) }, enabled = text.isNotBlank()) { Text("Save & re-file") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text("Edit entry", color = palette.text1) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3,
+            )
+        },
+        containerColor = palette.surface,
+    )
 }
 
 private data class ChipSpec(val text: String, val fill: Color, val ink: Color)

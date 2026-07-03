@@ -62,4 +62,41 @@ class EntryRepository @Inject constructor(
     fun retry(id: Long) {
         appScope.launch { processor.process(id) }
     }
+
+    /** Delete an entry outright (Home → Delete). Siblings of a split transcript are independent. */
+    fun delete(id: Long) {
+        appScope.launch { entryDao.deleteById(id) }
+    }
+
+    /**
+     * Replace an entry's text and re-file it from scratch (Home → Edit, or Redo's re-record). Resets
+     * all AI-derived fields to a clean RAW state and re-runs the categorizer, so a corrected
+     * transcript gets re-cleaned and re-placed. No-op if the row is gone.
+     */
+    fun replaceText(id: Long, text: String) {
+        val clean = text.trim()
+        if (clean.isEmpty()) return
+        appScope.launch {
+            val existing = entryDao.getById(id) ?: return@launch
+            entryDao.update(
+                existing.copy(
+                    rawTranscript = clean,
+                    status = EntryStatus.RAW,
+                    occurredAt = null,
+                    bullet = null,
+                    project = null,
+                    goalCategory = null,
+                    demonstrates = emptyList(),
+                    isExtra = false,
+                    impact = null,
+                    routine = false,
+                    routineType = null,
+                    metric = null,
+                    confidence = null,
+                    suggestedProjects = emptyList(),
+                ),
+            )
+            processor.process(id)
+        }
+    }
 }
