@@ -5,12 +5,15 @@ import android.content.Context
 import android.content.Intent
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.notification.Notifications
-import dagger.hilt.android.AndroidEntryPoint
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 /**
  * Fires the daily reminder and keeps the exact alarm alive.
@@ -20,25 +23,32 @@ import javax.inject.Inject
  *  - BOOT_COMPLETED / MY_PACKAGE_REPLACED / TIME_SET / TIMEZONE_CHANGED: alarms are cleared on
  *    reboot and can be knocked off by a clock/timezone change — reschedule from the saved settings.
  *
- * Injected via Hilt so it can read [SettingsStore] and reuse [ReminderScheduler] directly.
+ * A plain [BroadcastReceiver] pulling singleton deps through a Hilt [EntryPoint] (the proven sibling-app
+ * pattern) — no `@AndroidEntryPoint`/`super.onReceive()`, which the Hilt bytecode transform makes
+ * fragile to compile for receivers.
  */
-@AndroidEntryPoint
 class ReminderReceiver : BroadcastReceiver() {
 
-    @Inject lateinit var settingsStore: SettingsStore
-    @Inject lateinit var scheduler: ReminderScheduler
+    @EntryPoint
+    @InstallIn(SingletonComponent::class)
+    interface ReminderEntryPoint {
+        fun settingsStore(): SettingsStore
+        fun reminderScheduler(): ReminderScheduler
+    }
 
     override fun onReceive(context: Context, intent: Intent) {
-        // REQUIRED for a Hilt @AndroidEntryPoint receiver: the generated base performs field injection
-        // here. Without this call settingsStore/scheduler stay uninitialized and every fire/boot crashes.
-        super.onReceive(context, intent)
+        val app = context.applicationContext
+        val entry = EntryPointAccessors.fromApplication(app, ReminderEntryPoint::class.java)
+        val settingsStore = entry.settingsStore()
+        val scheduler = entry.reminderScheduler()
+
         val pending = goAsync()
-        CoroutineScope(Dispatchers.Default).launch {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 val s = settingsStore.settings.first()
                 if (!s.reminderEnabled) return@launch
                 if (intent.action == ACTION_FIRE) {
-                    Notifications.postReminder(context)
+                    Notifications.postReminder(app)
                 }
                 // Re-arm the next occurrence in every case (fire → tomorrow; boot/time change → next).
                 scheduler.schedule(s.reminderHour, s.reminderMinute)
