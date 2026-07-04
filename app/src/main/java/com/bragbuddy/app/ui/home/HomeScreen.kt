@@ -49,8 +49,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -60,6 +62,7 @@ import com.bragbuddy.app.R
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.ui.capture.CaptureActivity
 import com.bragbuddy.app.ui.common.EntryBulletRow
+import com.bragbuddy.app.ui.entry.EntryDetailSheet
 import com.bragbuddy.app.ui.role.RoleInput
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
@@ -88,7 +91,9 @@ fun HomeScreen(
 ) {
     val palette = BragBuddyTheme.palette
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val doc by viewModel.doc.collectAsStateWithLifecycle()
+    val folders by viewModel.folders.collectAsStateWithLifecycle()
     val showRolePrompt by viewModel.showRolePrompt.collectAsStateWithLifecycle()
 
     // When set, the folder-create dialog is open for this goal area (null area = first goal area).
@@ -96,6 +101,18 @@ fun HomeScreen(
     // Per-entry edit / delete (inline folder expansion mirrors the deep pillar view's actions).
     var editTarget by remember { mutableStateOf<EntryEntity?>(null) }
     var deleteTarget by remember { mutableStateOf<EntryEntity?>(null) }
+    // Tap an entry → detail sheet (snapshot; toggles update it optimistically so ★/Pin flip instantly).
+    var detailEntry by remember { mutableStateOf<EntryEntity?>(null) }
+
+    fun copyAll() {
+        val text = exportDocument(doc)
+        if (text.isBlank()) {
+            android.widget.Toast.makeText(context, "Nothing to copy yet", android.widget.Toast.LENGTH_SHORT).show()
+        } else {
+            clipboard.setText(AnnotatedString(text))
+            android.widget.Toast.makeText(context, "Copied — paste into Word or Docs", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
     // Collapsible sections — expanded ids; default = none (everything starts collapsed) except the
     // Performance Goals section, seeded open once below (fix: it should be expanded by default).
     val expanded = remember { mutableStateListOf<String>() }
@@ -146,6 +163,20 @@ fun HomeScreen(
                     color = palette.text1,
                 )
             }
+            if (!doc.isEmpty) {
+                Text(
+                    "Copy",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = palette.primary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(palette.primarySoft)
+                        .clickable { copyAll() }
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                )
+                Spacer(Modifier.size(Spacing.s2))
+            }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Outlined.Settings, stringResource(R.string.nav_settings), tint = palette.text2)
             }
@@ -185,6 +216,7 @@ fun HomeScreen(
                         onToggleFolder = { folder -> toggleFolder(section.pillar.id + "::" + folder) },
                         onSeeMore = { folder -> onOpenFolder(section.pillar.id, folder) },
                         onAddEntry = { folder -> capture(folder) },
+                        onOpenDetail = { detailEntry = it },
                         onEdit = { editTarget = it },
                         onRedo = { redo(it) },
                         onDelete = { deleteTarget = it },
@@ -239,6 +271,20 @@ fun HomeScreen(
             containerColor = palette.surface,
         )
     }
+
+    detailEntry?.let { target ->
+        EntryDetailSheet(
+            entry = target,
+            folders = folders,
+            onEdit = { detailEntry = null; editTarget = target },
+            onMoveToProject = { viewModel.reassignToProject(target, it) },
+            onMoveOutside = { viewModel.reassignOutside(target) },
+            onToggleExtra = { v -> viewModel.setExtra(target.id, v); detailEntry = target.copy(isExtra = v) },
+            onTogglePin = { v -> viewModel.setPinned(target.id, v); detailEntry = target.copy(isPinned = v) },
+            onDelete = { detailEntry = null; deleteTarget = target },
+            onDismiss = { detailEntry = null },
+        )
+    }
 }
 
 private data class CreateFolderTarget(val goalArea: String?)
@@ -258,6 +304,7 @@ private fun GoalSectionView(
     onToggleFolder: (String) -> Unit,
     onSeeMore: (String) -> Unit,
     onAddEntry: (String) -> Unit,
+    onOpenDetail: (EntryEntity) -> Unit,
     onEdit: (EntryEntity) -> Unit,
     onRedo: (EntryEntity) -> Unit,
     onDelete: (EntryEntity) -> Unit,
@@ -289,6 +336,7 @@ private fun GoalSectionView(
                         onToggle = { onToggleFolder(key) },
                         onSeeMore = { onSeeMore(key) },
                         onAddEntry = { onAddEntry(project.name) },
+                        onOpenDetail = onOpenDetail,
                         onEdit = onEdit,
                         onRedo = onRedo,
                         onDelete = onDelete,
@@ -314,6 +362,7 @@ private fun FolderCard(
     onToggle: () -> Unit,
     onSeeMore: () -> Unit,
     onAddEntry: () -> Unit,
+    onOpenDetail: (EntryEntity) -> Unit,
     onEdit: (EntryEntity) -> Unit,
     onRedo: (EntryEntity) -> Unit,
     onDelete: (EntryEntity) -> Unit,
@@ -384,6 +433,7 @@ private fun FolderCard(
                             onEdit = { onEdit(entry) },
                             onRedo = { onRedo(entry) },
                             onDelete = { onDelete(entry) },
+                            onTap = { onOpenDetail(entry) },
                         )
                     }
                     if (project.entryCount > MAX_INLINE_ENTRIES) {

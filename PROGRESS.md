@@ -12,6 +12,49 @@ current code — that is the context, not chat history.
 
 ---
 
+## Status: v0.12.0 — Phase 4 · Edit, reassign, copy-out 🚧 tagged, awaiting green CI
+
+**APK (once green):** `github.com/aucksy/bragbuddy/releases/download/v0.12.0/BragBuddy-v0.12.0.apk`
+(signed; `.aab` alongside). The Build-Brief Phase 4: *"tap an entry → raw + cleaned; edit / move /
+toggle Extra / pin / delete; copy a section or the whole doc as clean text for Word/Docs."* Scope
+locked via AskUserQuestion (tap→detail sheet · clean plain text · per-section + whole-doc copy). Room
+stays **v3** (no schema change — `isExtra`/`isPinned` columns already existed).
+
+### v0.12.0 — what was built (`versionCode 13`)
+1. **Tap an entry → detail sheet** (`ui/entry/EntryDetailSheet.kt`, a custom scrim+Column bottom sheet
+   like the capture sheet — NOT Material `ModalBottomSheet`, per the veto-freeze rule). Shows the
+   **cleaned bullet + the raw transcript** it came from + chips (project · goal · ★ · Pinned · metric ·
+   date), and gathers every per-entry action: **Edit** (opens the existing edit dialog), **Move**
+   (reveals a folder-chip picker → reassign, no AI re-call), **★ Standout** toggle, **Pin** toggle,
+   **Delete**. Not in the design files (flagged; built from tokens). Reached from all three surfaces —
+   Home inline, the deep pillar view, and the single-folder screen — via a new `EntryBulletRow.onTap`.
+2. **Move / reassign a FILED entry** (`EntryProcessor.reassign`, `EntryRepository.reassign`) — mirrors
+   the Inbox `resolve` but works on a PROCESSED row too (guards only against a still-processing RAW),
+   under the processing mutex, keeping the cleaned bullet/behaviours (no AI re-call); a named target
+   becomes the `anchorProject`. The picker lists **goal-area folders only** (a behaviour-area folder
+   isn't a placement slot).
+3. **★ Standout + Pin toggles** — `EntryDao.setExtra/setPinned` (targeted column updates, routed
+   through the processor mutex so they can't lose to a concurrent re-file). Pin is stored now and
+   consumed by the Phase 5 summary. Optimistic snapshot so the sheet reflects the toggle instantly.
+4. **Copy-out** (`ui/home/DocExport.kt`, pure + unit-tested `DocExportTest`) → **clean plain text**
+   (UPPERCASE pillar heading → project sub-heading → `  • bullet` + `[Standout]`; behaviours list
+   their evidence bullets). A **"Copy"** action in the Home header copies the **whole document**; a
+   **"Copy"** in each pillar deep-view / single-folder header copies **that section** — to the
+   clipboard with a "paste into Word or Docs" toast. Matches the design's "Copy for review".
+
+### Adversarial review before tagging (compile + logic; fixed pre-tag)
+Compile: **clean** (all call sites / imports / the new shared sheet + `onOpenDetail` threading
+cross-checked). Logic: **0 HIGH, 3 MED — all fixed:**
+- **[MED]** lost-update race — the targeted `setExtra`/`setPinned` writes could be clobbered by a
+  concurrent full-row `reassign`/`resolve`/`replace` carrying the pre-toggle flag → **routed the
+  toggles through the same processing mutex**.
+- **[MED]** a user's manual **★ Standout was dropped on Edit** (the re-file reset it; Pin survived —
+  inconsistent) → **`replace` now preserves a set ★** across the re-file (re-applies it after refile).
+- **[MED]** the Move picker offered **behaviour-area folders**, which would strand the entry in the
+  Uncategorized catch-all instead of the picked folder → **picker filtered to goal-area folders**.
+
+---
+
 ## Status: v0.11.0 — v0.10.0 feedback batch (5 items) ✅ DONE (verified green · signed)
 
 **APK:** `github.com/aucksy/bragbuddy/releases/download/v0.11.0/BragBuddy-v0.11.0.apk` (signed; `.aab`

@@ -8,6 +8,8 @@ import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
+import com.bragbuddy.app.data.local.OUTSIDE_PROJECT
+import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.project.ProjectRepository
 import com.bragbuddy.app.ui.home.OUTSIDE_PROJECT_LABEL
 import com.bragbuddy.app.ui.home.ProjectBullets
@@ -21,6 +23,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -59,7 +62,7 @@ data class PillarDetail(
 class PillarDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: EntryRepository,
-    frameworkStore: FrameworkStore,
+    private val frameworkStore: FrameworkStore,
     private val projects: ProjectRepository,
 ) : ViewModel() {
 
@@ -127,11 +130,43 @@ class PillarDetailViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PillarDetail(found = true))
 
+    /** Goal-area folders only — valid "Move to" targets for the entry-detail picker (a behaviour-area
+     *  folder isn't a placement slot; moving there would strand the entry in the catch-all). */
+    val folders: StateFlow<List<ProjectEntity>> = combine(
+        projects.observeActive(), frameworkStore.framework,
+    ) { fs, fw ->
+        val goalNames = fw.pillars.filter { it.kind != PillarKind.BEHAVIOUR }.map { it.name.trim().lowercase() }.toSet()
+        fs.filter { it.goalArea.trim().lowercase() in goalNames }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     fun editText(id: Long, text: String) = repository.replaceText(id, text)
 
     fun delete(id: Long) = repository.delete(id)
 
     fun deleteMany(ids: Collection<Long>) = repository.deleteMany(ids.toList())
+
+    fun setExtra(id: Long, value: Boolean) = repository.setExtra(id, value)
+
+    fun setPinned(id: Long, value: Boolean) = repository.setPinned(id, value)
+
+    /** Move a filed entry into [projectName] (an existing folder); resolves its goal area. No AI re-call. */
+    fun reassignToProject(entry: EntryEntity, projectName: String) = viewModelScope.launch {
+        val folder = folders.value.firstOrNull { it.name.equals(projectName, ignoreCase = true) }
+        val goalArea = folder?.goalArea ?: bestGoalArea(entry.goalCategory)
+        if (folder == null) projects.create(projectName, goalArea)
+        repository.reassign(entry.id, projectName, goalArea)
+    }
+
+    /** Move a filed entry to "Outside project", kept under its best goal area. */
+    fun reassignOutside(entry: EntryEntity) = viewModelScope.launch {
+        repository.reassign(entry.id, OUTSIDE_PROJECT, bestGoalArea(entry.goalCategory))
+    }
+
+    private suspend fun bestGoalArea(current: String?): String {
+        val areas = frameworkStore.framework.first().pillars.filter { it.kind != PillarKind.BEHAVIOUR }
+        return current?.takeIf { c -> areas.any { it.name.equals(c, ignoreCase = true) } }
+            ?: areas.firstOrNull()?.name ?: "Performance Goals"
+    }
 
     /** Add a project folder under this pillar's goal area (goal / growth pillars only). */
     fun createFolder(name: String) {

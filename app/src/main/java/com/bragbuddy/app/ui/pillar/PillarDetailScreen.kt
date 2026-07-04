@@ -53,7 +53,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -61,7 +63,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.ui.capture.CaptureActivity
 import com.bragbuddy.app.ui.common.EntryBulletRow
+import com.bragbuddy.app.ui.entry.EntryDetailSheet
 import com.bragbuddy.app.ui.home.OUTSIDE_PROJECT_LABEL
+import com.bragbuddy.app.ui.home.exportBehaviourBlock
+import com.bragbuddy.app.ui.home.exportFolderBlock
+import com.bragbuddy.app.ui.home.exportGoalBlock
 import com.bragbuddy.app.ui.home.ProjectBullets
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
@@ -83,12 +89,30 @@ fun PillarDetailScreen(
 ) {
     val palette = BragBuddyTheme.palette
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val detail by viewModel.detail.collectAsStateWithLifecycle()
+    val folders by viewModel.folders.collectAsStateWithLifecycle()
     val hue = pillarColor(detail.colorIndex)
 
     var editTarget by remember { mutableStateOf<EntryEntity?>(null) }
     var deleteTarget by remember { mutableStateOf<EntryEntity?>(null) }
+    var detailEntry by remember { mutableStateOf<EntryEntity?>(null) }
     var showAddProject by remember { mutableStateOf(false) }
+
+    fun copySection() {
+        val text = when {
+            detail.singleFolder -> detail.projects.firstOrNull()?.let { exportFolderBlock(it) }.orEmpty()
+            detail.isBehaviour -> exportBehaviourBlock(detail.name, detail.evidence)
+            else -> exportGoalBlock(detail.name, detail.projects)
+        }
+        val hasBody = text.contains("•")
+        if (!hasBody) {
+            android.widget.Toast.makeText(context, "Nothing to copy yet", android.widget.Toast.LENGTH_SHORT).show()
+        } else {
+            clipboard.setText(AnnotatedString(text))
+            android.widget.Toast.makeText(context, "Copied — paste into Word or Docs", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Collapsible groups (default collapsed). Selection mode forces everything open so bullets are
     // reachable to select.
@@ -163,7 +187,22 @@ fun PillarDetailScreen(
                     style = MaterialTheme.typography.headlineSmall,
                     color = palette.text1,
                     fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
                 )
+                if (detail.found) {
+                    Text(
+                        "Copy",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = palette.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(palette.primarySoft)
+                            .clickable { copySection() }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                    )
+                }
             }
         }
         Spacer(Modifier.height(Spacing.s3))
@@ -234,6 +273,7 @@ fun PillarDetailScreen(
                                             onEdit = { editTarget = entry },
                                             onRedo = { redo(entry) },
                                             onDelete = { deleteTarget = entry },
+                                            onTap = { detailEntry = entry },
                                         )
                                     }
                                 }
@@ -265,6 +305,7 @@ fun PillarDetailScreen(
                                     onEdit = { editTarget = entry },
                                     onRedo = { redo(entry) },
                                     onDelete = { deleteTarget = entry },
+                                    onTap = { detailEntry = entry },
                                 )
                             }
                         }
@@ -301,6 +342,7 @@ fun PillarDetailScreen(
                                             onEdit = { editTarget = entry },
                                             onRedo = { redo(entry) },
                                             onDelete = { deleteTarget = entry },
+                                            onTap = { detailEntry = entry },
                                         )
                                     }
                                     if (!project.isOutside) {
@@ -346,6 +388,19 @@ fun PillarDetailScreen(
             palette = palette,
             onConfirm = { viewModel.createFolder(it); showAddProject = false },
             onDismiss = { showAddProject = false },
+        )
+    }
+    detailEntry?.let { target ->
+        EntryDetailSheet(
+            entry = target,
+            folders = folders,
+            onEdit = { detailEntry = null; editTarget = target },
+            onMoveToProject = { viewModel.reassignToProject(target, it) },
+            onMoveOutside = { viewModel.reassignOutside(target) },
+            onToggleExtra = { v -> viewModel.setExtra(target.id, v); detailEntry = target.copy(isExtra = v) },
+            onTogglePin = { v -> viewModel.setPinned(target.id, v); detailEntry = target.copy(isPinned = v) },
+            onDelete = { detailEntry = null; deleteTarget = target },
+            onDismiss = { detailEntry = null },
         )
     }
     if (showBulkDelete) {

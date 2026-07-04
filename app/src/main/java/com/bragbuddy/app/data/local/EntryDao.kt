@@ -35,6 +35,14 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE id = :id")
     suspend fun getById(id: Long): EntryEntity?
 
+    /** Toggle the ★ Standout flag (Phase 4 entry detail). Targeted update — can't race a re-file. */
+    @Query("UPDATE entries SET isExtra = :value WHERE id = :id")
+    suspend fun setExtra(id: Long, value: Boolean)
+
+    /** Toggle the pin-for-summary flag (Phase 4 entry detail; consumed by the Phase 5 summary). */
+    @Query("UPDATE entries SET isPinned = :value WHERE id = :id")
+    suspend fun setPinned(id: Long, value: Boolean)
+
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteById(id: Long)
 

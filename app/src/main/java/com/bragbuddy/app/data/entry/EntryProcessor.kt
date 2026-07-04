@@ -77,6 +77,9 @@ class EntryProcessor @Inject constructor(
         if (clean.isEmpty()) return
         mutex.withLock {
             val e = entryDao.getById(id) ?: return@withLock
+            // A manually-set ★ Standout is the user's call and must survive an edit (mirrors isPinned,
+            // which is already preserved). Re-apply it after the AI re-file, which would otherwise reset it.
+            val keepExtra = e.isExtra
             val reset = e.copy(
                 rawTranscript = clean,
                 status = EntryStatus.RAW,
@@ -94,8 +97,10 @@ class EntryProcessor @Inject constructor(
                 suggestedProjects = emptyList(),
             )
             entryDao.update(reset)
-            runCatching { refileSingle(reset, combineSingle) }
-                .onFailure { runCatching { entryDao.update(reset.copy(status = EntryStatus.FAILED)) } }
+            runCatching {
+                refileSingle(reset, combineSingle)
+                if (keepExtra) entryDao.setExtra(reset.id, true)
+            }.onFailure { runCatching { entryDao.update(reset.copy(status = EntryStatus.FAILED)) } }
         }
     }
 
@@ -130,6 +135,41 @@ class EntryProcessor @Inject constructor(
             )
         }
     }
+
+    /**
+     * Move a FILED entry to a different project + goal area (Phase 4 entry detail → "Move"). Like
+     * [resolve] but works on an already-PROCESSED row too (not just INBOX/FAILED). No AI re-call — the
+     * cleaned bullet, behaviours and impact are kept; only the placement changes and it stays
+     * PROCESSED. Skips a still-processing RAW row (let the categorizer finish first). A named project
+     * becomes the [anchorProject] so a later edit re-files back into the same folder.
+     */
+    suspend fun reassign(id: Long, project: String, goalArea: String) {
+        mutex.withLock {
+            val e = entryDao.getById(id) ?: return@withLock
+            if (e.status == EntryStatus.RAW) return@withLock
+            val clean = project.trim()
+            val isOutside = clean.isBlank() || clean.equals(OUTSIDE_PROJECT, ignoreCase = true)
+            val area = goalArea.trim().ifBlank { e.goalCategory?.takeIf { it.isNotBlank() } ?: INBOX_LABEL }
+            entryDao.update(
+                e.copy(
+                    status = EntryStatus.PROCESSED,
+                    project = if (isOutside) OUTSIDE_PROJECT else clean,
+                    goalCategory = area,
+                    anchorProject = if (isOutside) e.anchorProject else clean,
+                    confidence = 1.0,
+                    suggestedProjects = emptyList(),
+                ),
+            )
+        }
+    }
+
+    /**
+     * Toggle the ★ Standout / pin flags **under the processing lock** so a targeted column write can't
+     * be clobbered by a concurrent full-row re-file (reassign/resolve/replace read-modify-write the
+     * whole row; serialising here means the flag and the placement never race to a lost update).
+     */
+    suspend fun setExtra(id: Long, value: Boolean) = mutex.withLock { entryDao.setExtra(id, value) }
+    suspend fun setPinned(id: Long, value: Boolean) = mutex.withLock { entryDao.setPinned(id, value) }
 
     /** Drain every entry still awaiting processing (called on launch after an interrupted run). */
     suspend fun processPending() {

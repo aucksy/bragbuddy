@@ -76,6 +76,21 @@ class EntryRepository @Inject constructor(
         appScope.launch { processor.resolve(id, project, goalArea) }
     }
 
+    /** Move a filed entry to another project + goal area (Phase 4 entry detail). No AI re-call. */
+    fun reassign(id: Long, project: String, goalArea: String) {
+        appScope.launch { processor.reassign(id, project, goalArea) }
+    }
+
+    /** Toggle the ★ Standout flag on an entry (Phase 4 entry detail). Serialised in the processor. */
+    fun setExtra(id: Long, value: Boolean) {
+        appScope.launch { processor.setExtra(id, value) }
+    }
+
+    /** Toggle the pin-for-summary flag on an entry (Phase 4 entry detail). Serialised in the processor. */
+    fun setPinned(id: Long, value: Boolean) {
+        appScope.launch { processor.setPinned(id, value) }
+    }
+
     /** Delete an entry outright (Home → Delete). Siblings of a split transcript are independent. */
     fun delete(id: Long) {
         appScope.launch { entryDao.deleteById(id) }

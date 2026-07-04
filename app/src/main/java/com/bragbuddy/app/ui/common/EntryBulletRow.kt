@@ -65,6 +65,7 @@ fun EntryBulletRow(
     isSelected: Boolean = false,
     onToggleSelect: () -> Unit = {},
     onLongPress: () -> Unit = {},
+    onTap: () -> Unit = {},
 ) {
     val palette = BragBuddyTheme.palette
     val date = DateUtils.getRelativeTimeSpanString(
@@ -77,7 +78,7 @@ fun EntryBulletRow(
             .background(if (isSelected) palette.primarySoft else palette.surface)
             .border(1.dp, if (isSelected) palette.primary.copy(alpha = 0.5f) else palette.border, RoundedCornerShape(Radii.lg))
             .combinedClickable(
-                onClick = { if (selectionMode) onToggleSelect() },
+                onClick = { if (selectionMode) onToggleSelect() else onTap() },
                 onLongClick = onLongPress,
             )
             .padding(start = Spacing.card, top = Spacing.card, bottom = Spacing.card, end = 4.dp),
