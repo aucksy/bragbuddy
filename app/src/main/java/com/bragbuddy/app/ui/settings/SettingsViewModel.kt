@@ -64,6 +64,8 @@ class SettingsViewModel @Inject constructor(
 
     fun setJobRole(role: String) = viewModelScope.launch { settingsStore.setJobRole(role) }
 
+    fun setReviewYearStartMonth(month: Int) = viewModelScope.launch { settingsStore.setReviewYearStartMonth(month) }
+
     fun createProject(name: String, goalArea: String) = viewModelScope.launch {
         val area = goalArea.ifBlank { goalAreas.value.firstOrNull() ?: "Performance Goals" }
         projectRepository.create(name, area)

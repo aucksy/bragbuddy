@@ -161,6 +161,15 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(Spacing.s4))
 
+            // Review year — windows the summary's mid-year / year-end periods (Phase 5).
+            ReviewYearCard(
+                startMonth = settings.reviewYearStartMonth,
+                palette = palette,
+                onPick = { viewModel.setReviewYearStartMonth(it) },
+            )
+
+            Spacer(Modifier.height(Spacing.s4))
+
             // Your role — AI context (never the company name)
             RoleCard(
                 savedRole = settings.jobRole,
@@ -296,6 +305,63 @@ fun SettingsScreen(
             dismissButton = { TextButton(onClick = { deleteFolder = null }) { Text("Cancel") } },
             title = { Text("Delete “${p.name}”?", color = palette.text1) },
             text = { Text("Removes the folder. Entries already filed to it stay in your record.", color = palette.text3) },
+            containerColor = palette.surface,
+        )
+    }
+}
+
+private fun monthName(month: Int): String =
+    java.time.Month.of(month.coerceIn(1, 12))
+        .getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
+
+@Composable
+private fun ReviewYearCard(startMonth: Int, palette: BragPalette, onPick: (Int) -> Unit) {
+    var showPicker by remember { mutableStateOf(false) }
+    Card(palette) {
+        Text("Review year", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+        Text(
+            "When your appraisal year starts. Sets what “mid-year” and “year-end” summaries cover.",
+            style = MaterialTheme.typography.bodySmall,
+            color = palette.text3,
+        )
+        Spacer(Modifier.height(Spacing.s3))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Radii.md))
+                .background(palette.surface2)
+                .clickable { showPicker = true }
+                .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Starts in", style = MaterialTheme.typography.bodyMedium, color = palette.text2, modifier = Modifier.weight(1f))
+            Text(monthName(startMonth), style = MaterialTheme.typography.titleMedium, color = palette.primary)
+        }
+    }
+    if (showPicker) {
+        AlertDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showPicker = false }) { Text("Cancel") } },
+            title = { Text("Review year starts in", color = palette.text1) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    (1..12).forEach { m ->
+                        val selected = m == startMonth
+                        Text(
+                            monthName(m),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (selected) palette.primary else palette.text1,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(Radii.sm))
+                                .clickable { onPick(m); showPicker = false }
+                                .padding(horizontal = Spacing.s3, vertical = Spacing.s3),
+                        )
+                    }
+                }
+            },
             containerColor = palette.surface,
         )
     }

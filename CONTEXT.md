@@ -122,6 +122,20 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     enriched with every category's **sub-folder names as AI context** (placement stays goal-area only).
     **Number nudge rebuilt at the transcript** — record a 2nd clip (or type) → appended → AI cleans the
     combined text (replaced the post-save nudge that silently skipped on spoken number-words).
+  - `v0.13.0` — **Phase 5 · Running rollup + summary** (the point of the app). A maintained per-entry
+    **rollup projection** (`data/rollup/`) kept in step **incrementally** under the `EntryProcessor`
+    mutex on every mutation (file/edit/move/resolve/★/**delete**), + a launch **reconcile** self-heal
+    that seeds it for the upgrade — so the summary reads a bounded rollup, never re-scanning the log.
+    On-demand **summary** via the baked PART B prompt / `generateSummary` (strong slug
+    `openai/gpt-oss-120b`, re-verified live) → the design's **Summary screen** (`ui/summary/`, replacing
+    the placeholder): Generate sheet (configurable review-year windowed period + length picker),
+    pillar-coloured doc, routine `×N` rolled-up insets, Pinned chip, promote/demote, **Regenerate only
+    when the rollup changed** (cached per period+length; each fresh gen metered via `UsageMeter`), calm
+    set-aside panel, Copy all/section. Review-year-start setting added. Room stays **v3** (rollup +
+    cached summaries persist via DataStore). Pre-tag 5-dimension review: compile+integrity clean; 2 MED
+    (sheet Regenerate bypassed the staleness guard → guard moved into `generate()`; `_generating`
+    re-entrancy race → flag set synchronously before launch) + 1 NOTE (length-dependent highlight cap)
+    fixed; fixes re-compile-checked.
   - `v0.12.0` — **Phase 4 · Edit, reassign, copy-out.** **Tap an entry → detail sheet**
     (`ui/entry/EntryDetailSheet.kt`, custom scrim sheet): raw transcript + cleaned bullet + chips, with
     **Edit / Move (reassign, no AI re-call) / ★ Standout toggle / Pin toggle / Delete** — from Home
@@ -153,16 +167,15 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     no number + richer copy + inline **"See an example"** (weak→strong). Unique category/project names
     validated in the editor (Save gated) + DAO `IGNORE`/`runCatching` backstop against unique-index
     crashes. **Room stays v3**; no schema change.
-- **Next: Phase 5 — Running rollup + summary** (the actual point of the app). Maintain a running
-  **rollup** as entries land (impact/routine → a deterministic, incremental update — never re-scan the
-  whole log); feed the rollup (+ pinned items) to the **summary-generator** prompt (PART B, already
-  baked in `AiPrompts.summary` + `generateSummary` behind the seam, currently unexercised) → a curated,
-  length-capped **summary** + a "set aside" note, with **pin / promote / demote** and **Regenerate**
-  (only when the rollup changed; view-cached is free; meter each fresh generation via the existing
-  `UsageMeter`). The Summary tab is still a placeholder; the design's Summary screen (§ "Copy all /
-  Copy section", Pinned chip, set-aside panel) is the build target. `isPinned` toggle already ships
-  (v0.12.0). *Testable: generate a crisp summary from logged entries; the rollup updates without
-  re-reading the whole record.*
+- **Next: Phase 6 — Backup + restore** (Google Drive; Build Brief § "Backup" + Design System §6). Back
+  up the structured data (Room + DataStore: entries, projects, framework, settings, rollup, cached
+  summaries) so it restores on reinstall / a new phone, **plus** export the human-readable appraisal
+  doc to a visible Drive folder. Two toggles with live sizes (transcriptions-only default vs +voice
+  notes), a backup-health indicator, a manual-export fallback. Reuse the sibling apps' native Drive
+  pattern (ColorCloset/NotDigest) — needs an owner-added `com.bragbuddy.app` Android OAuth client +
+  release SHA-1 in the shared Google project. *Testable: reinstall and restore works; status visible.*
+  (BragBuddy ships as a direct signed APK, not Play; the `USE_EXACT_ALARM` Play restriction is a
+  pre-Play-submission item, not now.)
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
   round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
   errors). Fix from the CI log via the **public** GitHub API (unauthenticated is enough for run status

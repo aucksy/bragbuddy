@@ -52,6 +52,9 @@ class MainActivity : ComponentActivity() {
 
         // Categorize anything left RAW by an interrupted run (never lose an entry).
         entryRepository.processPending()
+        // Rebuild/repair the running rollup from processed entries (seeds it on the v0.13 upgrade and
+        // self-heals any drift). Off the summary path; the summary itself only ever reads the rollup.
+        entryRepository.reconcileRollup()
 
         setContent {
             BragBuddyTheme {

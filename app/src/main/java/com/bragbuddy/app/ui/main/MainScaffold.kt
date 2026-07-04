@@ -29,7 +29,6 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,6 +51,7 @@ import com.bragbuddy.app.ui.capture.CaptureActivity
 import com.bragbuddy.app.ui.framework.FrameworkScreen
 import com.bragbuddy.app.ui.home.HomeScreen
 import com.bragbuddy.app.ui.inbox.InboxScreen
+import com.bragbuddy.app.ui.summary.SummaryScreen
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 
 private enum class HomeTab(val label: String) { HOME("Home"), SUMMARY("Summary"), FRAMEWORK("Framework"), INBOX("Inbox") }
@@ -84,7 +84,7 @@ fun MainScaffold(
                 onReviewInbox = { tab = HomeTab.INBOX },
                 contentBottomPadding = contentBottom,
             )
-            HomeTab.SUMMARY -> PlaceholderTab("Summary", "Your review-ready write-up lands here.", Icons.Outlined.Description, contentBottom)
+            HomeTab.SUMMARY -> SummaryScreen(contentBottomPadding = contentBottom, onOpenSettings = onOpenSettings)
             HomeTab.FRAMEWORK -> FrameworkScreen(contentBottomPadding = contentBottom)
             HomeTab.INBOX -> InboxScreen(contentBottomPadding = contentBottom)
         }
@@ -194,27 +194,5 @@ private fun TabItem(
             maxLines = 1,
             softWrap = false,
         )
-    }
-}
-
-@Composable
-private fun PlaceholderTab(title: String, subtitle: String, icon: ImageVector, bottomPadding: androidx.compose.ui.unit.Dp) {
-    val palette = BragBuddyTheme.palette
-    Box(Modifier.fillMaxSize().padding(bottom = bottomPadding, start = 32.dp, end = 32.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                Modifier.size(64.dp).clip(RoundedCornerShape(20.dp)).background(palette.primarySoft),
-                contentAlignment = Alignment.Center,
-            ) { Icon(icon, null, tint = palette.primary, modifier = Modifier.size(30.dp)) }
-            Spacer(Modifier.height(12.dp))
-            Text(title, style = MaterialTheme.typography.titleLarge, color = palette.text1)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = palette.text3,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
-        }
     }
 }

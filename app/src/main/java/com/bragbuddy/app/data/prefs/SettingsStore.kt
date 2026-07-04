@@ -33,6 +33,9 @@ data class AppSettings(
     val jobRole: String = "",
     /** Set true once the first-run "what's your role?" prompt has been answered or dismissed. */
     val rolePromptDismissed: Boolean = false,
+    /** The month (1–12) the user's appraisal/review year starts on. Windows the summary period
+     *  (mid-year = first 6 months, year-end = full year). Default January. */
+    val reviewYearStartMonth: Int = 1,
 ) {
     /** Voice transcription is cloud Whisper (Groq) — the only engine. It runs when a key is set;
      *  without a key, voice prompts the user to add one (on-device STT was removed — too inaccurate). */
@@ -58,6 +61,7 @@ class SettingsStore @Inject constructor(
             groqApiKey = p[KEY_GROQ_KEY] ?: "",
             jobRole = p[KEY_JOB_ROLE] ?: "",
             rolePromptDismissed = p[KEY_ROLE_PROMPT_DISMISSED] ?: false,
+            reviewYearStartMonth = (p[KEY_REVIEW_YEAR_START] ?: 1).coerceIn(1, 12),
         )
     }
 
@@ -87,6 +91,9 @@ class SettingsStore @Inject constructor(
     suspend fun dismissRolePrompt() =
         store.edit { it[KEY_ROLE_PROMPT_DISMISSED] = true }
 
+    suspend fun setReviewYearStartMonth(month: Int) =
+        store.edit { it[KEY_REVIEW_YEAR_START] = month.coerceIn(1, 12) }
+
     private companion object {
         val KEY_REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
         val KEY_REMINDER_HOUR = intPreferencesKey("reminder_hour")
@@ -95,5 +102,6 @@ class SettingsStore @Inject constructor(
         val KEY_GROQ_KEY = stringPreferencesKey("groq_api_key")
         val KEY_JOB_ROLE = stringPreferencesKey("job_role")
         val KEY_ROLE_PROMPT_DISMISSED = booleanPreferencesKey("role_prompt_dismissed")
+        val KEY_REVIEW_YEAR_START = intPreferencesKey("review_year_start_month")
     }
 }

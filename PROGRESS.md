@@ -12,6 +12,81 @@ current code — that is the context, not chat history.
 
 ---
 
+## Status: v0.13.0 — Phase 5 · Running rollup + summary ✅ DONE (signed · tag-driven CI)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.13.0/BragBuddy-v0.13.0.apk` (signed; `.aab`
+alongside). Build-Brief Phase 5: *"maintain the rollup on each entry (impact/routine → deterministic
+update); the summary-generator prompt → a curated, length-capped summary + 'set aside' list, with pin /
+promote / demote."* The actual point of the app. Scope locked via AskUserQuestion: **period =
+configurable review-year start** (windowed mid-year / year-end); **per-line reword = deferred** (whole-
+summary Regenerate only); **set-aside = calm explanatory panel** (no per-item restore — the AI returns
+categorical notes, not restorable items; mockup's "tap to add back" flagged as a deviation). Summary
+model slug `openai/gpt-oss-120b` **re-verified live on Groq** (Production tier) + fallback
+`llama-3.3-70b-versatile`. Room stays **v3** (rollup + cached summaries persist via DataStore, no migration).
+
+### v0.13.0 — what was built (`versionCode 14`)
+1. **The running rollup** (`data/rollup/`) — a maintained, per-entry compact **projection** of the
+   filed record, kept in sync **incrementally** so the summary never re-scans the raw log:
+   - `RollupModels.kt` — `RollupItem` (id · timestamp · goalArea · project · bullet · metric · impact ·
+     routine/type · isExtra · demonstrates) + the aggregate view types.
+   - `RollupStore.kt` — DataStore-JSON store; `put`/`remove` (upsert/reverse **by id**) / `replaceAll`.
+   - `RollupAggregator.kt` (pure, unit-tested) — `EntryEntity.toRollupItem()` (the single "is this a
+     filed contribution?" gate), `aggregate(items, window, framework, cap)` → per-area ranked
+     highlights + routine tallies + cumulative metrics + behaviour evidence, `serialize()` → the
+     bounded `{{ROLLUP}}` block, `signature()` (stable `String.hashCode` over the whole model input).
+   - `ReviewPeriod.kt` (pure, unit-tested) — `ReviewPeriods.windowFor(period, startMonth)` (mid-year =
+     first 6 months, year-end = full review year, from a configurable start month) + `SummaryLength`
+     (Brief/One page/Detailed → `{{LENGTH_CAP}}` text **and** a length-dependent `highlightCap`).
+   - **Wired into `EntryProcessor` under its existing mutex** at every mutation: process (first + each
+     sibling by captured insert id), refileSingle, replace (reset removes → refile re-adds → ★ re-sync),
+     resolve, reassign, setExtra (syncs); **setPinned does NOT** (pins are fed to the summary live).
+     **Delete/deleteMany now route through the processor** so a delete drops the rollup contribution.
+   - **Launch self-heal:** `reconcileRollup()` (MainActivity, after `processPending`) rebuilds the
+     rollup from PROCESSED entries — **seeds it for this upgrade** (existing entries predate the rollup)
+     and repairs any drift. Reads the bounded log ONCE at launch (off the summary path); the summary
+     itself only ever reads the rollup.
+2. **Summary generation + cache** (`data/summary/SummaryStore.kt`) — a generated summary is a **cached
+   artefact** keyed per (period + length), tagged with the **input signature** it was made from.
+   Viewing is free; **Regenerate calls the model only when the input changed** (signature differs);
+   each **fresh** generation is metered via the existing `UsageMeter` (built Phase 0, first used here).
+   Promote/demote reorders the cached draft **locally** (no model call), persisted with the same
+   signature so it doesn't self-mark stale.
+3. **The Summary screen** (`ui/summary/`, replacing the `MainScaffold` placeholder) — Design System §5:
+   a **Generate sheet** (custom scrim, per the veto-freeze rule — never a Material `ModalBottomSheet`)
+   with the Period segmented control + computed date range + entry count + the Length picker; the
+   generated **document** (pillar-coloured sections, achievement bullets, routine work as muted
+   `×N` rolled-up insets, behaviour evidence, growth); a **Pinned chip** on lines from pinned entries;
+   per-line **promote/demote**; a **Regenerate** that only fires when stale ("Up to date" otherwise);
+   a calm collapsible **Set-aside** panel; **Copy all / Copy section** (pure `ui/summary/SummaryExport.kt`,
+   unit-tested) → clipboard + toast. States: no-key → open Settings; empty period; not-generated →
+   Generate CTA; generating → shimmer overlay.
+4. **Review-year start setting** (`SettingsStore.reviewYearStartMonth` + a "Review year" card in
+   Settings) — windows the summary's mid-year/year-end periods (the creator's chosen period model).
+
+### Adversarial review before tagging (compile + logic; 5-dimension fan-out, each finding verified)
+Ran a parallel compile + rollup + summary-VM + UI + integrity review, then adversarially verified every
+finding. **Compile & integrity dimensions clean.** 2 MED + 1 NOTE survived verification — all fixed,
+and the fixes re-compile-checked (the v0.11.0 lesson):
+- **[MED · fixed]** the Generate **sheet's Regenerate button called the model unconditionally** — an
+  up-to-date cached summary could be regenerated (wasted metered call). Fixed: the staleness guard now
+  lives in `generate()` itself (`cached && !isStale → "Already up to date", no call`), protecting BOTH
+  the sheet and the status-chip paths; the sheet button reads "Up to date" when fresh.
+- **[MED · fixed]** `_generating` **re-entrancy race** — the guard was checked before `launch` but set
+  after a suspend point, so a fast double-tap launched two generations. Fixed: the flag is set
+  **synchronously before `launch`** (+ `try/finally` reset).
+- **[NOTE · fixed]** "Detailed" length was silently bounded by the default cap 15. Fixed: `SummaryLength`
+  now carries a length-dependent `highlightCap` (Brief 8 / One page 15 / Detailed 60), passed to
+  `aggregate()`, so the knob changes the real model input, not just the prompt wording.
+- **I also caught pre-review:** a `s?.phase == READY` smart-cast that wouldn't compile (`s.period` on a
+  nullable) → restructured the phase dispatch to null-check first.
+
+### Tests
+`RollupAggregatorTest` (projection gate, windowing, ranking + cap, routine tally, behaviour evidence,
+serialize, signature stability), `ReviewPeriodTest` (configurable-start windowing, mid vs year-end),
+`SummaryExportTest` (plain-text copy incl. set-aside excluded from the pasted doc).
+
+---
+
 ## Status: v0.12.0 — Phase 4 · Edit, reassign, copy-out ✅ DONE (verified green · signed · first-try CI)
 
 **APK:** `github.com/aucksy/bragbuddy/releases/download/v0.12.0/BragBuddy-v0.12.0.apk` (signed; `.aab`
@@ -634,38 +709,33 @@ The full PRD and a revised brief landed after the initial scaffold. Reviewed aga
 
 ---
 
-## Next — Phase 5: Running rollup + summary (Build Brief phase list) — the actual point of the app
-Phase 4 landed edit / reassign / copy-out (a usable v1). Phase 5 = the payoff: an **on-demand,
-curated summary** generated from a **running rollup**, not a full re-scan of the log.
-- **Running rollup:** maintain a compact, per-goal-area rollup as entries land — a **deterministic,
-  incremental** update keyed on impact/routine (routine work accumulates into single counted lines;
-  notable one-offs kept), so the summary step never re-reads the whole record (Build Brief § "the
-  record vs. the summary").
-- **Summary generation:** feed the rollup **+ pinned items** to the already-baked PART B prompt
-  (`AiPrompts.summary` + `AiProvider.generateSummary` — implemented behind the seam but **never
-  exercised yet**; strong slug `openai/gpt-oss-120b` in `AiConfig`) → a curated, length-capped summary
-  (top wins per pillar, routine rolled up with counts, behaviour evidence, growth) + a **"set aside"**
-  note. Build the design's **Summary screen** (length picker, Pinned chip, set-aside panel, "Copy all /
-  Copy section" — the v0.12.0 DocExport serializer + pin toggle are the groundwork).
-- **Controls + guardrails:** **pin** (toggled since v0.12.0) / **promote-demote** / **Regenerate** —
-  cache per period+length; regenerate only when the rollup changed (viewing a cached summary is free);
-  meter each **fresh** generation via the existing `UsageMeter` (built Phase 0, still unincremented).
-  *Testable: generate a crisp summary from logged entries; the rollup updates without re-reading.*
+## Next — Phase 6: Backup + restore (Build Brief phase list)
+Phase 5 landed the running rollup + on-demand summary (the actual point of the app). Phase 6 =
+**Google Drive backup** (Build Brief § "Backup" + Design System §6):
+- **Back up the structured data** (Room + DataStore: entries, projects, framework, settings, the
+  rollup, cached summaries) so nothing is lost and it restores on reinstall / a new phone; **plus
+  export the human-readable appraisal document** to a visible Drive folder (openable from a computer).
+- **Two toggles with live sizes shown** (Design System §6): *Transcriptions only* (default, small,
+  always on) vs *Transcriptions + voice notes* (opt-in, large — audio in Drive). Transcriptions are
+  always backed up; the toggle only governs whether audio is included.
+- **Backup-health indicator** ("Backed up ✓ / ⚠️ reconnect"), a **manual export** hard fallback, and
+  restore-on-reinstall. Local data stays the source of truth; Drive is redundancy.
+- **Sibling reuse:** ColorCloset + NotDigest already have native Google Drive backup gated on an
+  Android OAuth client (web client id / release SHA-1) in the shared Google project — reuse that
+  pattern here (add a `com.bragbuddy.app` Android OAuth client + release SHA-1). *Testable: reinstall
+  and restore works; backup status is visible.*
 
-**Note:** the Summary tab is still a placeholder in `MainScaffold`; the design's header "Summarise"
-action is deferred to here. `generateSummary`/`SummaryRequest`/`SummaryResult` + `UsageMeter` already
-exist — Phase 5 wires them, adds the rollup store + the Summary UI.
+**Note:** BragBuddy currently ships as a **direct signed APK** (not Play). `USE_EXACT_ALARM` in the
+manifest is Play-restricted — revisit before any Play submission (drop to `SCHEDULE_EXACT_ALARM` +
+settings redirect on API 33+). No Play wiring is in scope until the creator asks.
 
-**Groundwork already in place for Phase 3:** `EntryEntity` carries every field (bullet, project,
-goalCategory, demonstrates, isExtra, impact, routine/routineType, metric, confidence,
-suggestedProjects); `EntryDao.observeIn`/`observeCountIn` exist; the Framework editor + `ProjectDao`
-exist (no project-creation UI yet — projects are currently always empty, so most work is
-Outside-project/Inbox until Phase 3/4 lets the user add projects). The `EntryProcessor` mutex + the
-guarded `process()` already make an Inbox-resolve retry safe.
+**Groundwork already in place for Phase 5 (now shipped):** the rollup (`data/rollup/`), the summary
+cache (`data/summary/SummaryStore`), and the Summary UI (`ui/summary/`) all exist; `UsageMeter` is now
+incremented on fresh generations; the review-year-start setting drives the period windows.
 
-**Creator setup (one-time, if not done in Phase 2):** create the **OpenRouter key** at openrouter.ai
-→ Keys (`sk-or-v1-…`), paste it in **Settings → AI brain (OpenRouter)** — on-device only, separate
-from the Groq transcription key. Categorization is a no-op (entries wait in Inbox) until it's set.
+**Creator setup (one-time):** the **Groq key** (`gsk_…`, Settings → AI brain) powers categorizer +
+Cloud Whisper **and now the summary generator** — one key for all three, on-device only. Nothing new
+to configure for Phase 5. (For Phase 6, the Google Drive OAuth client is the owner-only step.)
 
 ### Repo / hosting (DONE)
 - Repo live: **github.com/aucksy/bragbuddy** (`main` + tag `v0.1.0`). Two workflows: `android-debug`

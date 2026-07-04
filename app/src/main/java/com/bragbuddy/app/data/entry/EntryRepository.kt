@@ -33,6 +33,9 @@ class EntryRepository @Inject constructor(
     fun observeInboxCount(): Flow<Int> =
         entryDao.observeCountIn(listOf(EntryStatus.INBOX, EntryStatus.FAILED))
 
+    /** Entries pinned "always include" — fed live to the summary generator (Phase 5). */
+    fun observePinned(): Flow<List<EntryEntity>> = entryDao.observePinned()
+
     /** Durably store what the user said/typed, then categorize in the background. Returns the row id.
      *  [anchorProject] (folder-tap) fixes the project for this capture. */
     suspend fun capture(
@@ -66,6 +69,11 @@ class EntryRepository @Inject constructor(
         appScope.launch { processor.reprocessFailed() }
     }
 
+    /** Rebuild/repair the running rollup from processed entries (called on launch). */
+    fun reconcileRollup() {
+        appScope.launch { processor.reconcileRollup() }
+    }
+
     /** Retry one failed entry on demand (from the Inbox). */
     fun retry(id: Long) {
         appScope.launch { processor.process(id) }
@@ -91,15 +99,16 @@ class EntryRepository @Inject constructor(
         appScope.launch { processor.setPinned(id, value) }
     }
 
-    /** Delete an entry outright (Home → Delete). Siblings of a split transcript are independent. */
+    /** Delete an entry outright (Home → Delete). Routed through the processor so the running rollup
+     *  contribution is dropped too (under its lock). Siblings of a split transcript are independent. */
     fun delete(id: Long) {
-        appScope.launch { entryDao.deleteById(id) }
+        appScope.launch { processor.delete(id) }
     }
 
     /** Delete several entries at once (multi-select bulk delete). No-op on an empty selection. */
     fun deleteMany(ids: List<Long>) {
         if (ids.isEmpty()) return
-        appScope.launch { entryDao.deleteByIds(ids) }
+        appScope.launch { processor.deleteMany(ids) }
     }
 
     /**

@@ -13,6 +13,8 @@ import com.bragbuddy.app.data.local.OUTSIDE_PROJECT
 import com.bragbuddy.app.data.local.ProjectDao
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.SettingsStore
+import com.bragbuddy.app.data.rollup.RollupStore
+import com.bragbuddy.app.data.rollup.toRollupItem
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -41,12 +43,27 @@ class EntryProcessor @Inject constructor(
     private val frameworkStore: FrameworkStore,
     private val aiProvider: AiProvider,
     private val settings: SettingsStore,
+    private val rollupStore: RollupStore,
 ) {
 
     // Serialize all processing so two callers (capture's kick + a launch-time drain during a config
     // change) can never both claim the same row and double-insert its split siblings. Also friendlier
-    // to the free-tier rate limit — entries process one at a time.
+    // to the free-tier rate limit — entries process one at a time. Every running-rollup write also
+    // happens under this lock, so a targeted put/remove can't race a concurrent re-file (Phase 5).
     private val mutex = Mutex()
+
+    /**
+     * Keep the running rollup ([RollupStore]) in step with one row's current state — a filed
+     * contribution is put (upsert by id), anything else is removed. Called at every mutation point
+     * below, always under [mutex]. Best-effort: a rollup write must never break the entry write
+     * (the launch [reconcileRollup] repairs any gap), so it's wrapped in runCatching.
+     */
+    private suspend fun syncRollup(entry: EntryEntity) {
+        runCatching {
+            val item = entry.toRollupItem()
+            if (item != null) rollupStore.put(item) else rollupStore.remove(entry.id)
+        }
+    }
 
     /**
      * Process a single entry by id. Idempotent and safe to call from several places: it re-reads the
@@ -97,10 +114,22 @@ class EntryProcessor @Inject constructor(
                 suggestedProjects = emptyList(),
             )
             entryDao.update(reset)
+            // The row is RAW again (no placement) until re-filed — drop its stale rollup contribution;
+            // refileSingle re-adds the fresh one.
+            rollupStore.remove(reset.id)
             runCatching {
                 refileSingle(reset, combineSingle)
-                if (keepExtra) entryDao.setExtra(reset.id, true)
-            }.onFailure { runCatching { entryDao.update(reset.copy(status = EntryStatus.FAILED)) } }
+                if (keepExtra) {
+                    entryDao.setExtra(reset.id, true)
+                    // Re-apply the ★ into the rollup highlight (refileSingle synced with the AI's flag).
+                    entryDao.getById(reset.id)?.let { syncRollup(it) }
+                }
+            }.onFailure {
+                runCatching {
+                    entryDao.update(reset.copy(status = EntryStatus.FAILED))
+                    rollupStore.remove(reset.id)
+                }
+            }
         }
     }
 
@@ -121,18 +150,18 @@ class EntryProcessor @Inject constructor(
             val clean = project.trim()
             val isOutside = clean.isBlank() || clean.equals(OUTSIDE_PROJECT, ignoreCase = true)
             val area = goalArea.trim().ifBlank { e.goalCategory?.takeIf { it.isNotBlank() } ?: INBOX_LABEL }
-            entryDao.update(
-                e.copy(
-                    status = EntryStatus.PROCESSED,
-                    project = if (isOutside) OUTSIDE_PROJECT else clean,
-                    goalCategory = area,
-                    // A named project becomes the deterministic anchor (edit re-files here); Outside
-                    // keeps whatever anchor it had (usually none).
-                    anchorProject = if (isOutside) e.anchorProject else clean,
-                    confidence = 1.0,
-                    suggestedProjects = emptyList(),
-                ),
+            val updated = e.copy(
+                status = EntryStatus.PROCESSED,
+                project = if (isOutside) OUTSIDE_PROJECT else clean,
+                goalCategory = area,
+                // A named project becomes the deterministic anchor (edit re-files here); Outside
+                // keeps whatever anchor it had (usually none).
+                anchorProject = if (isOutside) e.anchorProject else clean,
+                confidence = 1.0,
+                suggestedProjects = emptyList(),
             )
+            entryDao.update(updated)
+            syncRollup(updated)
         }
     }
 
@@ -150,16 +179,16 @@ class EntryProcessor @Inject constructor(
             val clean = project.trim()
             val isOutside = clean.isBlank() || clean.equals(OUTSIDE_PROJECT, ignoreCase = true)
             val area = goalArea.trim().ifBlank { e.goalCategory?.takeIf { it.isNotBlank() } ?: INBOX_LABEL }
-            entryDao.update(
-                e.copy(
-                    status = EntryStatus.PROCESSED,
-                    project = if (isOutside) OUTSIDE_PROJECT else clean,
-                    goalCategory = area,
-                    anchorProject = if (isOutside) e.anchorProject else clean,
-                    confidence = 1.0,
-                    suggestedProjects = emptyList(),
-                ),
+            val updated = e.copy(
+                status = EntryStatus.PROCESSED,
+                project = if (isOutside) OUTSIDE_PROJECT else clean,
+                goalCategory = area,
+                anchorProject = if (isOutside) e.anchorProject else clean,
+                confidence = 1.0,
+                suggestedProjects = emptyList(),
             )
+            entryDao.update(updated)
+            syncRollup(updated)
         }
     }
 
@@ -168,8 +197,44 @@ class EntryProcessor @Inject constructor(
      * be clobbered by a concurrent full-row re-file (reassign/resolve/replace read-modify-write the
      * whole row; serialising here means the flag and the placement never race to a lost update).
      */
-    suspend fun setExtra(id: Long, value: Boolean) = mutex.withLock { entryDao.setExtra(id, value) }
+    suspend fun setExtra(id: Long, value: Boolean) = mutex.withLock {
+        entryDao.setExtra(id, value)
+        // The ★ flag rides in the rollup highlight, so refresh this row's contribution.
+        entryDao.getById(id)?.let { syncRollup(it) }
+    }
+
+    // Pin is NOT part of the rollup — pinned items are fed to the summary LIVE (a bounded query), so
+    // a pin toggle needs no rollup write; the summary screen's input signature picks it up directly.
     suspend fun setPinned(id: Long, value: Boolean) = mutex.withLock { entryDao.setPinned(id, value) }
+
+    /**
+     * Delete an entry and drop its rollup contribution (routed here from the repository so the running
+     * rollup can't be left stale by a raw DAO delete). Under the lock so it can't race a re-file.
+     */
+    suspend fun delete(id: Long) = mutex.withLock {
+        rollupStore.remove(id)
+        entryDao.deleteById(id)
+    }
+
+    /** Bulk delete (multi-select). Drops each rollup contribution, then removes the rows. */
+    suspend fun deleteMany(ids: List<Long>) = mutex.withLock {
+        ids.forEach { rollupStore.remove(it) }
+        entryDao.deleteByIds(ids)
+    }
+
+    /**
+     * Rebuild the running rollup from the current PROCESSED entries — the launch-time self-heal
+     * (also seeds it for the v0.13 upgrade, whose existing entries predate the rollup). This reads the
+     * bounded entry log ONCE, off the summary path, to build/repair the running state — the summary
+     * itself still only ever reads the rollup, never the log. Under the lock so no incremental write
+     * interleaves.
+     */
+    suspend fun reconcileRollup() = mutex.withLock {
+        runCatching {
+            val processed = entryDao.listByStatus(EntryStatus.PROCESSED)
+            rollupStore.replaceAll(processed.mapNotNull { it.toRollupItem() })
+        }
+    }
 
     /** Drain every entry still awaiting processing (called on launch after an interrupted run). */
     suspend fun processPending() {
@@ -253,11 +318,13 @@ class EntryProcessor @Inject constructor(
                     entryDao.update(entry.copy(status = EntryStatus.INBOX, confidence = 0.0))
                 } else {
                     // First result updates the captured row; extras become sibling rows.
-                    entryDao.update(entry.applyCategorized(result.entries.first(), p.anchor, p.anchorGoalArea))
+                    val firstRow = entry.applyCategorized(result.entries.first(), p.anchor, p.anchorGoalArea)
+                    entryDao.update(firstRow)
+                    syncRollup(firstRow)
                     result.entries.drop(1).forEach { extra ->
-                        entryDao.insert(
-                            entry.copy(id = 0, bullet = null).applyCategorized(extra, p.anchor, p.anchorGoalArea),
-                        )
+                        val sibling = entry.copy(id = 0, bullet = null).applyCategorized(extra, p.anchor, p.anchorGoalArea)
+                        val newId = entryDao.insert(sibling)
+                        syncRollup(sibling.copy(id = newId))
                     }
                 }
             },
@@ -275,13 +342,16 @@ class EntryProcessor @Inject constructor(
         aiProvider.categorize(p.request).fold(
             onSuccess = { result ->
                 val first = result.entries.firstOrNull()
-                if (first == null) {
-                    entryDao.update(entry.copy(status = EntryStatus.INBOX, confidence = 0.0))
-                } else {
-                    entryDao.update(entry.applyCategorized(first, p.anchor, p.anchorGoalArea))
-                }
+                val updated = if (first == null) entry.copy(status = EntryStatus.INBOX, confidence = 0.0)
+                else entry.applyCategorized(first, p.anchor, p.anchorGoalArea)
+                entryDao.update(updated)
+                syncRollup(updated)
             },
-            onFailure = { entryDao.update(entry.copy(status = EntryStatus.FAILED)) },
+            onFailure = {
+                val failed = entry.copy(status = EntryStatus.FAILED)
+                entryDao.update(failed)
+                syncRollup(failed)
+            },
         )
     }
 

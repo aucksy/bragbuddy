@@ -51,4 +51,8 @@ interface EntryDao {
 
     @Query("SELECT COUNT(*) FROM entries")
     fun observeCount(): Flow<Int>
+
+    /** Entries the user pinned "always include" — fed live to the Phase 5 summary ({{PINNED}}). */
+    @Query("SELECT * FROM entries WHERE isPinned = 1 ORDER BY createdAt DESC")
+    fun observePinned(): Flow<List<EntryEntity>>
 }
