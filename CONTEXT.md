@@ -122,6 +122,16 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     enriched with every category's **sub-folder names as AI context** (placement stays goal-area only).
     **Number nudge rebuilt at the transcript** — record a 2nd clip (or type) → appended → AI cleans the
     combined text (replaced the post-save nudge that silently skipped on spoken number-words).
+  - `v0.12.0` — **Phase 4 · Edit, reassign, copy-out.** **Tap an entry → detail sheet**
+    (`ui/entry/EntryDetailSheet.kt`, custom scrim sheet): raw transcript + cleaned bullet + chips, with
+    **Edit / Move (reassign, no AI re-call) / ★ Standout toggle / Pin toggle / Delete** — from Home
+    inline, the pillar view, and the single-folder screen (new `EntryBulletRow.onTap`). **Move** =
+    `EntryProcessor.reassign` (works on a PROCESSED row; picker = goal-area folders only). **★/Pin** =
+    `EntryDao.setExtra/setPinned` routed through the processor mutex; a manual ★ now survives an Edit.
+    **Copy-out** = pure `ui/home/DocExport.kt` (clean plain text; unit-tested) → "Copy" in the Home
+    header (whole doc) + each pillar/folder header (that section) → clipboard + toast. Room stays **v3**.
+    Pre-tag review: 0 HIGH, 3 MED fixed (toggle/reassign lost-update race, ★-dropped-on-edit, Move
+    picker filtered to goal-area folders).
   - `v0.11.0` — **v0.10.0 feedback batch (5).** **Reliable 9 PM reminder** (was drifting on WorkManager
     periodic work → exact `AlarmManager` alarm re-armed daily by a new `ReminderReceiver`, boot/clock
     reschedule, legacy work cancelled, `USE_EXACT_ALARM`/`SCHEDULE_EXACT_ALARM`). **Add-impact merges
@@ -143,10 +153,16 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     no number + richer copy + inline **"See an example"** (weak→strong). Unique category/project names
     validated in the editor (Save gated) + DAO `IGNORE`/`runCatching` backstop against unique-index
     crashes. **Room stays v3**; no schema change.
-- **Next: Phase 4 — Edit, reassign, copy-out.** Tap an entry → raw + cleaned; edit/move/toggle
-  Extra/pin/delete; **copy a section or the whole doc as clean text** for Word/Docs. Per-entry
-  edit/redo/delete + Inbox resolve already exist; `isPinned`/`isExtra` fields exist (no toggle UI
-  yet); `buildHomeDoc`'s goal-area shaping makes a copy-out serializer straightforward.
+- **Next: Phase 5 — Running rollup + summary** (the actual point of the app). Maintain a running
+  **rollup** as entries land (impact/routine → a deterministic, incremental update — never re-scan the
+  whole log); feed the rollup (+ pinned items) to the **summary-generator** prompt (PART B, already
+  baked in `AiPrompts.summary` + `generateSummary` behind the seam, currently unexercised) → a curated,
+  length-capped **summary** + a "set aside" note, with **pin / promote / demote** and **Regenerate**
+  (only when the rollup changed; view-cached is free; meter each fresh generation via the existing
+  `UsageMeter`). The Summary tab is still a placeholder; the design's Summary screen (§ "Copy all /
+  Copy section", Pinned chip, set-aside panel) is the build target. `isPinned` toggle already ships
+  (v0.12.0). *Testable: generate a crisp summary from logged entries; the rollup updates without
+  re-reading the whole record.*
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
   round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
   errors). Fix from the CI log via the **public** GitHub API (unauthenticated is enough for run status

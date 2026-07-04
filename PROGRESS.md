@@ -12,10 +12,10 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.12.0 — Phase 4 · Edit, reassign, copy-out 🚧 tagged, awaiting green CI
+## Status: v0.12.0 — Phase 4 · Edit, reassign, copy-out ✅ DONE (verified green · signed · first-try CI)
 
-**APK (once green):** `github.com/aucksy/bragbuddy/releases/download/v0.12.0/BragBuddy-v0.12.0.apk`
-(signed; `.aab` alongside). The Build-Brief Phase 4: *"tap an entry → raw + cleaned; edit / move /
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.12.0/BragBuddy-v0.12.0.apk` (signed; `.aab`
+alongside; run `28702671318`, first-try green). The Build-Brief Phase 4: *"tap an entry → raw + cleaned; edit / move /
 toggle Extra / pin / delete; copy a section or the whole doc as clean text for Word/Docs."* Scope
 locked via AskUserQuestion (tap→detail sheet · clean plain text · per-section + whole-doc copy). Room
 stays **v3** (no schema change — `isExtra`/`isPinned` columns already existed).
@@ -634,17 +634,27 @@ The full PRD and a revised brief landed after the initial scaffold. Reviewed aga
 
 ---
 
-## Next — Phase 4: Edit, reassign, copy-out (Build Brief phase list)
-Phase 3 landed the living document + Inbox resolve. Phase 4 = **make it a usable v1 before the
-summary**: tap an entry to see raw transcript + cleaned bullet; **edit / move (reassign project or
-goal) / toggle Extra / pin / delete**; and **copy-out** — a section or the whole document as clean
-text for Word / Google Docs. Groundwork already here: per-entry edit/redo/delete + Inbox resolve (a
-form of "move") exist; `isPinned` and `isExtra` fields exist (no pin/Extra-toggle UI yet); the
-document is already shaped by goal area (`buildHomeDoc`) so a "copy section / copy all" serializer is
-straightforward. *Testable: you can correct/move anything and paste a clean document elsewhere.*
+## Next — Phase 5: Running rollup + summary (Build Brief phase list) — the actual point of the app
+Phase 4 landed edit / reassign / copy-out (a usable v1). Phase 5 = the payoff: an **on-demand,
+curated summary** generated from a **running rollup**, not a full re-scan of the log.
+- **Running rollup:** maintain a compact, per-goal-area rollup as entries land — a **deterministic,
+  incremental** update keyed on impact/routine (routine work accumulates into single counted lines;
+  notable one-offs kept), so the summary step never re-reads the whole record (Build Brief § "the
+  record vs. the summary").
+- **Summary generation:** feed the rollup **+ pinned items** to the already-baked PART B prompt
+  (`AiPrompts.summary` + `AiProvider.generateSummary` — implemented behind the seam but **never
+  exercised yet**; strong slug `openai/gpt-oss-120b` in `AiConfig`) → a curated, length-capped summary
+  (top wins per pillar, routine rolled up with counts, behaviour evidence, growth) + a **"set aside"**
+  note. Build the design's **Summary screen** (length picker, Pinned chip, set-aside panel, "Copy all /
+  Copy section" — the v0.12.0 DocExport serializer + pin toggle are the groundwork).
+- **Controls + guardrails:** **pin** (toggled since v0.12.0) / **promote-demote** / **Regenerate** —
+  cache per period+length; regenerate only when the rollup changed (viewing a cached summary is free);
+  meter each **fresh** generation via the existing `UsageMeter` (built Phase 0, still unincremented).
+  *Testable: generate a crisp summary from logged entries; the rollup updates without re-reading.*
 
-**Note for Phase 4:** a **move/reassign** action on a filed entry (not just Inbox) would let the user
-fix a mis-placed bullet without re-recording — worth adding alongside copy-out.
+**Note:** the Summary tab is still a placeholder in `MainScaffold`; the design's header "Summarise"
+action is deferred to here. `generateSummary`/`SummaryRequest`/`SummaryResult` + `UsageMeter` already
+exist — Phase 5 wires them, adds the rollup store + the Summary UI.
 
 **Groundwork already in place for Phase 3:** `EntryEntity` carries every field (bullet, project,
 goalCategory, demonstrates, isExtra, impact, routine/routineType, metric, confidence,
