@@ -8,6 +8,7 @@ import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.OUTSIDE_PROJECT
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.framework.FrameworkStore
+import com.bragbuddy.app.data.net.ConnectivityMonitor
 import com.bragbuddy.app.data.project.ProjectRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,6 +29,7 @@ class InboxViewModel @Inject constructor(
     private val repository: EntryRepository,
     private val projects: ProjectRepository,
     private val frameworkStore: FrameworkStore,
+    connectivity: ConnectivityMonitor,
 ) : ViewModel() {
 
     val entries: StateFlow<List<EntryEntity>> = repository.observeInbox()
@@ -35,6 +37,9 @@ class InboxViewModel @Inject constructor(
 
     val folders: StateFlow<List<ProjectEntity>> = projects.observeActive()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Drives the calm offline copy on FAILED cards ("will retry when you're connected"). */
+    val isOnline: StateFlow<Boolean> = connectivity.isOnline
 
     fun retry(id: Long) = repository.retry(id)
 

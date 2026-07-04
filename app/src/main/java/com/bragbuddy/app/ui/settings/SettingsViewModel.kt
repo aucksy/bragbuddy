@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bragbuddy.app.data.ai.AiProvider
 import com.bragbuddy.app.data.entry.EntryRepository
+import com.bragbuddy.app.data.entry.OfflineRecovery
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.AppSettings
@@ -11,6 +12,8 @@ import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.project.ProjectRepository
 import com.bragbuddy.app.reminder.ReminderScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -27,6 +30,7 @@ class SettingsViewModel @Inject constructor(
     private val entryRepository: EntryRepository,
     private val projectRepository: ProjectRepository,
     private val frameworkStore: FrameworkStore,
+    private val offlineRecovery: OfflineRecovery,
 ) : ViewModel() {
 
     val aiProviderLabel: String = aiProvider.label
@@ -54,15 +58,28 @@ class SettingsViewModel @Inject constructor(
         if (s.reminderEnabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute)
     }
 
+    /** Debounces the recovery kick while the key is being typed/edited — one pass per settle. */
+    private var keyRecoveryJob: Job? = null
+
     fun setGroqApiKey(key: String) = viewModelScope.launch {
-        val wasBlank = settingsStore.settings.first().groqApiKey.isBlank()
+        val previous = settingsStore.settings.first().groqApiKey
         settingsStore.setGroqApiKey(key)
-        // Just added a key (the same one powers the AI brain)? Re-run anything that failed while
-        // there was no brain to reach.
-        if (wasBlank && key.isNotBlank()) entryRepository.reprocessFailed()
+        // A newly added OR replaced key (fixing a revoked one keeps queued voice notes waiting on
+        // exactly this) runs one recovery pass: retry FAILED entries + drain the voice-note queue.
+        // Debounced so per-keystroke edits don't fire a pass per character; a launch-time recovery
+        // still covers a user who leaves Settings before the debounce lands.
+        if (key.trim().isNotBlank() && key.trim() != previous) {
+            keyRecoveryJob?.cancel()
+            keyRecoveryJob = viewModelScope.launch {
+                delay(1_200)
+                offlineRecovery.kick()
+            }
+        }
     }
 
     fun setJobRole(role: String) = viewModelScope.launch { settingsStore.setJobRole(role) }
+
+    fun setCatchupEnabled(enabled: Boolean) = viewModelScope.launch { settingsStore.setCatchupEnabled(enabled) }
 
     fun setReviewYearStartMonth(month: Int) = viewModelScope.launch { settingsStore.setReviewYearStartMonth(month) }
 

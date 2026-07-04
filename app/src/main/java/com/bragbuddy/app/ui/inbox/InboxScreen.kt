@@ -73,6 +73,7 @@ fun InboxScreen(
     val palette = BragBuddyTheme.palette
     val entries by viewModel.entries.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
+    val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
 
     val selected = remember { mutableStateListOf<Long>() }
     var selectionMode by remember { mutableStateOf(false) }
@@ -146,6 +147,7 @@ fun InboxScreen(
                         palette = palette,
                         selectionMode = selectionMode,
                         isSelected = selected.contains(entry.id),
+                        isOnline = isOnline,
                         onToggleSelect = { toggle(entry.id) },
                         onLongPress = { enterSelection(entry.id) },
                         onRetry = { viewModel.retry(entry.id) },
@@ -184,6 +186,7 @@ private fun InboxCard(
     palette: BragPalette,
     selectionMode: Boolean,
     isSelected: Boolean,
+    isOnline: Boolean,
     onToggleSelect: () -> Unit,
     onLongPress: () -> Unit,
     onRetry: () -> Unit,
@@ -193,6 +196,9 @@ private fun InboxCard(
     val headline = entry.bullet?.takeIf { it.isNotBlank() } ?: entry.rawTranscript
     val failed = entry.status == EntryStatus.FAILED
     val reason = when {
+        // Calm offline copy (Phase 7): while offline, a FAILED entry isn't an error — it's waiting,
+        // and OfflineRecovery retries it automatically the moment the connection returns.
+        failed && !isOnline -> "Offline — will retry when you're connected"
         failed -> "Couldn't reach the AI"
         entry.suggestedProjects.isNotEmpty() -> "Not sure which project"
         else -> "Needs a home"

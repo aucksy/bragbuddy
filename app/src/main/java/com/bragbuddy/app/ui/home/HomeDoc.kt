@@ -65,9 +65,12 @@ data class BehaviourSection(
 data class InboxPeek(val count: Int, val first: EntryEntity?)
 
 /** The whole Home document. [processing] holds just-captured RAW rows so a fresh capture is visible
- *  while the AI files it (they leave this list the moment they're placed or routed to the Inbox). */
+ *  while the AI files it (they leave this list the moment they're placed or routed to the Inbox).
+ *  [waitingVoice] holds queued offline voice notes (PENDING_AUDIO) — saved clips awaiting network
+ *  for transcription, kept visible so an offline capture never silently disappears. */
 data class HomeDoc(
     val processing: List<EntryEntity>,
+    val waitingVoice: List<EntryEntity>,
     val goals: List<GoalSection>,
     val behaviours: List<BehaviourSection>,
     val inbox: InboxPeek?,
@@ -147,6 +150,7 @@ fun buildHomeDoc(
 ): HomeDoc {
     val processed = entries.filter { it.status == EntryStatus.PROCESSED }
     val processing = entries.filter { it.status == EntryStatus.RAW }.sortedByDescending { it.createdAt }
+    val waitingVoice = entries.filter { it.status == EntryStatus.PENDING_AUDIO }.sortedByDescending { it.createdAt }
     val inboxEntries = entries.filter { it.status == EntryStatus.INBOX || it.status == EntryStatus.FAILED }
         .sortedByDescending { it.createdAt }
 
@@ -177,5 +181,5 @@ fun buildHomeDoc(
     val inbox = if (inboxEntries.isEmpty()) null else InboxPeek(inboxEntries.size, inboxEntries.first())
     // Empty only when there is genuinely nothing yet — no entries at all and no folders created.
     val isEmpty = entries.isEmpty() && folders.isEmpty()
-    return HomeDoc(processing, goalsWithCatchAll, behaviours, inbox, isEmpty)
+    return HomeDoc(processing, waitingVoice, goalsWithCatchAll, behaviours, inbox, isEmpty)
 }

@@ -79,6 +79,8 @@ import com.bragbuddy.app.ui.theme.pillarColor
 fun SummaryScreen(
     contentBottomPadding: Dp,
     onOpenSettings: () -> Unit,
+    autoGenerate: Boolean = false,
+    onAutoGenerateConsumed: () -> Unit = {},
     viewModel: SummaryViewModel = hiltViewModel(),
 ) {
     val palette = BragBuddyTheme.palette
@@ -89,6 +91,20 @@ fun SummaryScreen(
     val message by viewModel.message.collectAsStateWithLifecycle()
 
     var showGenerate by remember { mutableStateOf(false) }
+
+    // Home's early-preview banner lands here with autoGenerate set: the tap was the consent for
+    // one metered generation. Waits for the state to load, consumes the flag exactly once, and
+    // defers to generate()'s own guards (fresh cache → "Already up to date", no double call).
+    LaunchedEffect(autoGenerate, state?.phase) {
+        if (!autoGenerate) return@LaunchedEffect
+        val s = state ?: return@LaunchedEffect
+        onAutoGenerateConsumed()
+        when (s.phase) {
+            SummaryViewModel.Phase.NOT_GENERATED -> viewModel.generate()
+            SummaryViewModel.Phase.READY -> if (s.isStale) viewModel.generate()
+            else -> Unit // NEEDS_KEY / EMPTY / LOADING — the screen already shows the right state
+        }
+    }
 
     LaunchedEffect(message) {
         message?.let {

@@ -59,6 +59,29 @@ class EntryRepository @Inject constructor(
         return id
     }
 
+    /**
+     * Queue an **offline voice note** (Phase 7): the clip at [audioPath] is saved but couldn't be
+     * transcribed (no network / transport failure). Stores a PENDING_AUDIO row so nothing spoken is
+     * ever lost; [OfflineRecovery] transcribes + files it when the network returns. Fire-and-forget
+     * (safe from onCleared — no suspension on the caller's side). [onQueued] runs after the insert
+     * commits, so an immediate recovery kick can actually see the row.
+     */
+    fun queueVoiceNote(audioPath: String, anchorProject: String? = null, onQueued: () -> Unit = {}) {
+        appScope.launch {
+            entryDao.insert(
+                EntryEntity(
+                    createdAt = System.currentTimeMillis(),
+                    source = EntrySource.VOICE,
+                    status = EntryStatus.PENDING_AUDIO,
+                    rawTranscript = "",
+                    anchorProject = anchorProject?.takeIf { it.isNotBlank() },
+                    audioPath = audioPath,
+                ),
+            )
+            onQueued()
+        }
+    }
+
     /** Catch any entries left RAW by an interrupted run (called on launch). */
     fun processPending() {
         appScope.launch { processor.processPending() }

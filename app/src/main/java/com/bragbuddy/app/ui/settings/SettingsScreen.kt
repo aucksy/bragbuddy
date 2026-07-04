@@ -71,6 +71,7 @@ import com.bragbuddy.app.ui.theme.Spacing
 fun SettingsScreen(
     onBack: () -> Unit,
     onOpenBackup: () -> Unit = {},
+    onOpenReliability: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val palette = BragBuddyTheme.palette
@@ -158,6 +159,52 @@ fun SettingsScreen(
                             color = palette.primary,
                         )
                     }
+                }
+            }
+
+            Spacer(Modifier.height(Spacing.s4))
+
+            // Reliable reminders — the guided OEM battery/alarm wizard (Phase 7).
+            Card(palette) {
+                Row(
+                    Modifier.fillMaxWidth().clickable(onClick = onOpenReliability),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Reliable reminders", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                        Text(
+                            "Keep the daily nudge alive on aggressive battery savers.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.text3,
+                        )
+                    }
+                    Icon(Icons.Outlined.ChevronRight, null, tint = palette.text3, modifier = Modifier.size(20.dp))
+                }
+            }
+
+            Spacer(Modifier.height(Spacing.s4))
+
+            // Weekly catch-up — the gentle Design §7 check-in; opt-out.
+            Card(palette) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Weekly catch-up", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                        Text(
+                            "A soft weekend check-in: anything bigger this week you didn't log?",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.text3,
+                        )
+                    }
+                    Switch(
+                        checked = settings.catchupEnabled,
+                        onCheckedChange = { viewModel.setCatchupEnabled(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = palette.primary,
+                            uncheckedTrackColor = palette.surface2,
+                            uncheckedBorderColor = palette.border,
+                        ),
+                    )
                 }
             }
 

@@ -8,6 +8,9 @@ object Routes {
     const val SETTINGS = "settings"
     const val BACKUP = "backup"
 
+    /** The Phase 7 "Reliable reminders" guided screen (OEM battery/alarm wizard). */
+    const val RELIABILITY = "reliability"
+
     /** Deep pillar view. The pillar id rides in the path; an optional `folder` query arg scopes the
      *  screen to a single folder (Home's "See more" target). */
     const val PILLAR = "pillar/{pillarId}?folder={folder}"

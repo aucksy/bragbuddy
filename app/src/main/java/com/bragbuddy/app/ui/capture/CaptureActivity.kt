@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -88,6 +89,12 @@ class CaptureActivity : ComponentActivity() {
 
                 when {
                     justSaved -> SavedConfirmation()
+                    // Offline voice capture → the clip is queued (never lost) and the surface
+                    // confirms + dismisses, mirroring the normal save.
+                    state.queuedOffline -> {
+                        LaunchedEffect(Unit) { delay(1400); finish() }
+                        QueuedOfflineConfirmation()
+                    }
                     // Post-save "add a number?" nudge (entry already saved; never blocks).
                     state.savedNudge -> SavedNudgeSheet(
                         state = state,
@@ -102,6 +109,7 @@ class CaptureActivity : ComponentActivity() {
                         onSetMode = vm::setMode,
                         onStopSubmit = vm::stopAndSubmitVoice,
                         onRetry = vm::retryVoice,
+                        onSaveForLater = vm::saveForLater,
                         onTypedChange = vm::onTypedChange,
                         onSubmitTyped = vm::submitTyped,
                         onReviewChange = vm::onReviewTextChange,
@@ -129,6 +137,36 @@ class CaptureActivity : ComponentActivity() {
 
         /** String extra: a project name to anchor this capture to (Home folder tap). */
         const val EXTRA_PROJECT = "anchor_project"
+    }
+}
+
+/** Offline-queue confirmation: the clip is kept and will be transcribed when the network is back. */
+@Composable
+private fun QueuedOfflineConfirmation() {
+    val palette = BragBuddyTheme.palette
+    Box(
+        Modifier.fillMaxSize().background(Color(0xFF0E0F1A).copy(alpha = 0.42f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(palette.surface)
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(32.dp).clip(RoundedCornerShape(999.dp)).background(palette.primarySoft),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.CloudOff, null, tint = palette.primary, modifier = Modifier.size(17.dp))
+            }
+            Spacer(Modifier.width(Spacing.s3))
+            androidx.compose.foundation.layout.Column {
+                Text("Saved for later", style = androidx.compose.material3.MaterialTheme.typography.titleMedium, color = palette.text1)
+                Text("I'll transcribe it when you're back online.", style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = palette.text3)
+            }
+        }
     }
 }
 

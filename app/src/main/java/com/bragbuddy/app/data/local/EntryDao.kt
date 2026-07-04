@@ -55,6 +55,11 @@ interface EntryDao {
     @Query("SELECT COUNT(*) FROM entries")
     suspend fun count(): Int
 
+    /** Count excluding one status — "is there real logged content?" checks that must not let a
+     *  still-untranscribed offline voice note (PENDING_AUDIO) count as data worth backing up. */
+    @Query("SELECT COUNT(*) FROM entries WHERE status != :excluded")
+    suspend fun countExcluding(excluded: EntryStatus): Int
+
     /** Entries the user pinned "always include" — fed live to the Phase 5 summary ({{PINNED}}). */
     @Query("SELECT * FROM entries WHERE isPinned = 1 ORDER BY createdAt DESC")
     fun observePinned(): Flow<List<EntryEntity>>

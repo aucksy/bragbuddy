@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bragbuddy.app.data.entry.EntryRepository
+import com.bragbuddy.app.data.entry.OfflineRecovery
 import com.bragbuddy.app.data.impact.ImpactCheck
 import com.bragbuddy.app.data.local.EntrySource
+import com.bragbuddy.app.data.net.ConnectivityMonitor
 import com.bragbuddy.app.data.prefs.CaptureMode
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.speech.AudioRecorder
@@ -41,6 +43,10 @@ data class CaptureUiState(
     val error: String? = null,
     /** True when voice was attempted with no Groq key set — the sheet points the user to Settings. */
     val needsKey: Boolean = false,
+    /** A transport-failed take can be queued for later ("Save for later" in the error state). */
+    val canSaveForLater: Boolean = false,
+    /** The clip was queued offline — the surface shows a "saved for later" confirmation + dismisses. */
+    val queuedOffline: Boolean = false,
     /** Set once settings (last mode) have loaded — the host waits for this before auto-starting voice. */
     val initialized: Boolean = false,
     /** When capturing into a folder, the project name this entry is anchored to (shown as a chip). */
@@ -70,6 +76,8 @@ class CaptureViewModel @Inject constructor(
     private val entries: EntryRepository,
     private val settings: SettingsStore,
     private val groqTranscriber: GroqTranscriber,
+    private val connectivity: ConnectivityMonitor,
+    private val recovery: OfflineRecovery,
 ) : ViewModel() {
 
     private val recorder by lazy { AudioRecorder(appContext) }
@@ -113,9 +121,24 @@ class CaptureViewModel @Inject constructor(
 
     fun setMode(mode: CaptureMode) {
         if (_state.value.mode == mode) return
-        _state.update { it.copy(mode = mode, error = null, needsKey = false) }
+        // Returning to SPEAK while a failed take is on hold must NOT reset to IDLE: the reset
+        // would re-trigger auto-start, whose startVoice() drops lastAudio — silently destroying a
+        // take the error screen still offers to retry / save for later. Keep the ERROR state (and
+        // its copy) so the user lands back on the same choices.
+        val keepError = mode == CaptureMode.SPEAK && _state.value.phase == VoicePhase.ERROR
+        _state.update {
+            it.copy(
+                mode = mode,
+                error = if (keepError) it.error else null,
+                needsKey = if (keepError) it.needsKey else false,
+            )
+        }
         viewModelScope.launch { settings.setLastCaptureMode(mode) }
-        if (mode == CaptureMode.TYPE) stopVoiceInternal() else _state.update { it.copy(phase = VoicePhase.IDLE) }
+        if (mode == CaptureMode.TYPE) {
+            stopVoiceInternal()
+        } else if (!keepError) {
+            _state.update { it.copy(phase = VoicePhase.IDLE) }
+        }
     }
 
     /** Called once mic permission is confirmed. Voice is cloud-only — it needs a Groq key; without one
@@ -184,9 +207,67 @@ class CaptureViewModel @Inject constructor(
                         enterReview(text)
                     }
                 },
-                onFailure = { fail(it.message ?: "Couldn't transcribe — try again or type it") },
+                onFailure = {
+                    // Transport failure (offline / service unreachable) — the take itself is fine, so
+                    // it must never be lost (Phase 7 offline queue). A fresh offline capture queues
+                    // silently; a redo keeps the error state (its original entry is already safe).
+                    val offline = !connectivity.isOnline.value
+                    when {
+                        replaceId == null && offline -> queueForLater(file)
+                        offline -> fail("You're offline — your original entry is safe. Try again when you're connected.")
+                        replaceId == null -> fail(
+                            it.message ?: "Couldn't transcribe — try again or type it",
+                            canSaveForLater = true,
+                        )
+                        else -> fail(it.message ?: "Couldn't transcribe — try again or type it")
+                    }
+                },
             )
         }
+    }
+
+    /**
+     * Keep this take instead of losing it: move the clip out of the cache into the durable
+     * voice-note queue and store a PENDING_AUDIO row. [OfflineRecovery] transcribes + files it the
+     * moment the network (and key) allow. Used automatically for an offline capture, by the error
+     * state's "Save for later", and as the dismiss backstop in [onCleared].
+     */
+    private fun queueForLater(file: File) {
+        if (didSave) return
+        val queued = runCatching {
+            val dir = File(appContext.filesDir, OfflineRecovery.VOICE_QUEUE_DIR).apply { mkdirs() }
+            val dest = File(dir, file.name)
+            if (!file.renameTo(dest)) {
+                file.copyTo(dest, overwrite = true)
+                file.delete()
+            }
+            // renameTo keeps the RECORDING-time mtime — refresh it so the orphan sweep's grace
+            // period measures from the move, not the take (else a slow retry could be adopted as
+            // an "orphan" before the row insert lands, duplicating the note).
+            dest.setLastModified(System.currentTimeMillis())
+            dest
+        }.getOrNull()
+        if (queued == null) {
+            // Couldn't move the clip (shouldn't happen — same volume). Keep the error state so
+            // retry / type-instead still work; nothing has been deleted.
+            fail("Couldn't save the clip — try again or type it", canSaveForLater = true)
+            return
+        }
+        didSave = true
+        lastAudio = null
+        submitting = false
+        // The kick is sequenced AFTER the row insert commits (both on the app scope) so an
+        // immediately-online recovery pass can actually see the new row.
+        entries.queueVoiceNote(queued.absolutePath, anchorProject) {
+            if (connectivity.isOnline.value) recovery.kick()
+        }
+        _state.update { it.copy(queuedOffline = true, error = null, canSaveForLater = false) }
+    }
+
+    /** The error state's explicit "Save for later" — queue the failed take and finish. */
+    fun saveForLater() {
+        val audio = lastAudio ?: return
+        if (audio.exists()) queueForLater(audio)
     }
 
     // ---------------- Shared ----------------
@@ -263,6 +344,10 @@ class CaptureViewModel @Inject constructor(
     }
 
     fun stopVoiceNumber() {
+        // Double-tap guard (mirrors stopAndSubmitVoice's `submitting`): the TRANSCRIBING update
+        // below is synchronous, so a second tap dispatched before recomposition bails here instead
+        // of double-transcribing the same clip and appending the metric twice.
+        if (_state.value.numberStage != NumberStage.RECORDING) return
         stopTimer()
         ampJob?.cancel(); ampJob = null
         val file = runCatching { recorder.stop() }.getOrNull()
@@ -313,7 +398,7 @@ class CaptureViewModel @Inject constructor(
     }
 
     fun retryVoice() {
-        _state.update { it.copy(error = null, needsKey = false) }
+        _state.update { it.copy(error = null, needsKey = false, canSaveForLater = false) }
         val audio = lastAudio
         if (audio != null && audio.exists()) transcribe(audio) else startVoice()
     }
@@ -351,9 +436,9 @@ class CaptureViewModel @Inject constructor(
         }
     }
 
-    private fun fail(message: String) {
+    private fun fail(message: String, canSaveForLater: Boolean = false) {
         submitting = false
-        _state.update { it.copy(phase = VoicePhase.ERROR, error = message) }
+        _state.update { it.copy(phase = VoicePhase.ERROR, error = message, canSaveForLater = canSaveForLater) }
     }
 
     private fun stopVoiceInternal() {
@@ -381,8 +466,18 @@ class CaptureViewModel @Inject constructor(
     override fun onCleared() {
         stopTimer()
         ampJob?.cancel()
+        // Dismiss backstop (never lose a take): a take whose sheet is dismissed MID-TRANSCRIPTION
+        // (the coroutine dies with the scope, so its onFailure never runs) or after a transport
+        // failure is QUEUED, not deleted — the user never saw their words, so silent discard would
+        // lose them. Checked BEFORE recorder.cancel(). An explicit Cancel during review, a blank
+        // take, or a redo (original entry safe) still cleans up.
+        val audio = lastAudio
+        val phase = _state.value.phase
+        val queueOnDismiss = !didSave && replaceId == null && audio != null && audio.exists() &&
+            (phase == VoicePhase.TRANSCRIBING || (phase == VoicePhase.ERROR && _state.value.canSaveForLater))
+        if (queueOnDismiss && audio != null) queueForLater(audio)
         runCatching { recorder.cancel() }
-        // Always clean up any recorded temp files — after a successful save they're already null.
+        // Clean up whatever wasn't queued — after a successful save/queue these are already null.
         lastAudio?.delete()
         numberAudio?.delete()
     }

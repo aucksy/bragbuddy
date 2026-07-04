@@ -3,6 +3,7 @@ package com.bragbuddy.app.data.backup
 import com.bragbuddy.app.data.entry.EntryProcessor
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.local.EntryDao
+import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.ProjectDao
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.project.ProjectRepository
@@ -50,7 +51,10 @@ class BackupRepository @Inject constructor(
         val s = settingsStore.settings.first()
         BackupCodec.encode(
             BackupSnapshot(
-                entries = entryDao.getAllOnce(),
+                // A still-untranscribed offline voice note (PENDING_AUDIO) is device-bound — its
+                // clip never leaves the phone, so the row would be an empty shell on any restore.
+                // It's excluded here and re-included automatically once recovery transcribes it.
+                entries = entryDao.getAllOnce().filter { it.status != EntryStatus.PENDING_AUDIO },
                 projects = projectDao.getAllOnce(),
                 pillars = frameworkStore.framework.first().pillars,
                 settings = BackupSettings(
@@ -76,9 +80,14 @@ class BackupRepository @Inject constructor(
         // failure rolls back rather than leaving the log half-wiped.
         processor.runRestore {
             db.withTransaction {
+                // A queued offline voice note only exists on THIS device (its clip is local and is
+                // never part of a backup) — carry it across the wholesale replace or the spoken
+                // words would be lost. Re-inserted with fresh ids so restored ids can't collide.
+                val pendingAudio = entryDao.listByStatus(EntryStatus.PENDING_AUDIO)
                 // Replace the log + folders wholesale (ids preserved so anchors/relationships stay intact).
                 entryDao.deleteAll()
                 entryDao.insertAll(snap.entries)
+                pendingAudio.forEach { entryDao.insert(it.copy(id = 0)) }
                 projectDao.deleteAll()
                 projectDao.insertAll(snap.projects)
             }
@@ -123,8 +132,12 @@ class BackupRepository @Inject constructor(
         exportDocument(buildHomeDoc(entries, framework, folders))
     }
 
-    /** True if there is no logged data yet (drives the silent restore-on-reinstall check). */
-    suspend fun isLocalEmpty(): Boolean = withContext(Dispatchers.IO) { entryDao.count() == 0 }
+    /** True if there is no logged data yet (drives the silent restore-on-reinstall check). A queued
+     *  offline voice note doesn't count — it isn't in any backup, so a reinstall-then-offline-capture
+     *  must still auto-restore (and the queued row is preserved across that restore). */
+    suspend fun isLocalEmpty(): Boolean = withContext(Dispatchers.IO) {
+        entryDao.countExcluding(EntryStatus.PENDING_AUDIO) == 0
+    }
 
     /**
      * Emits whenever the **backed-up surface** changes (entries / folders / framework / the backed-up
@@ -138,7 +151,10 @@ class BackupRepository @Inject constructor(
         settingsStore.settings,
     ) { entries, folders, fw, s ->
         listOf(
-            entries, folders, fw.pillars,
+            // Hash the same surface exportJson backs up — PENDING_AUDIO churn (a queued offline
+            // voice note appearing) must not trigger an upload of a byte-identical backup.
+            entries.filter { it.status != EntryStatus.PENDING_AUDIO },
+            folders, fw.pillars,
             s.reminderEnabled, s.reminderHour, s.reminderMinute, s.lastCaptureMode,
             s.jobRole, s.rolePromptDismissed, s.reviewYearStartMonth,
         ).hashCode()

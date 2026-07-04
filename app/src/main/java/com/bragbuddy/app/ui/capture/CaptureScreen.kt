@@ -82,6 +82,7 @@ fun CaptureScreen(
     onSetMode: (CaptureMode) -> Unit,
     onStopSubmit: () -> Unit,
     onRetry: () -> Unit,
+    onSaveForLater: () -> Unit,
     onTypedChange: (String) -> Unit,
     onSubmitTyped: () -> Unit,
     onReviewChange: (String) -> Unit,
@@ -153,7 +154,7 @@ fun CaptureScreen(
 
             when (state.mode) {
                 CaptureMode.SPEAK -> VoiceContent(
-                    state, onStopSubmit, onRetry,
+                    state, onStopSubmit, onRetry, onSaveForLater,
                     onSwitchToType = { onSetMode(CaptureMode.TYPE) },
                     onReviewChange = onReviewChange,
                     onConfirmAdd = onConfirmAdd,
@@ -274,6 +275,7 @@ private fun VoiceContent(
     state: CaptureUiState,
     onStopSubmit: () -> Unit,
     onRetry: () -> Unit,
+    onSaveForLater: () -> Unit,
     onSwitchToType: () -> Unit,
     onReviewChange: (String) -> Unit,
     onConfirmAdd: () -> Unit,
@@ -323,6 +325,22 @@ private fun VoiceContent(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 PillButton("Try again", primary = true, onClick = onRetry)
                 PillButton("Type instead", primary = false, onClick = onSwitchToType)
+            }
+            // Transport failure → the take can wait in the offline queue instead of being lost.
+            // (Dismissing the sheet quietly does the same — this just makes it explicit.)
+            if (state.canSaveForLater) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Save for later — it'll be transcribed when you're back online",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = palette.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .clickable(onClick = onSaveForLater)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                )
             }
             Spacer(Modifier.height(8.dp))
             return

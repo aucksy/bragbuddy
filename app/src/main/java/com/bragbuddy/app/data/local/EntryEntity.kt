@@ -19,8 +19,11 @@ enum class EntrySource { VOICE, TEXT }
  *  - PROCESSED: the categorizer placed it into a project / goal area.
  *  - INBOX: low confidence or unplaceable — waits for a one-tap resolve.
  *  - FAILED: AI output failed to parse; the raw transcript is kept and it routes to Inbox.
+ *  - PENDING_AUDIO: an offline voice note — the clip is saved on-device ([EntryEntity.audioPath])
+ *    but not yet transcribed. [OfflineRecovery] transcribes it when the network returns, moving the
+ *    row to RAW (and deleting the audio). Never processed by the categorizer while in this state.
  */
-enum class EntryStatus { RAW, PROCESSED, INBOX, FAILED }
+enum class EntryStatus { RAW, PROCESSED, INBOX, FAILED, PENDING_AUDIO }
 
 /**
  * The **raw log** — the immutable record of everything the user ever logged (Build Brief §
@@ -59,6 +62,13 @@ data class EntryEntity(
      * an AI decision. (Room v2 column.)
      */
     val anchorProject: String? = null,
+
+    /**
+     * Absolute path of a saved-but-untranscribed voice clip (status [EntryStatus.PENDING_AUDIO]
+     * only — an offline capture queued for transcription). Cleared (and the file deleted) the
+     * moment transcription succeeds. Never backed up; audio stays on this device. (Room v4 column.)
+     */
+    val audioPath: String? = null,
 
     // ---- AI-derived (null until processed; see BragBuddy-System-Prompt PART A) ----
     /** One clean, appraisal-ready bullet. */

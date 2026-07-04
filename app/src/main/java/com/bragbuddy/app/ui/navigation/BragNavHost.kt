@@ -9,6 +9,7 @@ import androidx.navigation.navArgument
 import com.bragbuddy.app.ui.backup.BackupScreen
 import com.bragbuddy.app.ui.main.MainScaffold
 import com.bragbuddy.app.ui.pillar.PillarDetailScreen
+import com.bragbuddy.app.ui.reliability.ReliabilityScreen
 import com.bragbuddy.app.ui.settings.SettingsScreen
 
 /** The top-level navigation graph. The tabbed app shell lives in [MainScaffold]; Settings and the
@@ -22,16 +23,21 @@ fun BragNavHost() {
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 onOpenPillar = { pillarId -> navController.navigate(Routes.pillar(pillarId)) },
                 onOpenFolder = { pillarId, folder -> navController.navigate(Routes.folder(pillarId, folder)) },
+                onOpenReliability = { navController.navigate(Routes.RELIABILITY) },
             )
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onOpenBackup = { navController.navigate(Routes.BACKUP) },
+                onOpenReliability = { navController.navigate(Routes.RELIABILITY) },
             )
         }
         composable(Routes.BACKUP) {
             BackupScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.RELIABILITY) {
+            ReliabilityScreen(onBack = { navController.popBackStack() })
         }
         composable(
             Routes.PILLAR,

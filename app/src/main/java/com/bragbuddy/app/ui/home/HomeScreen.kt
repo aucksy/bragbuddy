@@ -22,14 +22,19 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -48,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -86,6 +92,8 @@ fun HomeScreen(
     onOpenPillar: (String) -> Unit,
     onOpenFolder: (String, String) -> Unit,
     onReviewInbox: () -> Unit,
+    onOpenSummary: () -> Unit,
+    onOpenReliability: () -> Unit,
     contentBottomPadding: androidx.compose.ui.unit.Dp,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -95,6 +103,15 @@ fun HomeScreen(
     val doc by viewModel.doc.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val showRolePrompt by viewModel.showRolePrompt.collectAsStateWithLifecycle()
+    val showDailyNudge by viewModel.showDailyNudge.collectAsStateWithLifecycle()
+    val previewBannerCount by viewModel.previewBannerCount.collectAsStateWithLifecycle()
+    val showReliabilityCard by viewModel.showReliabilityCard.collectAsStateWithLifecycle()
+    val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
+
+    // Time/system-state cards re-evaluate whenever Home comes (back) into view; the lifecycle-aware
+    // collectors above also restart their upstreams on resume, so a background→foreground open
+    // re-checks "has the reminder time passed" and the reminder-health probes.
+    LaunchedEffect(Unit) { viewModel.refresh() }
 
     // When set, the folder-create dialog is open for this goal area (null area = first goal area).
     var createFolderFor by remember { mutableStateOf<CreateFolderTarget?>(null) }
@@ -194,6 +211,11 @@ fun HomeScreen(
         }
 
         if (doc.isEmpty) {
+            // A brand-new user on a risky OEM still deserves the reminder-health warning.
+            if (showReliabilityCard) {
+                ReliabilityCard(palette, onReview = onOpenReliability, onDismiss = { viewModel.dismissReliabilityCard() })
+                Spacer(Modifier.height(Spacing.s3))
+            }
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 EmptyState(onNewProject = { createFolderFor = CreateFolderTarget(null) })
             }
@@ -202,6 +224,30 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.s4),
                 contentPadding = PaddingValues(top = Spacing.s1, bottom = contentBottomPadding + Spacing.s4),
             ) {
+                if (showReliabilityCard) {
+                    item(key = "reliability-card") {
+                        ReliabilityCard(palette, onReview = onOpenReliability, onDismiss = { viewModel.dismissReliabilityCard() })
+                    }
+                }
+                if (showDailyNudge) {
+                    item(key = "daily-nudge") {
+                        DailyNudgeCard(palette, onAdd = { capture(null) }, onDismiss = { viewModel.dismissDailyNudge() })
+                    }
+                }
+                previewBannerCount?.let { count ->
+                    item(key = "preview-banner") {
+                        PreviewBannerCard(
+                            entryCount = count,
+                            firstGoalName = doc.goals.firstOrNull()?.pillar?.name,
+                            firstBehaviourName = doc.behaviours.firstOrNull()?.pillar?.name,
+                            onSee = onOpenSummary,
+                            onDismiss = { viewModel.dismissPreviewBanner() },
+                        )
+                    }
+                }
+                if (doc.waitingVoice.isNotEmpty()) {
+                    item(key = "waiting-voice") { WaitingVoiceCard(doc.waitingVoice.size, isOnline, palette) }
+                }
                 if (doc.processing.isNotEmpty()) {
                     item(key = "processing") { ProcessingCard(doc.processing, palette) }
                 }
@@ -594,6 +640,242 @@ private fun ProcessingCard(processing: List<EntryEntity>, palette: BragPalette) 
         processing.take(3).forEach {
             Text("• ${it.rawTranscript}", style = MaterialTheme.typography.bodySmall, color = palette.text3, maxLines = 1)
         }
+    }
+}
+
+// ---------------- Phase 7 · retention + reliability cards ----------------
+// (Not in the design files except the preview banner — the others are built from tokens; flagged.)
+
+/** Queued offline voice notes (PENDING_AUDIO): visible so an offline capture never disappears.
+ *  Copy is connectivity-aware — "waiting for network" would mislead while the device is online
+ *  (a queued clip then usually means a service/key hiccup being retried). */
+@Composable
+private fun WaitingVoiceCard(count: Int, isOnline: Boolean, palette: BragPalette) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+            .padding(Spacing.card),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(palette.primarySoft),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Outlined.CloudOff, null, tint = palette.primary, modifier = Modifier.size(16.dp)) }
+        Spacer(Modifier.size(Spacing.s3))
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (isOnline) "$count voice ${plural(count, "note")} saved — transcribing soon"
+                else "$count voice ${plural(count, "note")} saved — waiting for network",
+                style = MaterialTheme.typography.titleSmall,
+                color = palette.text1,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                if (isOnline) "They'll be filed automatically. If this persists, check your Groq key in Settings."
+                else "They'll be transcribed and filed automatically.",
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.text3,
+            )
+        }
+    }
+}
+
+/** On-open "you haven't logged today" fallback (PRD P0-1) — the reminder's quiet safety net. */
+@Composable
+private fun DailyNudgeCard(palette: BragPalette, onAdd: () -> Unit, onDismiss: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+            .padding(Spacing.card),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                Text("Nothing logged today yet", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                Text(
+                    "One quick line is enough — what did you get done?",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.text3,
+                )
+            }
+            Box(
+                Modifier.size(28.dp).clip(RoundedCornerShape(999.dp)).clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Outlined.Close, "Not today", tint = palette.text3, modifier = Modifier.size(16.dp)) }
+        }
+        Spacer(Modifier.height(Spacing.s3))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(999.dp))
+                .background(palette.primary)
+                .clickable(onClick = onAdd)
+                .padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.Mic, null, tint = Color.White, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(7.dp))
+            Text("Add something", style = MaterialTheme.typography.titleSmall, color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/** Detected reminder risk (battery optimization / exact alarms / notifications) → guided fix. */
+@Composable
+private fun ReliabilityCard(palette: BragPalette, onReview: () -> Unit, onDismiss: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+            .padding(Spacing.card),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Box(
+                Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(palette.extraSoft),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Outlined.Notifications, null, tint = palette.extra, modifier = Modifier.size(16.dp)) }
+            Spacer(Modifier.size(Spacing.s3))
+            Column(Modifier.weight(1f)) {
+                Text("Keep your reminder alive", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                Text(
+                    "This phone can silence background apps — a couple of quick settings keep the daily nudge reliable.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.text3,
+                )
+            }
+        }
+        Spacer(Modifier.height(Spacing.s3))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Review settings",
+                style = MaterialTheme.typography.labelLarge,
+                color = palette.primary,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(palette.primarySoft)
+                    .clickable(onClick = onReview)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+            Spacer(Modifier.size(Spacing.s3))
+            Text(
+                "Not now",
+                style = MaterialTheme.typography.labelLarge,
+                color = palette.text3,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .clickable(onClick = onDismiss)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The Design §7 "Early preview · week 1" banner — an indigo gradient promo shown once a handful of
+ * entries are filed and no summary has ever been generated. The gradient and white inks are the
+ * design's own (deliberately identical in dark theme, like the mockup).
+ */
+@Composable
+private fun PreviewBannerCard(
+    entryCount: Int,
+    firstGoalName: String?,
+    firstBehaviourName: String?,
+    onSee: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF5A63E0), Color(0xFF3D46C0))))
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(7.dp))
+            Text(
+                "Your summary's taking shape",
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
+            Box(
+                Modifier.size(24.dp).clip(RoundedCornerShape(999.dp)).clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Outlined.Close, "Dismiss", tint = Color.White.copy(alpha = 0.75f), modifier = Modifier.size(14.dp)) }
+        }
+        Spacer(Modifier.height(10.dp))
+        // The mockup's skeleton preview — two mini sections with placeholder lines (decorative).
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White.copy(alpha = 0.14f))
+                .padding(12.dp),
+        ) {
+            SkeletonSection(label = (firstGoalName ?: "Performance Goals").uppercase(), widths = listOf(1f, 0.74f))
+            Spacer(Modifier.height(11.dp))
+            SkeletonSection(label = (firstBehaviourName ?: "Leadership").uppercase(), widths = listOf(0.88f))
+        }
+        Spacer(Modifier.height(11.dp))
+        Text(
+            "From just $entryCount entries. Keep going — it only gets richer.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.85f),
+        )
+        Spacer(Modifier.height(12.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color.White)
+                .clickable(onClick = onSee)
+                .padding(vertical = 11.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "See the preview",
+                style = MaterialTheme.typography.titleSmall,
+                color = Color(0xFF3D46C0),
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SkeletonSection(label: String, widths: List<Float>) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(7.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+    }
+    widths.forEach { w ->
+        Spacer(Modifier.height(6.dp))
+        Box(
+            Modifier
+                .fillMaxWidth(w)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(Color.White.copy(alpha = 0.5f)),
+        )
     }
 }
 

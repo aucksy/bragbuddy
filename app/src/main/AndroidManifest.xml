@@ -23,9 +23,18 @@
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
 
-    <!-- Network: the AI categorizer / summary calls (Phase 2) and Drive backup (Phase 6). -->
+    <!-- Network: the AI categorizer / summary calls (Phase 2) and Drive backup (Phase 6).
+         ACCESS_NETWORK_STATE also powers the Phase 7 offline queue (transcribe queued voice notes
+         when the connection returns) and the calm offline copy. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Phase 7 · Reliable reminders: lets the guided screen show the direct system "Allow app to
+         run in background?" dialog (ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS) so the daily
+         reminder survives aggressive OEM battery management (ColorOS etc.). Play-restricted — fine
+         for a direct signed APK (same stance as USE_EXACT_ALARM above); revisit before any Play
+         submission. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:name=".BragBuddyApp"

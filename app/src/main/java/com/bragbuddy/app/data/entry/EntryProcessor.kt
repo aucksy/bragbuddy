@@ -210,16 +210,26 @@ class EntryProcessor @Inject constructor(
     /**
      * Delete an entry and drop its rollup contribution (routed here from the repository so the running
      * rollup can't be left stale by a raw DAO delete). Under the lock so it can't race a re-file.
+     * A queued offline voice note's clip is deleted with its row (no orphaned audio).
      */
     suspend fun delete(id: Long) = mutex.withLock {
+        deleteAudioOf(entryDao.getById(id))
         rollupStore.remove(id)
         entryDao.deleteById(id)
     }
 
     /** Bulk delete (multi-select). Drops each rollup contribution, then removes the rows. */
     suspend fun deleteMany(ids: List<Long>) = mutex.withLock {
-        ids.forEach { rollupStore.remove(it) }
+        ids.forEach { id ->
+            deleteAudioOf(entryDao.getById(id))
+            rollupStore.remove(id)
+        }
         entryDao.deleteByIds(ids)
+    }
+
+    /** Remove a queued voice note's on-device clip when its row goes away. Best-effort. */
+    private fun deleteAudioOf(entry: EntryEntity?) {
+        entry?.audioPath?.takeIf { it.isNotBlank() }?.let { runCatching { java.io.File(it).delete() } }
     }
 
     /**
@@ -248,6 +258,25 @@ class EntryProcessor @Inject constructor(
     suspend fun runRestore(replace: suspend () -> Unit) = mutex.withLock {
         replace()
         runCatching { reconcileLocked() }
+    }
+
+    /**
+     * Commit the outcome of an offline voice note's recovery attempt with a **compare-and-swap
+     * guard under the processing mutex**: the row must still exist, still be PENDING_AUDIO, and
+     * still reference the same clip. Returns false when the row was deleted or replaced in the
+     * meantime (a Drive restore re-inserts pending rows with fresh ids; a stale-id full-row update
+     * here could otherwise overwrite a restored entry, or store the transcript nowhere) — the
+     * caller must then keep the audio file so the surviving row can be drained on the next pass.
+     */
+    suspend fun commitPendingAudio(
+        id: Long,
+        expectedAudioPath: String?,
+        transform: (EntryEntity) -> EntryEntity,
+    ): Boolean = mutex.withLock {
+        val e = entryDao.getById(id) ?: return@withLock false
+        if (e.status != EntryStatus.PENDING_AUDIO || e.audioPath != expectedAudioPath) return@withLock false
+        entryDao.update(transform(e))
+        true
     }
 
     /** Drain every entry still awaiting processing (called on launch after an interrupted run). */

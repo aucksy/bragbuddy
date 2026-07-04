@@ -19,6 +19,17 @@ interface Transcriber {
     suspend fun transcribe(audio: File): Result<String>
 }
 
+/** A non-2xx transcription response, carrying the HTTP status so callers can tell a permanent
+ *  client-side failure (401 bad key, 413 clip too big, 400 unreadable) from a transient one
+ *  (408/429/5xx) — the offline queue keeps retrying only the latter. */
+class TranscriptionHttpException(val code: Int, message: String) : Exception(message) {
+    /** True when retrying the same clip can never succeed (auth aside, see [isAuth]). */
+    val isPermanent: Boolean get() = code in 400..499 && code != 408 && code != 429
+
+    /** Auth failures (bad/revoked key) are "permanent" for this key but fixable in Settings. */
+    val isAuth: Boolean get() = code == 401 || code == 403
+}
+
 /**
  * Cloud transcription via **Groq** (free-tier Whisper-large-v3), OpenAI-compatible. The API key is
  * read fresh from [SettingsStore] on each call and lives only on-device — never committed/shipped.
@@ -53,7 +64,10 @@ class GroqTranscriber @Inject constructor(
             client.newCall(request).execute().use { resp ->
                 val text = resp.body?.string().orEmpty().trim()
                 if (!resp.isSuccessful) {
-                    error("Transcription failed (${resp.code})${if (text.isNotBlank()) ": ${text.take(140)}" else ""}")
+                    throw TranscriptionHttpException(
+                        resp.code,
+                        "Transcription failed (${resp.code})${if (text.isNotBlank()) ": ${text.take(140)}" else ""}",
+                    )
                 }
                 text
             }

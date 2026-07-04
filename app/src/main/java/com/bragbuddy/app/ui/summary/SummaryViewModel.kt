@@ -9,6 +9,7 @@ import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
+import com.bragbuddy.app.data.net.ConnectivityMonitor
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.rollup.PeriodWindow
 import com.bragbuddy.app.data.rollup.ReviewPeriods
@@ -46,6 +47,7 @@ class SummaryViewModel @Inject constructor(
     private val entryRepository: EntryRepository,
     private val aiProvider: AiProvider,
     private val usageMeter: UsageMeter,
+    private val connectivity: ConnectivityMonitor,
 ) : ViewModel() {
 
     /** What surface to show. */
@@ -183,6 +185,13 @@ class SummaryViewModel @Inject constructor(
         // sheet's "Regenerate" button and the status-chip path uniformly).
         if (s.cached != null && !s.isStale) { _message.value = "Already up to date."; return }
         if (!s.hasContent) { _message.value = "Nothing to summarise in this period yet."; return }
+        // Calm offline state (Phase 7): say why up front instead of a spinner ending in an error.
+        // Advisory only — if the callback never registered the signal may be stuck false, so fall
+        // through to the real call (its onFailure already shows a calm error) rather than gate on it.
+        if (connectivity.callbackRegistered && !connectivity.isOnline.value) {
+            _message.value = "You're offline — connect to generate your summary."
+            return
+        }
         // Set the guard before any suspension (all calls are on the main dispatcher, so this is atomic
         // w.r.t. other generate() calls) — fixes the check-then-set race the reviewer found.
         _generating.value = true

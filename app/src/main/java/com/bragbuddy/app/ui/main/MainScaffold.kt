@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,14 +67,23 @@ fun MainScaffold(
     onOpenSettings: () -> Unit,
     onOpenPillar: (String) -> Unit,
     onOpenFolder: (String, String) -> Unit,
+    onOpenReliability: () -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val palette = BragBuddyTheme.palette
     val context = LocalContext.current
     var tab by rememberSaveable { mutableStateOf(HomeTab.HOME) }
+    // Set by Home's early-preview banner: land on Summary and generate right away (the tap is the
+    // consent for the one metered call). Consumed by SummaryScreen once its state is ready.
+    var summaryAutoGenerate by rememberSaveable { mutableStateOf(false) }
     val inboxCount by viewModel.inboxCount.collectAsStateWithLifecycle()
+    val showCatchup by viewModel.showCatchup.collectAsStateWithLifecycle()
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val contentBottom = 74.dp + navInset
+
+    // One evaluation per shell composition = one per app open (Design §7: the weekly catch-up
+    // shows on open in its window, max once a week — never re-prompts while the app sits open).
+    LaunchedEffect(Unit) { viewModel.maybeShowCatchup() }
 
     Box(Modifier.fillMaxSize().background(palette.bg)) {
         when (tab) {
@@ -82,9 +92,16 @@ fun MainScaffold(
                 onOpenPillar = onOpenPillar,
                 onOpenFolder = onOpenFolder,
                 onReviewInbox = { tab = HomeTab.INBOX },
+                onOpenSummary = { summaryAutoGenerate = true; tab = HomeTab.SUMMARY },
+                onOpenReliability = onOpenReliability,
                 contentBottomPadding = contentBottom,
             )
-            HomeTab.SUMMARY -> SummaryScreen(contentBottomPadding = contentBottom, onOpenSettings = onOpenSettings)
+            HomeTab.SUMMARY -> SummaryScreen(
+                contentBottomPadding = contentBottom,
+                onOpenSettings = onOpenSettings,
+                autoGenerate = summaryAutoGenerate,
+                onAutoGenerateConsumed = { summaryAutoGenerate = false },
+            )
             HomeTab.FRAMEWORK -> FrameworkScreen(contentBottomPadding = contentBottom)
             HomeTab.INBOX -> InboxScreen(contentBottomPadding = contentBottom)
         }
@@ -96,6 +113,16 @@ fun MainScaffold(
             onSelect = { tab = it },
             onCapture = { context.startActivity(Intent(context, CaptureActivity::class.java)) },
         )
+
+        if (showCatchup) {
+            CatchupSheet(
+                onAdd = {
+                    viewModel.catchupHandled()
+                    context.startActivity(Intent(context, CaptureActivity::class.java))
+                },
+                onSkip = { viewModel.catchupHandled() },
+            )
+        }
     }
 }
 

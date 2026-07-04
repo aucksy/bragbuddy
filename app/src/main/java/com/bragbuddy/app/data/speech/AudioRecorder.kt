@@ -36,15 +36,18 @@ class AudioRecorder(private val context: Context) {
     /** Peak amplitude since the last call (0..32767) — for the waveform. */
     fun maxAmplitude(): Int = runCatching { recorder?.maxAmplitude ?: 0 }.getOrDefault(0)
 
-    /** Stop and finalize; returns the recorded file (or null if nothing/too short). */
+    /** Stop and finalize; returns the recorded file (or null if nothing/too short). Ownership of
+     *  the file transfers to the caller — [outputFile] is cleared so a later [cancel] can only ever
+     *  delete an in-progress recording, never a finished take being retained for retry/queueing. */
     fun stop(): File? {
         val file = outputFile
+        outputFile = null
         runCatching { recorder?.stop() }
         releaseInternal()
         return file?.takeIf { it.exists() && it.length() > 0 }
     }
 
-    /** Abort without keeping the file. */
+    /** Abort without keeping the file (no-op on an already-stopped take — see [stop]). */
     fun cancel() {
         runCatching { recorder?.stop() }
         releaseInternal()
