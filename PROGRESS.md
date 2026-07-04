@@ -12,10 +12,11 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.13.0 — Phase 5 · Running rollup + summary ✅ DONE (signed · tag-driven CI)
+## Status: v0.13.0 — Phase 5 · Running rollup + summary ✅ DONE (verified green · signed · first-try CI)
 
 **APK:** `github.com/aucksy/bragbuddy/releases/download/v0.13.0/BragBuddy-v0.13.0.apk` (signed; `.aab`
-alongside). Build-Brief Phase 5: *"maintain the rollup on each entry (impact/routine → deterministic
+alongside; Android Release run `28704890580`, **first-try green** — no CI round-trips, the careful
+pre-commit compile pass + the 5-dimension adversarial review held). Build-Brief Phase 5: *"maintain the rollup on each entry (impact/routine → deterministic
 update); the summary-generator prompt → a curated, length-capped summary + 'set aside' list, with pin /
 promote / demote."* The actual point of the app. Scope locked via AskUserQuestion: **period =
 configurable review-year start** (windowed mid-year / year-end); **per-line reword = deferred** (whole-
