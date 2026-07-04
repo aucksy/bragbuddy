@@ -184,12 +184,30 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     no number + richer copy + inline **"See an example"** (weak→strong). Unique category/project names
     validated in the editor (Save gated) + DAO `IGNORE`/`runCatching` backstop against unique-index
     crashes. **Room stays v3**; no schema change.
-- **Next: Phase 7 — Reliability + retention polish** (Build Brief phase list; the last Android phase).
-  OEM alarm / battery-optimization wizard (ColorOS / Find X9s) so the daily reminder survives OEM
-  battery management; an on-open "you haven't logged" fallback + a gentle **weekly catch-up** and an
-  **early preview summary** in week 1 (Design System §7); offline queue + calm error states. *Testable:
-  reminders fire reliably on the Find X9s; an offline entry recovers; nothing lost.* Then **iOS**.
-  (`USE_EXACT_ALARM` is Play-restricted — a pre-Play item; BragBuddy ships as a direct signed APK.)
+  - `v0.15.0` — **Phase 7 · Reliability + retention polish (the LAST Android phase — Android is now
+    feature-complete).** **Offline voice queue** (`EntryStatus.PENDING_AUDIO` + `entries.audioPath`,
+    **Room v3→v4** additive `MIGRATION_3_4`): an offline capture auto-queues its clip
+    (filesDir/`voice_queue`), online transport failures offer Save-for-later, and dismissing the sheet
+    mid-transcription/post-failure **queues instead of deleting** (`AudioRecorder.stop()` now transfers
+    file ownership). `data/net/ConnectivityMonitor` (validated-network StateFlow, advisory
+    `callbackRegistered`) + `data/entry/OfflineRecovery` (launch/reconnect/key-change triggers): orphan
+    sweep → drain (transcribe→RAW→categorizer) → auto-retry FAILED; **every outcome commits via
+    `EntryProcessor.commitPendingAudio` (CAS under the processor mutex) and the audio is deleted only
+    after the commit** (restore-race-proof); un-transcribable 4xx clips park visibly in the Inbox.
+    Backup export excludes / restore preserves pending rows; `isLocalEmpty` ignores them. **Retention
+    (Design §7,** pure `data/retention/RetentionPolicy`**)**: daily "nothing logged today" Home card
+    (post-reminder-time), weekly catch-up sheet (Fri 17:00→Sun, once per ISO week, Settings opt-out),
+    early-preview banner (5+ filed entries → Summary tab auto-generate). **Reliable reminders** (Home
+    at-risk card + Settings screen, `reminder/ReliabilityCheck` + `ui/reliability/`): live-✓ steps for
+    notifications (incl. a blocked reminder CHANNEL), exact alarms, battery exemption (direct dialog;
+    manifest `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` — Play-restricted like USE_EXACT_ALARM), OEM
+    auto-start deep links + user-confirmed switch, test-reminder; card gated to real risk
+    (battery-only counts just on aggressive OEMs) with per-risk-signature dismissal. Calm offline copy
+    in Inbox/Summary/capture. Pre-tag: 5-dimension adversarially-verified review (15 findings incl. 2
+    HIGH data-loss races — all fixed) + a fix-diff re-review (4 edge defects fixed).
+- **Next: iOS port** — Android (Build Brief Phases 0–7) is complete. Everything under "Out of scope"
+  stays parked. (`USE_EXACT_ALARM`/`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` are Play-restricted —
+  pre-Play items; BragBuddy ships as a direct signed APK.)
   **Phase 6 owner gate still pending:** add a `com.bragbuddy.app` Android OAuth client + the release
   SHA-1 (`B8:B2:F2:86:05:BF:C8:44:94:98:E9:58:02:EA:55:74:9E:58:A4:D3`) to project `gmailapi-491903`.
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI

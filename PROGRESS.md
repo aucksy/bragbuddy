@@ -12,6 +12,104 @@ current code — that is the context, not chat history.
 
 ---
 
+## Status: v0.15.0 — Phase 7 · Reliability + retention polish ✅ DONE (verified green · signed · first-try CI) — the LAST Android phase
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.15.0/BragBuddy-v0.15.0.apk` (signed; `.aab`
+alongside; Android Release run `28712476499`, **first-try green** — no CI round-trips; the 5-dimension
+adversarially-verified review + the fix-diff re-review held). Build-Brief Phase 7: *"OEM alarm / battery-optimization wizard (ColorOS etc.), on-open 'you
+haven't logged' fallback, offline queue, weekly catch-up prompt, an early preview summary, error
+states."* Scope locked via AskUserQuestion: offline voice = **auto-queue the audio**; catch-up = **on
+open, Fri 17:00→Sun, once/week**; preview banner = **5+ filed entries, CTA auto-generates**; wizard =
+**at-risk Home card + Settings screen**; daily nudge = **after the reminder time only**. **Room v3→v4**
+(`MIGRATION_3_4`, additive `entries.audioPath`).
+
+### v0.15.0 — what was built (`versionCode 16`)
+1. **Offline voice queue — the never-lose-a-take spine** (`data/net/ConnectivityMonitor` +
+   `data/entry/OfflineRecovery` + `EntryStatus.PENDING_AUDIO` + `EntryEntity.audioPath`):
+   - A voice capture whose transcription fails **offline auto-queues silently** (clip moved
+     `cacheDir → filesDir/voice_queue`, a PENDING_AUDIO row inserted, "Saved for later" confirmation);
+     an online transport failure offers **Try again / Type instead / Save for later**; **dismissing the
+     sheet mid-transcription or after a transport failure queues instead of deleting** (onCleared
+     backstop). `AudioRecorder.stop()` now transfers file ownership (cancel() can never delete a
+     finished take — was the root of two silent-loss paths).
+   - `OfflineRecovery` (started in `BragBuddyApp`; also kicked on launch-online, reconnect, key
+     add/replace [debounced], and post-queue): **adopts orphaned clips** (crash-window sweep, 2-min
+     grace, mtime refreshed on move; 0-byte husks deleted), **drains the queue** (transcribe → RAW →
+     categorizer), and **auto-retries FAILED entries** (same idempotent path as Inbox "Try again").
+   - **Every drain outcome commits via `EntryProcessor.commitPendingAudio` — a compare-and-swap under
+     the processing mutex** (row still exists, still PENDING_AUDIO, same clip) and **the audio is
+     deleted only after a successful commit** — so a concurrent Drive restore can never be clobbered by
+     a stale-id write and words are never deleted before their text is durable.
+   - Failure policy: transient (offline/408/429/5xx) + auth (401/403 — fixable key) stay queued;
+     other 4xx (unreadable/oversized clip — `TranscriptionHttpException`) park **visibly in the Inbox**
+     (INBOX not FAILED, so the placeholder is never fed to the AI). Home shows a **waiting-voice strip**
+     with connectivity-aware copy. Backup: PENDING_AUDIO rows **excluded from export**, **preserved
+     across restore** (re-inserted with fresh ids), ignored by `isLocalEmpty` (the v0.14 anti-clobber
+     guard still holds), and filtered out of `changeSignal` (no byte-identical re-uploads).
+2. **Retention (Design §7)** — pure, unit-tested `data/retention/RetentionPolicy`:
+   - **Daily nudge**: quiet Home card when nothing is logged today AND the reminder time passed
+     (dismissible for the day; future-dated entries can't nag; hidden for a never-logged user).
+   - **Weekly catch-up**: the §7 sheet ("Anything bigger this week you didn't log?" · Add something /
+     Not this week) on first open in the Fri-17:00→Sunday window, once per ISO week (stamped with the
+     week it was SHOWN for), opt-out toggle in Settings, skipped until the user has ever logged.
+   - **Early preview banner**: the §7 indigo-gradient card ("Your summary's taking shape · From just N
+     entries") from 5 filed entries until the first summary ever generates (or dismissed); **"See the
+     preview" jumps to the Summary tab and auto-generates** (one metered call — the tap is the consent;
+     all of generate()'s staleness/offline/key guards still apply).
+3. **Reliable reminders (OEM wizard)** — `reminder/ReliabilityCheck` + `ui/reliability/` + a Home
+   at-risk card. Live-✓ steps: notifications (**including a blocked "Daily reminder" CHANNEL**, which
+   deep-links to the channel page), exact alarms (S+), battery-optimization exemption (direct system
+   dialog via new manifest `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` — Play-restricted, fine for direct
+   APK), best-effort **OEM auto-start deep links** (ColorOS/MIUI/Vivo/Huawei… + app-details fallback)
+   with a user-confirmed switch (no public API), and **"Send a test reminder"**. Every step returns via
+   an activity-result launcher → re-probe + **re-arm the alarm immediately**. The Home card shows only
+   on real risk (battery-optimization alone counts **only on aggressive OEMs** — a stock Pixel isn't
+   nagged) and dismissal is **per-risk-signature**, so a NEW risk later resurfaces it.
+4. **Calm error states**: Inbox FAILED pill goes offline-aware ("Offline — will retry when you're
+   connected"); Summary generate has an **advisory** offline pre-check (gated on the connectivity
+   callback having registered — never hard-blocks on a stuck signal); capture error copy distinguishes
+   offline/redo. *(Wizard, nudge, at-risk and waiting cards are not in the design files — flagged,
+   built from tokens; the catch-up sheet + preview banner match the §7 mockups.)*
+
+### Adversarial review before tagging (per protocol; ultra pass)
+A 5-dimension review workflow (compile / offline-queue / backup-restore / retention-logic /
+reliability-wizard), **every finding adversarially verified** by an independent skeptic: 16 raw →
+**15 confirmed (2 HIGH, 5 MED, 8 LOW), 1 refuted; compile dimension clean**. Highlights fixed:
+- **[HIGH]** dismissing the sheet **during TRANSCRIBING** deleted the take (scope cancellation meant
+  onFailure never ran; backstop only covered ERROR) → backstop broadened + recorder ownership fix.
+- **[HIGH]** the recovery drain **raced a Drive restore**: a stale-id full-row `@Update` could overwrite
+  a restored entry (ids preserved on restore!) or store the transcript nowhere, then delete the clip →
+  the CAS `commitPendingAudio` + delete-only-after-commit.
+- **[MED×5]** "Type instead" deleted the retained clip (recorder ownership); permanently-failing clips
+  retried forever with no user recourse (typed HTTP errors + Inbox parking); at-risk card would show for
+  ~every fresh install and its dismissal was forever (OEM gating + risk signatures); wizard was blind to
+  a blocked reminder channel (channel probe + deep link); drain/restore race (above).
+- **[LOW×8]** incl. orphaned-clip crash window (adoption sweep), kick-before-insert (sequenced
+  callback), number-clip double-tap guard, catch-up week stamped at show-time, future-dated-entry nudge,
+  advisory offline gate, changeSignal churn, lost-clip placeholder fed to the AI (INBOX parking).
+Then the **fix diff itself was re-reviewed** (compile + logic agents — the v0.11.0 lesson): compile
+clean; 4 edge defects found + fixed (0-byte clip adopt→park loop; fixed-key never re-kicking recovery
+[debounced]; Speak→Type→Speak round-trip destroying a held take; renameTo keeping recording-time mtime).
+
+### Tests
+`RetentionPolicyTest` (day/week keys incl. ISO padding, nudge edges [before/at/after reminder time,
+logged today, disabled, never-logged, dismissed-today, future-dated], catch-up window boundaries +
+once-per-week + opt-out, preview banner gates) + `HomeDocTest` gains the PENDING_AUDIO waiting-strip
+case (visible, not processing/inbox, Home not empty).
+
+### Owner setup still pending (Phase 6, unchanged)
+Drive sign-in stays gated until a `com.bragbuddy.app` Android OAuth client + release SHA-1
+(`B8:B2:F2:86:05:BF:C8:44:94:98:E9:58:02:EA:55:74:9E:58:A4:D3`) is added to project `gmailapi-491903`.
+Local Export/Import works regardless.
+
+### Next
+**Android is feature-complete** (Build Brief Phases 0–7 all shipped). Next frontier: **iOS port**
+(everything under "Out of scope" stays parked). On-device verification for this phase: reminders fire
+reliably on the Find X9s (walk the Reliable-reminders screen once), an offline voice/typed entry
+recovers when the network returns, nothing is lost.
+
+---
+
 ## Status: v0.14.0 — Phase 6 · Google Drive backup + restore ✅ DONE (signed · tag-driven CI)
 
 **APK:** `github.com/aucksy/bragbuddy/releases/download/v0.14.0/BragBuddy-v0.14.0.apk` (signed; `.aab`
