@@ -12,11 +12,19 @@ current code — that is the context, not chat history.
 
 ---
 
-## Status: v0.11.0 — v0.10.0 feedback batch (5 items) 🚧 tagged, awaiting green CI
+## Status: v0.11.0 — v0.10.0 feedback batch (5 items) ✅ DONE (verified green · signed)
 
-**APK (once green):** `github.com/aucksy/bragbuddy/releases/download/v0.11.0/BragBuddy-v0.11.0.apk`
-(signed; `.aab` alongside). Third on-device-testing pass (creator, 5 items; UI choices locked via
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.11.0/BragBuddy-v0.11.0.apk` (signed; `.aab`
+alongside; run `28694241418`). Third on-device-testing pass (creator, 5 items; UI choices locked via
 AskUserQuestion). Room stays **v3** (no schema change).
+
+**CI note (1 round-trip):** the first tag failed at "Run unit tests" — the pre-tag *logic* review had
+me add `super.onReceive()` to a Hilt `@AndroidEntryPoint` receiver to fix a runtime injection gap, but
+that **doesn't compile** (Kotlin rejects the super-call to the abstract framework method; Hilt's
+superclass swap is a post-compile bytecode transform), and the *compile* review had run before that
+edit. Fixed by switching to a **plain `BroadcastReceiver` + `EntryPointAccessors`** (the sibling Spends
+app's proven pattern). **Lesson: any code added in response to a review must itself be re-compiled/
+re-reviewed — a fix can introduce a fresh compile break the earlier pass never saw.**
 
 ### v0.11.0 — what changed (`versionCode 12`)
 1. **Reliable 9 PM reminder (was firing at random times).** Root cause: the daily reminder used
