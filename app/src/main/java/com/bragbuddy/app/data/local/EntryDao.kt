@@ -52,7 +52,22 @@ interface EntryDao {
     @Query("SELECT COUNT(*) FROM entries")
     fun observeCount(): Flow<Int>
 
+    @Query("SELECT COUNT(*) FROM entries")
+    suspend fun count(): Int
+
     /** Entries the user pinned "always include" — fed live to the Phase 5 summary ({{PINNED}}). */
     @Query("SELECT * FROM entries WHERE isPinned = 1 ORDER BY createdAt DESC")
     fun observePinned(): Flow<List<EntryEntity>>
+
+    /** The whole raw log, once (Phase 6 backup export). */
+    @Query("SELECT * FROM entries ORDER BY createdAt ASC")
+    suspend fun getAllOnce(): List<EntryEntity>
+
+    /** Wipe the log (Phase 6 restore replaces it wholesale). */
+    @Query("DELETE FROM entries")
+    suspend fun deleteAll()
+
+    /** Insert many rows preserving their ids (Phase 6 restore). */
+    @Insert
+    suspend fun insertAll(entries: List<EntryEntity>)
 }

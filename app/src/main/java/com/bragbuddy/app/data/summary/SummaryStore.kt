@@ -9,6 +9,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.bragbuddy.app.data.ai.SummaryResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -52,6 +53,14 @@ class SummaryStore @Inject constructor(
     suspend fun put(key: String, summary: CachedSummary) = store.edit { prefs ->
         val next = decode(prefs[KEY_CACHE]).toMutableMap().apply { this[key] = summary }
         prefs[KEY_CACHE] = json.encodeToString<Map<String, CachedSummary>>(next)
+    }
+
+    /** The raw cache blob for backup (empty string = nothing cached). */
+    suspend fun exportRaw(): String = store.data.first()[KEY_CACHE].orEmpty()
+
+    /** Restore the cache blob from a backup (blank clears it). */
+    suspend fun importRaw(raw: String) = store.edit { prefs ->
+        if (raw.isBlank()) prefs.remove(KEY_CACHE) else prefs[KEY_CACHE] = raw
     }
 
     private fun decode(raw: String?): Map<String, CachedSummary> =

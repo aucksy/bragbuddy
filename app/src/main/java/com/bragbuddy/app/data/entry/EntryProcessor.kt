@@ -229,11 +229,25 @@ class EntryProcessor @Inject constructor(
      * itself still only ever reads the rollup, never the log. Under the lock so no incremental write
      * interleaves.
      */
-    suspend fun reconcileRollup() = mutex.withLock {
-        runCatching {
-            val processed = entryDao.listByStatus(EntryStatus.PROCESSED)
-            rollupStore.replaceAll(processed.mapNotNull { it.toRollupItem() })
-        }
+    suspend fun reconcileRollup() = mutex.withLock { runCatching { reconcileLocked() } }
+
+    /** The reconcile body WITHOUT taking the lock — for callers that already hold it (Mutex isn't
+     *  reentrant, so [reconcileRollup] calling this directly would deadlock a lock-holder). */
+    private suspend fun reconcileLocked() {
+        val processed = entryDao.listByStatus(EntryStatus.PROCESSED)
+        rollupStore.replaceAll(processed.mapNotNull { it.toRollupItem() })
+    }
+
+    /**
+     * Run a wholesale restore [replace] (delete+reinsert the log/folders + rewrite the stores) UNDER
+     * the processing lock, then rebuild the rollup — so no in-flight categorization can interleave with
+     * the replace (which would leak a pre-restore capture into the restored data), and the derived
+     * rollup is rebuilt from exactly the restored entries. [replace] should be atomic itself (a Room
+     * transaction) so a mid-restore failure can't leave the log half-wiped.
+     */
+    suspend fun runRestore(replace: suspend () -> Unit) = mutex.withLock {
+        replace()
+        runCatching { reconcileLocked() }
     }
 
     /** Drain every entry still awaiting processing (called on launch after an interrupted run). */

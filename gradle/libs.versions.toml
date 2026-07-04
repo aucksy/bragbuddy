@@ -21,9 +21,11 @@ workManager = "2.10.0"
 datastore = "1.1.1"
 serializationJson = "1.7.3"
 okhttp = "4.12.0"
+playServicesAuth = "21.2.0"
 
 # Testing
 junit = "4.13.2"
+json = "20240303"
 coroutinesTest = "1.9.0"
 truth = "1.4.4"
 turbine = "1.1.0"
@@ -75,8 +77,13 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 # HTTP (OpenRouter provider — wired from Phase 2)
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 
+# Google Sign-In (Drive backup — wired from Phase 6; Drive v3 hit directly over REST)
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+# Real org.json on the JVM test classpath (Android stubs it in unit tests → returns defaults).
+json = { group = "org.json", name = "json", version.ref = "json" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 google-truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }

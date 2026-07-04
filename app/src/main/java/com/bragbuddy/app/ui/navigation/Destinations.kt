@@ -6,6 +6,7 @@ import android.net.Uri
 object Routes {
     const val HOME = "home"
     const val SETTINGS = "settings"
+    const val BACKUP = "backup"
 
     /** Deep pillar view. The pillar id rides in the path; an optional `folder` query arg scopes the
      *  screen to a single folder (Home's "See more" target). */

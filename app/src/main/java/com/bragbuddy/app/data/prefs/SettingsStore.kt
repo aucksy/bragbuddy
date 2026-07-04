@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -36,6 +37,11 @@ data class AppSettings(
     /** The month (1–12) the user's appraisal/review year starts on. Windows the summary period
      *  (mid-year = first 6 months, year-end = full year). Default January. */
     val reviewYearStartMonth: Int = 1,
+    /** Auto-push a fresh Drive backup when data changes (once connected). Default on — the backup is
+     *  text-only and small (Build Brief: transcriptions-only is the always-on default). */
+    val driveAutoBackup: Boolean = true,
+    /** Epoch millis of the last successful Drive backup (0 = never). Drives the health card. */
+    val driveLastBackupAt: Long = 0L,
 ) {
     /** Voice transcription is cloud Whisper (Groq) — the only engine. It runs when a key is set;
      *  without a key, voice prompts the user to add one (on-device STT was removed — too inaccurate). */
@@ -62,6 +68,8 @@ class SettingsStore @Inject constructor(
             jobRole = p[KEY_JOB_ROLE] ?: "",
             rolePromptDismissed = p[KEY_ROLE_PROMPT_DISMISSED] ?: false,
             reviewYearStartMonth = (p[KEY_REVIEW_YEAR_START] ?: 1).coerceIn(1, 12),
+            driveAutoBackup = p[KEY_DRIVE_AUTO_BACKUP] ?: true,
+            driveLastBackupAt = p[KEY_DRIVE_LAST_BACKUP_AT] ?: 0L,
         )
     }
 
@@ -94,6 +102,12 @@ class SettingsStore @Inject constructor(
     suspend fun setReviewYearStartMonth(month: Int) =
         store.edit { it[KEY_REVIEW_YEAR_START] = month.coerceIn(1, 12) }
 
+    suspend fun setDriveAutoBackup(enabled: Boolean) =
+        store.edit { it[KEY_DRIVE_AUTO_BACKUP] = enabled }
+
+    suspend fun setDriveLastBackupAt(millis: Long) =
+        store.edit { it[KEY_DRIVE_LAST_BACKUP_AT] = millis }
+
     private companion object {
         val KEY_REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
         val KEY_REMINDER_HOUR = intPreferencesKey("reminder_hour")
@@ -103,5 +117,7 @@ class SettingsStore @Inject constructor(
         val KEY_JOB_ROLE = stringPreferencesKey("job_role")
         val KEY_ROLE_PROMPT_DISMISSED = booleanPreferencesKey("role_prompt_dismissed")
         val KEY_REVIEW_YEAR_START = intPreferencesKey("review_year_start_month")
+        val KEY_DRIVE_AUTO_BACKUP = booleanPreferencesKey("drive_auto_backup")
+        val KEY_DRIVE_LAST_BACKUP_AT = longPreferencesKey("drive_last_backup_at")
     }
 }

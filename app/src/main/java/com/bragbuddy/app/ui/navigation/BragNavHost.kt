@@ -6,6 +6,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.bragbuddy.app.ui.backup.BackupScreen
 import com.bragbuddy.app.ui.main.MainScaffold
 import com.bragbuddy.app.ui.pillar.PillarDetailScreen
 import com.bragbuddy.app.ui.settings.SettingsScreen
@@ -24,7 +25,13 @@ fun BragNavHost() {
             )
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenBackup = { navController.navigate(Routes.BACKUP) },
+            )
+        }
+        composable(Routes.BACKUP) {
+            BackupScreen(onBack = { navController.popBackStack() })
         }
         composable(
             Routes.PILLAR,

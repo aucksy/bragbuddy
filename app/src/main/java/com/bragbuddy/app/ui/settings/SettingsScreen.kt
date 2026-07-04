@@ -27,6 +27,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
@@ -69,6 +70,7 @@ import com.bragbuddy.app.ui.theme.Spacing
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onOpenBackup: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val palette = BragBuddyTheme.palette
@@ -256,6 +258,26 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(Spacing.s2))
                 DashedAdd("Add a folder", palette) { showAddFolder = true }
+            }
+
+            Spacer(Modifier.height(Spacing.s4))
+
+            // Google Drive backup — opens the dedicated backup screen (Phase 6).
+            Card(palette) {
+                Row(
+                    Modifier.fillMaxWidth().clickable(onClick = onOpenBackup),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Google Drive backup", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                        Text(
+                            "Keep your record safe and restore it on a new phone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.text3,
+                        )
+                    }
+                    Icon(Icons.Outlined.ChevronRight, null, tint = palette.text3, modifier = Modifier.size(20.dp))
+                }
             }
 
             Spacer(Modifier.height(Spacing.s4))

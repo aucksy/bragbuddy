@@ -40,8 +40,8 @@ android {
         applicationId = "com.bragbuddy.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.13.0"
+        versionCode = 15
+        versionName = "0.14.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -156,8 +156,12 @@ dependencies {
     // HTTP (cloud Whisper transcription; OpenRouter LLM later)
     implementation(libs.okhttp)
 
+    // Google Sign-In (Phase 6 Drive backup — Drive v3 REST hit directly with the OAuth token)
+    implementation(libs.play.services.auth)
+
     // Unit testing
     testImplementation(libs.junit)
+    testImplementation(libs.json) // real org.json so BackupCodec round-trips on the JVM
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.google.truth)
     testImplementation(libs.turbine)

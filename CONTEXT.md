@@ -122,6 +122,23 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     enriched with every category's **sub-folder names as AI context** (placement stays goal-area only).
     **Number nudge rebuilt at the transcript** — record a 2nd clip (or type) → appended → AI cleans the
     combined text (replaced the post-save nudge that silently skipped on spoken number-words).
+  - `v0.14.0` — **Phase 6 · Google Drive backup + restore.** `data/drive/` (`DriveConfig` +
+    `DriveBackupManager`): Google Sign-In (`drive.file`) + **Drive v3 REST over the OAuth token** (no
+    SDK) → one restore `bragbuddy-backup.json` + the readable `BragBuddy record.txt` in a visible
+    "BragBuddy" folder, **create-before-delete**, silent debounced auto-backup. `data/backup/`
+    (`BackupCodec` pure org.json (de)serialise, unit-tested; `BackupRepository`): backs up entries +
+    folders + framework + settings + cached summaries; **Groq key & audio NEVER backed up**; rollup is
+    derived → rebuilt on restore. `ui/backup/` (Design §6, from Settings): health card, disabled
+    "+ voice notes" (no audio retained — flagged), auto-backup toggle, Back up now / Restore from Drive
+    / Export to device (SAF) / Restore from a file. **Restore-on-reinstall** (BragBuddyApp restore-if-
+    empty → start observer; connect-with-empty-local auto-restores). Room stays **v3**. **OWNER GATE:**
+    add a `com.bragbuddy.app` Android OAuth client + release SHA-1
+    (`B8:B2:F2:86:05:BF:C8:44:94:98:E9:58:02:EA:55:74:9E:58:A4:D3`) to shared project `gmailapi-491903`
+    — sign-in fails until then; local Export/Import works regardless. Pre-tag review: compile clean; 2
+    HIGH (auto-backup could clobber a rich backup with near-empty local → never back up empty +
+    auto-restore on connect; `importJson` non-atomic/off-mutex → run under `EntryProcessor.runRestore`
+    mutex + Room `withTransaction`) + 1 MED (decode gate too loose → require the `version` marker) fixed
+    + re-compile-checked.
   - `v0.13.0` — **Phase 5 · Running rollup + summary** (the point of the app). A maintained per-entry
     **rollup projection** (`data/rollup/`) kept in step **incrementally** under the `EntryProcessor`
     mutex on every mutation (file/edit/move/resolve/★/**delete**), + a launch **reconcile** self-heal
@@ -167,15 +184,14 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     no number + richer copy + inline **"See an example"** (weak→strong). Unique category/project names
     validated in the editor (Save gated) + DAO `IGNORE`/`runCatching` backstop against unique-index
     crashes. **Room stays v3**; no schema change.
-- **Next: Phase 6 — Backup + restore** (Google Drive; Build Brief § "Backup" + Design System §6). Back
-  up the structured data (Room + DataStore: entries, projects, framework, settings, rollup, cached
-  summaries) so it restores on reinstall / a new phone, **plus** export the human-readable appraisal
-  doc to a visible Drive folder. Two toggles with live sizes (transcriptions-only default vs +voice
-  notes), a backup-health indicator, a manual-export fallback. Reuse the sibling apps' native Drive
-  pattern (ColorCloset/NotDigest) — needs an owner-added `com.bragbuddy.app` Android OAuth client +
-  release SHA-1 in the shared Google project. *Testable: reinstall and restore works; status visible.*
-  (BragBuddy ships as a direct signed APK, not Play; the `USE_EXACT_ALARM` Play restriction is a
-  pre-Play-submission item, not now.)
+- **Next: Phase 7 — Reliability + retention polish** (Build Brief phase list; the last Android phase).
+  OEM alarm / battery-optimization wizard (ColorOS / Find X9s) so the daily reminder survives OEM
+  battery management; an on-open "you haven't logged" fallback + a gentle **weekly catch-up** and an
+  **early preview summary** in week 1 (Design System §7); offline queue + calm error states. *Testable:
+  reminders fire reliably on the Find X9s; an offline entry recovers; nothing lost.* Then **iOS**.
+  (`USE_EXACT_ALARM` is Play-restricted — a pre-Play item; BragBuddy ships as a direct signed APK.)
+  **Phase 6 owner gate still pending:** add a `com.bragbuddy.app` Android OAuth client + the release
+  SHA-1 (`B8:B2:F2:86:05:BF:C8:44:94:98:E9:58:02:EA:55:74:9E:58:A4:D3`) to project `gmailapi-491903`.
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
   round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
   errors). Fix from the CI log via the **public** GitHub API (unauthenticated is enough for run status

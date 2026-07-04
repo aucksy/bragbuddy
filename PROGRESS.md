@@ -12,6 +12,72 @@ current code — that is the context, not chat history.
 
 ---
 
+## Status: v0.14.0 — Phase 6 · Google Drive backup + restore ✅ DONE (signed · tag-driven CI)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.14.0/BragBuddy-v0.14.0.apk` (signed; `.aab`
+alongside). Build-Brief Phase 6: *"Google Drive backup (data + readable doc), restore on reinstall, a
+visible backup-health indicator, manual export."* Scope locked via AskUserQuestion: **reuse the shared
+Google project** (owner adds an Android OAuth client — see setup below); **structured/text data only**
+(no audio is retained on-device, so the design's "+ voice notes" toggle is shown disabled + flagged);
+**readable doc → visible Drive folder + Export to device**. Room stays **v3** (backup is read-only over
+the existing schema; no migration).
+
+### ⚠️ OWNER SETUP REQUIRED (one-time — Drive sign-in fails until this is done)
+Add an **Android OAuth client** to the shared Google Cloud project **`gmailapi-491903`** (the one
+ColorCloset/NotDigest use — the Web client id is already wired in `DriveConfig.WEB_CLIENT_ID`):
+- **Package name:** `com.bragbuddy.app`
+- **Release SHA-1:** `B8:B2:F2:86:05:BF:C8:44:94:98:E9:58:02:EA:55:74:9E:58:A4:D3`
+  (from `bragbuddy-release.keystore`, alias `bragbuddy`; SHA-256
+  `D6:7E:61:6E:E7:41:C8:10:4C:FC:B3:2D:1A:A5:40:4D:06:4D:23:2A:94:C0:95:00:C1:4E:95:1D:BB:C2:DD:FE`).
+Until it's added, the app builds/installs fine and **local Export/Import still works** — only Google
+sign-in returns an error. (If BragBuddy ever moves to Play App Signing, add Play's app-signing SHA-1 too.)
+
+### v0.14.0 — what was built (`versionCode 15`)
+1. **Drive backup/restore** (`data/drive/`): `DriveConfig` (shared web client id, `drive.file` scope,
+   "BragBuddy" folder), `DriveBackupManager` — Google Sign-In + **Drive v3 REST hit directly over the
+   OAuth token** (no Drive SDK), mirroring the sibling apps' proven pattern. Uploads **two** files with
+   **create-before-delete** safety: `bragbuddy-backup.json` (restore data) + `BragBuddy record.txt` (the
+   human-readable appraisal doc, refreshed each backup — openable from any computer). Silent, debounced
+   **auto-backup** observer (on when connected; `SettingsStore.driveAutoBackup`, default on).
+2. **The backup payload** (`data/backup/`): `BackupCodec` (pure, unit-tested org.json (de)serialise of
+   entries + folders + framework + settings + cached summaries) + `BackupRepository` (gathers/applies +
+   readable-doc + local SAF export/import + size). **The Groq key and audio are NEVER backed up**
+   (privacy); the **rollup is derived** so it isn't stored — it's rebuilt (`reconcileRollup`) from the
+   restored entries. `EntryEntity`/`ProjectEntity` DAOs gained `getAllOnce`/`deleteAll`/`insertAll`
+   (ids preserved on restore); `SummaryStore` gained raw export/import.
+3. **The Backup screen** (`ui/backup/`, Design System §6, reached from Settings): a **health card**
+   (Backed up · <time> / Connected / Not backed up), the **"what gets backed up"** options
+   (Transcriptions & data + a **disabled "+ Voice notes"** with the "not stored on this device" note),
+   an **auto-backup** toggle, **Back up now**, **Restore from Drive**, **Export a copy to my device**
+   (SAF) + **Restore from a file** fallback, and Disconnect.
+4. **Restore-on-reinstall**: `BragBuddyApp` restores-if-empty then starts the auto-backup observer;
+   connecting Drive with an empty local + an existing backup **auto-restores** the cloud history.
+
+### Adversarial review before tagging (compile + logic; fixed pre-tag)
+Compile pass (new + changed files, incl. play-services-auth API, org.json, SAF launchers, Hilt app
+field injection): **clean**. Logic pass found **2 HIGH + 2 MED — all fixed, fixes re-compile-checked:**
+- **[HIGH · backup-destruction]** the auto-backup observer could **overwrite a rich Drive backup with a
+  near-empty local state** (reinstall → connect → log one entry → clobber, since connect didn't restore).
+  → Fixed: **never back up an empty state** (`backupNow` throws + the observer skips when
+  `isLocalEmpty`), and **connecting with empty local + an existing backup now auto-restores** instead of
+  seeding — closing the window.
+- **[HIGH/MED · data loss]** `importJson` wasn't atomic and ran **outside the processing mutex** — a
+  mid-restore throw could half-wipe the log, and a concurrent categorization could leak a pre-restore
+  capture into the restored data. → Fixed: the whole restore runs under **`EntryProcessor.runRestore`
+  (the mutex)** with the log/folder replace in a single **Room `withTransaction`**, then reconciles the
+  rollup inline (non-reentrant).
+- **[MED · data loss]** `decode()`'s accept gate was too permissive (a foreign JSON could trigger a
+  wipe). → Fixed: restore requires **our `version` marker** + the structural keys before any destructive
+  write (decode already ran before any delete). Accepted LOWs: orphan-file cleanup on failed delete;
+  first-change-after-start timing (now `drop(1)`); reinstall vs. processPending launch ordering (rare,
+  harmless).
+
+### Tests
+`BackupCodecTest` (round-trip of entries/folders/framework/settings/summaries + null on non-backup +
+enum-fallback) — uses a real `org.json` test dependency (Android stubs org.json in unit tests).
+
+---
+
 ## Status: v0.13.0 — Phase 5 · Running rollup + summary ✅ DONE (verified green · signed · first-try CI)
 
 **APK:** `github.com/aucksy/bragbuddy/releases/download/v0.13.0/BragBuddy-v0.13.0.apk` (signed; `.aab`
@@ -710,33 +776,29 @@ The full PRD and a revised brief landed after the initial scaffold. Reviewed aga
 
 ---
 
-## Next — Phase 6: Backup + restore (Build Brief phase list)
-Phase 5 landed the running rollup + on-demand summary (the actual point of the app). Phase 6 =
-**Google Drive backup** (Build Brief § "Backup" + Design System §6):
-- **Back up the structured data** (Room + DataStore: entries, projects, framework, settings, the
-  rollup, cached summaries) so nothing is lost and it restores on reinstall / a new phone; **plus
-  export the human-readable appraisal document** to a visible Drive folder (openable from a computer).
-- **Two toggles with live sizes shown** (Design System §6): *Transcriptions only* (default, small,
-  always on) vs *Transcriptions + voice notes* (opt-in, large — audio in Drive). Transcriptions are
-  always backed up; the toggle only governs whether audio is included.
-- **Backup-health indicator** ("Backed up ✓ / ⚠️ reconnect"), a **manual export** hard fallback, and
-  restore-on-reinstall. Local data stays the source of truth; Drive is redundancy.
-- **Sibling reuse:** ColorCloset + NotDigest already have native Google Drive backup gated on an
-  Android OAuth client (web client id / release SHA-1) in the shared Google project — reuse that
-  pattern here (add a `com.bragbuddy.app` Android OAuth client + release SHA-1). *Testable: reinstall
-  and restore works; backup status is visible.*
+## Next — Phase 7: Reliability + retention polish (Build Brief phase list) — the LAST Android phase
+Phases 0–6 are the full core loop (capture → AI categorize → living doc → edit/copy → summary → Drive
+backup). Phase 7 is the reliability/retention layer that makes it dependable on a real device:
+- **OEM alarm / battery-optimization wizard** (ColorOS / Find X9s etc.) so the daily reminder survives
+  aggressive OEM battery management — a guided "allow background / exact alarms" flow.
+- **On-open "you haven't logged" fallback** + a gentle **weekly catch-up** prompt (Design System §7 ·
+  "Anything bigger this week?") and an **early preview summary** in week 1 (Design System §7 · a real
+  preview from a handful of entries, to make the payoff felt before review season).
+- **Offline queue / error states**: a capture made offline recovers cleanly; AI-failed entries retry;
+  clear, calm error surfaces. (Much of the never-lose-an-entry spine already exists — this hardens it.)
+- *Testable: reminders fire reliably on the creator's Find X9s; an offline entry recovers; nothing is
+  lost.* After Phase 7, **iOS** is the next frontier (everything under "Out of scope" stays parked).
 
-**Note:** BragBuddy currently ships as a **direct signed APK** (not Play). `USE_EXACT_ALARM` in the
-manifest is Play-restricted — revisit before any Play submission (drop to `SCHEDULE_EXACT_ALARM` +
-settings redirect on API 33+). No Play wiring is in scope until the creator asks.
+**Note:** `USE_EXACT_ALARM` is Play-restricted — a pre-Play item (BragBuddy ships as a direct signed
+APK, not Play). No Play wiring until the creator asks.
 
-**Groundwork already in place for Phase 5 (now shipped):** the rollup (`data/rollup/`), the summary
-cache (`data/summary/SummaryStore`), and the Summary UI (`ui/summary/`) all exist; `UsageMeter` is now
-incremented on fresh generations; the review-year-start setting drives the period windows.
+**Owner setup still pending for Phase 6 (Drive):** add a `com.bragbuddy.app` **Android OAuth client** +
+the release SHA-1 (`B8:B2:F2:86:05:BF:C8:44:94:98:E9:58:02:EA:55:74:9E:58:A4:D3`) to project
+`gmailapi-491903` — Drive sign-in fails until then; local Export/Import works regardless.
 
-**Creator setup (one-time):** the **Groq key** (`gsk_…`, Settings → AI brain) powers categorizer +
-Cloud Whisper **and now the summary generator** — one key for all three, on-device only. Nothing new
-to configure for Phase 5. (For Phase 6, the Google Drive OAuth client is the owner-only step.)
+**Groundwork already in place (shipped):** rollup + summary (`data/rollup/`, `data/summary/`,
+`ui/summary/`), Drive backup (`data/drive/`, `data/backup/`, `ui/backup/`). The **Groq key** (Settings →
+AI brain) powers categorizer + Cloud Whisper + summary — one key, on-device only.
 
 ### Repo / hosting (DONE)
 - Repo live: **github.com/aucksy/bragbuddy** (`main` + tag `v0.1.0`). Two workflows: `android-debug`

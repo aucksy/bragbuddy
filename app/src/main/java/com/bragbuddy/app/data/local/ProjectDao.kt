@@ -29,6 +29,18 @@ interface ProjectDao {
     @Query("SELECT * FROM projects WHERE id = :id")
     suspend fun getById(id: Long): ProjectEntity?
 
+    /** All folders, once (Phase 6 backup export). */
+    @Query("SELECT * FROM projects ORDER BY id ASC")
+    suspend fun getAllOnce(): List<ProjectEntity>
+
+    /** Wipe folders (Phase 6 restore replaces them wholesale). */
+    @Query("DELETE FROM projects")
+    suspend fun deleteAll()
+
+    /** Insert many folders preserving ids (Phase 6 restore). */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(projects: List<ProjectEntity>)
+
     @Query("DELETE FROM projects WHERE id = :id")
     suspend fun deleteById(id: Long)
 
