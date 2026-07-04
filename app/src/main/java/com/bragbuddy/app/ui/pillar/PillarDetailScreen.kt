@@ -1,7 +1,7 @@
 package com.bragbuddy.app.ui.pillar
 
 import android.content.Intent
-import android.text.format.DateUtils
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -60,6 +60,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.ui.capture.CaptureActivity
+import com.bragbuddy.app.ui.common.EntryBulletRow
 import com.bragbuddy.app.ui.home.OUTSIDE_PROJECT_LABEL
 import com.bragbuddy.app.ui.home.ProjectBullets
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
@@ -178,20 +179,33 @@ fun PillarDetailScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.s3),
             contentPadding = PaddingValues(bottom = Spacing.s12),
         ) {
-            item(key = "about") {
-                Column {
-                    Text(
-                        "ABOUT THIS PILLAR",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = palette.text3,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Spacer(Modifier.height(Spacing.s1))
-                    Text(
-                        detail.blurb.ifBlank { "What this pillar covers." },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = palette.text2,
-                    )
+            if (detail.singleFolder) {
+                // Scoped to one folder: the header already names it; show which pillar it rolls up to.
+                if (detail.blurb.isNotBlank()) {
+                    item(key = "folder-context") {
+                        Text(
+                            "in ${detail.blurb}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.text3,
+                        )
+                    }
+                }
+            } else {
+                item(key = "about") {
+                    Column {
+                        Text(
+                            "ABOUT THIS PILLAR",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = palette.text3,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(Spacing.s1))
+                        Text(
+                            detail.blurb.ifBlank { "What this pillar covers." },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = palette.text2,
+                        )
+                    }
                 }
             }
 
@@ -200,55 +214,99 @@ fun PillarDetailScreen(
                     item(key = "beh-empty") { PillarEmpty("No evidence yet. Log work that shows this and it lands here.", palette) }
                 } else {
                     val show = selectionMode || evidenceExpanded
-                    item(key = "evidence-label") {
-                        GroupHeader("Evidence", detail.evidence.size, show, palette) { evidenceExpanded = !evidenceExpanded }
-                    }
-                    if (show) {
-                        items(detail.evidence, key = { "e-" + it.id }) { entry ->
-                            BulletRow(
-                                entry = entry,
-                                hue = hue.solid,
-                                palette = palette,
-                                showFromProject = true,
-                                selectionMode = selectionMode,
-                                isSelected = selected.contains(entry.id),
-                                onToggleSelect = { toggle(entry.id) },
-                                onLongPress = { enterSelection(entry.id) },
-                                onEdit = { editTarget = entry },
-                                onRedo = { redo(entry) },
-                                onDelete = { deleteTarget = entry },
-                            )
+                    item(key = "evidence") {
+                        Column {
+                            GroupHeader("Evidence", detail.evidence.size, show, palette) { evidenceExpanded = !evidenceExpanded }
+                            AnimatedVisibility(visible = show) {
+                                Column(
+                                    Modifier.padding(top = Spacing.s2),
+                                    verticalArrangement = Arrangement.spacedBy(Spacing.s3),
+                                ) {
+                                    detail.evidence.forEach { entry ->
+                                        EntryBulletRow(
+                                            entry = entry,
+                                            hue = hue.solid,
+                                            showFromProject = true,
+                                            selectionMode = selectionMode,
+                                            isSelected = selected.contains(entry.id),
+                                            onToggleSelect = { toggle(entry.id) },
+                                            onLongPress = { enterSelection(entry.id) },
+                                            onEdit = { editTarget = entry },
+                                            onRedo = { redo(entry) },
+                                            onDelete = { deleteTarget = entry },
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
                 item(key = "add-note") {
                     AddRow("Add a note", palette) { capture(null) }
                 }
+            } else if (detail.singleFolder) {
+                // Scoped to one folder ("See more" from Home): entries directly, no folder headers.
+                val proj = detail.projects.firstOrNull()
+                val entries = proj?.entries.orEmpty()
+                if (entries.isEmpty()) {
+                    item(key = "folder-empty") { PillarEmpty("No entries here yet.", palette) }
+                } else {
+                    item(key = "folder-entries") {
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s3)) {
+                            entries.forEach { entry ->
+                                EntryBulletRow(
+                                    entry = entry,
+                                    hue = hue.solid,
+                                    showFromProject = false,
+                                    selectionMode = selectionMode,
+                                    isSelected = selected.contains(entry.id),
+                                    onToggleSelect = { toggle(entry.id) },
+                                    onLongPress = { enterSelection(entry.id) },
+                                    onEdit = { editTarget = entry },
+                                    onRedo = { redo(entry) },
+                                    onDelete = { deleteTarget = entry },
+                                )
+                            }
+                        }
+                    }
+                }
+                if (!detail.synthetic) {
+                    item(key = "add-folder-entry") {
+                        val outside = proj?.isOutside == true
+                        AddRow(if (outside) "Add a note" else "Add entry to ${detail.name}", palette) {
+                            capture(if (outside) null else detail.name)
+                        }
+                    }
+                }
             } else {
                 detail.projects.forEach { project ->
                     val show = selectionMode || expandedProjects.contains(project.name)
                     item(key = "proj-" + project.name) {
-                        ProjectHeader(project, show, palette) { toggleProject(project.name) }
-                    }
-                    if (show) {
-                        items(project.entries, key = { "e-" + it.id }) { entry ->
-                            BulletRow(
-                                entry = entry,
-                                hue = hue.solid,
-                                palette = palette,
-                                showFromProject = false,
-                                selectionMode = selectionMode,
-                                isSelected = selected.contains(entry.id),
-                                onToggleSelect = { toggle(entry.id) },
-                                onLongPress = { enterSelection(entry.id) },
-                                onEdit = { editTarget = entry },
-                                onRedo = { redo(entry) },
-                                onDelete = { deleteTarget = entry },
-                            )
-                        }
-                        if (!project.isOutside) {
-                            item(key = "add-" + project.name) {
-                                AddRow("Add entry to ${project.name}", palette) { capture(project.name) }
+                        Column {
+                            ProjectHeader(project, show, palette) { toggleProject(project.name) }
+                            AnimatedVisibility(visible = show) {
+                                Column(
+                                    Modifier.padding(top = Spacing.s2),
+                                    verticalArrangement = Arrangement.spacedBy(Spacing.s3),
+                                ) {
+                                    project.entries.forEach { entry ->
+                                        EntryBulletRow(
+                                            entry = entry,
+                                            hue = hue.solid,
+                                            showFromProject = false,
+                                            selectionMode = selectionMode,
+                                            isSelected = selected.contains(entry.id),
+                                            onToggleSelect = { toggle(entry.id) },
+                                            onLongPress = { enterSelection(entry.id) },
+                                            onEdit = { editTarget = entry },
+                                            onRedo = { redo(entry) },
+                                            onDelete = { deleteTarget = entry },
+                                        )
+                                    }
+                                    if (!project.isOutside) {
+                                        AddRow("Add entry to ${project.name}", palette) { capture(project.name) }
+                                    }
+                                }
                             }
                         }
                     }
@@ -366,141 +424,6 @@ private fun GroupHeader(text: String, count: Int, expanded: Boolean, palette: Br
             tint = palette.text3,
             modifier = Modifier.size(19.dp),
         )
-    }
-}
-
-@Composable
-private fun BulletRow(
-    entry: EntryEntity,
-    hue: Color,
-    palette: BragPalette,
-    showFromProject: Boolean,
-    selectionMode: Boolean,
-    isSelected: Boolean,
-    onToggleSelect: () -> Unit,
-    onLongPress: () -> Unit,
-    onEdit: () -> Unit,
-    onRedo: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val date = DateUtils.getRelativeTimeSpanString(
-        entry.occurredAt ?: entry.createdAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
-    ).toString()
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.lg))
-            .background(if (isSelected) palette.primarySoft else palette.surface)
-            .border(1.dp, if (isSelected) palette.primary.copy(alpha = 0.5f) else palette.border, RoundedCornerShape(Radii.lg))
-            .combinedClickable(
-                onClick = { if (selectionMode) onToggleSelect() },
-                onLongClick = onLongPress,
-            )
-            .padding(start = Spacing.card, top = Spacing.card, bottom = Spacing.card, end = 4.dp),
-    ) {
-        Box(Modifier.padding(top = 6.dp).size(6.dp).clip(RoundedCornerShape(2.dp)).background(hue))
-        Spacer(Modifier.size(Spacing.s3))
-        Column(Modifier.weight(1f)) {
-            Text(
-                entry.bullet?.takeIf { it.isNotBlank() } ?: entry.rawTranscript,
-                style = MaterialTheme.typography.bodyMedium,
-                color = palette.text1,
-            )
-            // Cross-references: under a project, note the behaviours it also evidences; under a
-            // behaviour, note the project it came from.
-            if (showFromProject) {
-                entry.project?.takeIf { it.isNotBlank() && !it.equals("Outside-project", true) && !it.equals("Inbox", true) }
-                    ?.let {
-                        Spacer(Modifier.height(3.dp))
-                        Text("from $it", style = MaterialTheme.typography.bodySmall, color = palette.text3)
-                    }
-            } else if (entry.demonstrates.isNotEmpty()) {
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    "› also evidences ${entry.demonstrates.joinToString(", ")}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = palette.primary,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            Spacer(Modifier.height(Spacing.s2))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (entry.isExtra) {
-                    var showStandout by remember { mutableStateOf(false) }
-                    Text(
-                        "★ Standout",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = palette.extraInk,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(Radii.sm))
-                            .background(palette.extraSoft)
-                            .clickable { showStandout = true }
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
-                    )
-                    if (showStandout) {
-                        AlertDialog(
-                            onDismissRequest = { showStandout = false },
-                            confirmButton = { TextButton(onClick = { showStandout = false }) { Text("Got it") } },
-                            title = { Text("Standout", color = palette.text1) },
-                            text = {
-                                Text(
-                                    "Work beyond your normal role — mentoring, unblocking another team, an initiative you started. BragBuddy flags these so your leadership and standout wins are easy to spot at review time.",
-                                    color = palette.text3,
-                                )
-                            },
-                            containerColor = palette.surface,
-                        )
-                    }
-                }
-                entry.metric?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = palette.text2,
-                        modifier = Modifier.clip(RoundedCornerShape(Radii.sm)).background(palette.surface2).padding(horizontal = 8.dp, vertical = 3.dp),
-                    )
-                }
-                Text(date, style = MaterialTheme.typography.bodySmall, color = palette.text3)
-            }
-        }
-        if (selectionMode) {
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = { onToggleSelect() },
-                colors = CheckboxDefaults.colors(checkedColor = palette.primary, uncheckedColor = palette.text3),
-            )
-        } else {
-            BulletMenu(onEdit = onEdit, onRedo = onRedo, onDelete = onDelete)
-        }
-    }
-}
-
-@Composable
-private fun BulletMenu(onEdit: () -> Unit, onRedo: () -> Unit, onDelete: () -> Unit) {
-    val palette = BragBuddyTheme.palette
-    var open by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Outlined.MoreVert, "More", tint = palette.text3, modifier = Modifier.size(19.dp))
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(
-                text = { Text("Edit text") },
-                onClick = { open = false; onEdit() },
-                leadingIcon = { Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp)) },
-            )
-            DropdownMenuItem(
-                text = { Text("Redo (re-record)") },
-                onClick = { open = false; onRedo() },
-                leadingIcon = { Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(18.dp)) },
-            )
-            DropdownMenuItem(
-                text = { Text("Delete") },
-                onClick = { open = false; onDelete() },
-                leadingIcon = { Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(18.dp)) },
-            )
-        }
     }
 }
 

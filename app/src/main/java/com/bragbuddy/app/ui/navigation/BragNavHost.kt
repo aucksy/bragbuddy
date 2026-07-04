@@ -20,6 +20,7 @@ fun BragNavHost() {
             MainScaffold(
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 onOpenPillar = { pillarId -> navController.navigate(Routes.pillar(pillarId)) },
+                onOpenFolder = { pillarId, folder -> navController.navigate(Routes.folder(pillarId, folder)) },
             )
         }
         composable(Routes.SETTINGS) {
@@ -27,7 +28,10 @@ fun BragNavHost() {
         }
         composable(
             Routes.PILLAR,
-            arguments = listOf(navArgument("pillarId") { type = NavType.StringType }),
+            arguments = listOf(
+                navArgument("pillarId") { type = NavType.StringType },
+                navArgument("folder") { type = NavType.StringType; defaultValue = "" },
+            ),
         ) {
             PillarDetailScreen(onBack = { navController.popBackStack() })
         }

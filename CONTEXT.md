@@ -122,6 +122,17 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     enriched with every category's **sub-folder names as AI context** (placement stays goal-area only).
     **Number nudge rebuilt at the transcript** — record a 2nd clip (or type) → appended → AI cleans the
     combined text (replaced the post-save nudge that silently skipped on spoken number-words).
+  - `v0.11.0` — **v0.10.0 feedback batch (5).** **Reliable 9 PM reminder** (was drifting on WorkManager
+    periodic work → exact `AlarmManager` alarm re-armed daily by a new `ReminderReceiver`, boot/clock
+    reschedule, legacy work cancelled, `USE_EXACT_ALARM`/`SCHEDULE_EXACT_ALARM`). **Add-impact merges
+    into ONE deduped bullet** (`CategorizeRequest.combineSingle` → `COMBINE_MODE` prompt; add-number
+    flows re-file single-output, never split/drop). **Consistent expand animation** (pillar view now
+    uses `AnimatedVisibility` like Home). **Home folders expand INLINE** — fully actionable
+    (edit/redo/delete + Add entry), last 10 + "See all N" → a **single-folder screen**
+    (`pillar/{id}?folder=…`); shared `ui/common/EntryBulletRow` for Home + deep view *(deliberate
+    deviation from "Home is an overview" — creator's call)*. **Performance Goals expanded by default**
+    (seeded once). Room stays **v3**. Pre-tag review fixed a HIGH: `ReminderReceiver` needed
+    `super.onReceive()` (Hilt injection) or it crashed on every fire.
   - `v0.10.0` — **UX batch (6).** **Collapsible sections** (default collapsed) on Home / pillar
     deep-view / Framework (selection mode force-expands the pillar view). **Framework editor rebuilt**:
     "Refine by voice" removed; compact collapsible category rows → **Edit opens a full sheet** with a

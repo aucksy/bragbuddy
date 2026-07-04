@@ -28,6 +28,10 @@ import javax.inject.Inject
 /** Argument key for the pillar id passed on the nav route "pillar/{pillarId}". */
 const val ARG_PILLAR_ID = "pillarId"
 
+/** Optional query arg: when set, the screen is scoped to a single folder (the "See more" target from
+ *  Home's inline folder expansion) instead of listing every folder in the pillar. */
+const val ARG_FOLDER = "folder"
+
 /** Everything the deep pillar screen renders. [found] is false if the id no longer matches a pillar
  *  (e.g. the framework was edited while the screen was open) → the screen shows a graceful fallback. */
 data class PillarDetail(
@@ -38,6 +42,9 @@ data class PillarDetail(
     val isBehaviour: Boolean = false,
     /** The catch-all "Uncategorized" view — triage only (no add-project / add-detail affordances). */
     val synthetic: Boolean = false,
+    /** Scoped to one folder ("See more" from Home): render its entries directly (no folder headers,
+     *  no add-project / add-detail); [name] is the folder name and [projects] holds just that one. */
+    val singleFolder: Boolean = false,
     val projects: List<ProjectBullets> = emptyList(),
     val evidence: List<EntryEntity> = emptyList(),
 )
@@ -57,6 +64,7 @@ class PillarDetailViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val pillarId: String = savedStateHandle.get<String>(ARG_PILLAR_ID).orEmpty()
+    private val folderArg: String = savedStateHandle.get<String>(ARG_FOLDER).orEmpty()
 
     val detail: StateFlow<PillarDetail> = combine(
         repository.observeAll(),
@@ -64,15 +72,17 @@ class PillarDetailViewModel @Inject constructor(
         projects.observeActive(),
     ) { entries, framework, folders ->
         val processed = entries.filter { it.status == EntryStatus.PROCESSED }
+        val folderName = folderArg.trim()
         if (pillarId == UNCATEGORIZED_ID) {
             val orphans = uncategorizedEntries(processed, framework)
             return@combine PillarDetail(
                 found = orphans.isNotEmpty(),
-                name = UNCATEGORIZED_LABEL,
+                name = if (folderName.isNotBlank()) OUTSIDE_PROJECT_LABEL else UNCATEGORIZED_LABEL,
                 blurb = uncategorizedPillar().blurb,
                 colorIndex = framework.pillars.size,
                 isBehaviour = false,
                 synthetic = true,
+                singleFolder = folderName.isNotBlank(),
                 projects = listOf(ProjectBullets(OUTSIDE_PROJECT_LABEL, isOutside = true, entries = orphans)),
             )
         }
@@ -88,14 +98,32 @@ class PillarDetailViewModel @Inject constructor(
                 evidence = behaviourEvidence(processed, pillar),
             )
         } else {
-            PillarDetail(
-                found = true,
-                name = pillar.name,
-                blurb = pillar.blurb,
-                colorIndex = index,
-                isBehaviour = false,
-                projects = goalProjectGroups(processed, folders, pillar),
-            )
+            val allGroups = goalProjectGroups(processed, folders, pillar)
+            if (folderName.isNotBlank()) {
+                // "See more" from Home → scope to just that one folder's entries.
+                val isOutside = folderName.equals(OUTSIDE_PROJECT_LABEL, ignoreCase = true)
+                val match = allGroups.firstOrNull {
+                    if (isOutside) it.isOutside else it.name.equals(folderName, ignoreCase = true)
+                }
+                PillarDetail(
+                    found = true,
+                    name = if (isOutside) OUTSIDE_PROJECT_LABEL else (match?.name ?: folderName),
+                    blurb = pillar.name,
+                    colorIndex = index,
+                    isBehaviour = false,
+                    singleFolder = true,
+                    projects = listOfNotNull(match),
+                )
+            } else {
+                PillarDetail(
+                    found = true,
+                    name = pillar.name,
+                    blurb = pillar.blurb,
+                    colorIndex = index,
+                    isBehaviour = false,
+                    projects = allGroups,
+                )
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PillarDetail(found = true))
 

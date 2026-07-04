@@ -65,6 +65,7 @@ private enum class HomeTab(val label: String) { HOME("Home"), SUMMARY("Summary")
 fun MainScaffold(
     onOpenSettings: () -> Unit,
     onOpenPillar: (String) -> Unit,
+    onOpenFolder: (String, String) -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val palette = BragBuddyTheme.palette
@@ -79,6 +80,7 @@ fun MainScaffold(
             HomeTab.HOME -> HomeScreen(
                 onOpenSettings = onOpenSettings,
                 onOpenPillar = onOpenPillar,
+                onOpenFolder = onOpenFolder,
                 onReviewInbox = { tab = HomeTab.INBOX },
                 contentBottomPadding = contentBottom,
             )

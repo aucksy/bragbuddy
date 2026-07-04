@@ -25,6 +25,13 @@ data class CategorizeRequest(
     val role: String = "",
     /** Explicit project anchor (folder-tap). When set, the model must file into this exact project. */
     val projectAnchor: String? = null,
+    /**
+     * Combine mode. When true the transcript is ONE work item the user described and then added more
+     * detail to (impact / numbers / a clarification) — the model must NOT split it, must return
+     * exactly one entry, and must rewrite a single bullet that merges the follow-up and removes the
+     * repetition (never just append it). Used by the "add a number / impact" flows.
+     */
+    val combineSingle: Boolean = false,
 )
 
 @Serializable

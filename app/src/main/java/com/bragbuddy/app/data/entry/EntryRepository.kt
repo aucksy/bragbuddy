@@ -40,6 +40,7 @@ class EntryRepository @Inject constructor(
         source: EntrySource,
         occurredAt: Long? = null,
         anchorProject: String? = null,
+        combineSingle: Boolean = false,
     ): Long {
         val id = entryDao.insert(
             EntryEntity(
@@ -51,7 +52,7 @@ class EntryRepository @Inject constructor(
                 anchorProject = anchorProject?.takeIf { it.isNotBlank() },
             ),
         )
-        appScope.launch { processor.process(id) }
+        appScope.launch { processor.process(id, combineSingle) }
         return id
     }
 
@@ -91,7 +92,7 @@ class EntryRepository @Inject constructor(
      * reset + re-categorize runs inside [EntryProcessor] under its lock, so it can't be clobbered by
      * an in-flight categorization of the same row and can't leave duplicate split rows.
      */
-    fun replaceText(id: Long, text: String) {
-        appScope.launch { processor.replace(id, text) }
+    fun replaceText(id: Long, text: String, combineSingle: Boolean = false) {
+        appScope.launch { processor.replace(id, text, combineSingle) }
     }
 }

@@ -15,6 +15,14 @@
     <!-- Reschedule the daily reminder after a reboot. Wired in Phase 1. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Fire the daily reminder at the exact chosen minute (was drifting on WorkManager's inexact
+         periodic work). USE_EXACT_ALARM covers API 33+ (auto-granted); SCHEDULE_EXACT_ALARM covers
+         API 31-32. Below 31 no permission is needed. Falls back to an inexact alarm if unavailable. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+
     <!-- Network: the AI categorizer / summary calls (Phase 2) and Drive backup (Phase 6). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -53,6 +61,19 @@
             android:excludeFromRecents="true"
             android:theme="@style/Theme.BragBuddy.Capture"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- Daily reminder: fires the exact alarm and re-arms it (on fire, boot, and clock changes).
+             Not exported — the alarm targets it explicitly; the boot/time broadcasts are protected. -->
+        <receiver
+            android:name=".reminder.ReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

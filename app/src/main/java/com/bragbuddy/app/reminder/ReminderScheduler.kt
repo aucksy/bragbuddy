@@ -1,46 +1,78 @@
 package com.bragbuddy.app.reminder
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Context
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
+import android.content.Intent
+import android.os.Build
 import androidx.work.WorkManager
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.time.Duration
 import java.time.ZonedDateTime
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Schedules the daily reminder as a 24h periodic work whose first run is delayed to the next
- * occurrence of the chosen time (mirrors the sibling apps' backup scheduler). Full OEM
- * alarm-reliability hardening (ColorOS etc.) is Phase 7; this is the dependable baseline.
+ * Schedules the daily reminder as an **exact** one-shot [AlarmManager] alarm re-armed each day.
+ *
+ * Why not WorkManager periodic work (the previous approach): periodic work is inexact — the OS
+ * batches it into Doze maintenance windows and drops the time-of-day anchor after the first run, so
+ * a "9:00 PM" reminder drifted to seemingly random times. An exact alarm fires at the chosen minute;
+ * the [ReminderReceiver] re-arms the next day's alarm when it fires (and on boot / time change), so
+ * the anchor never drifts.
+ *
+ * Exact scheduling uses `setExactAndAllowWhileIdle` (fires even in Doze). On Android 12+ that needs
+ * exact-alarm permission — [USE_EXACT_ALARM] (API 33+, auto-granted) / [SCHEDULE_EXACT_ALARM]
+ * (API 31-32, default-granted). If it's ever unavailable we fall back to an inexact allow-while-idle
+ * alarm rather than crashing — a small drift beats no reminder.
  */
 @Singleton
 class ReminderScheduler @Inject constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val context: Context,
 ) {
-    private val workManager = WorkManager.getInstance(context)
+    private val alarmManager = context.getSystemService(AlarmManager::class.java)
 
     fun schedule(hour: Int, minute: Int) {
-        val request = PeriodicWorkRequestBuilder<ReminderWorker>(24, TimeUnit.HOURS)
-            .setInitialDelay(initialDelayMillis(hour, minute), TimeUnit.MILLISECONDS)
-            .build()
-        workManager.enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
+        // Migration: remove the legacy WorkManager periodic reminder from older installs so it can't
+        // also fire (double reminders / the old drift). No-op if it was never enqueued.
+        runCatching { WorkManager.getInstance(context).cancelUniqueWork(LEGACY_WORK_NAME) }
+
+        val am = alarmManager ?: return
+        val triggerAt = nextTriggerMillis(hour, minute)
+        val pending = firePendingIntent()
+        val canExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.canScheduleExactAlarms() else true
+        runCatching {
+            if (canExact) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
+            else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
+        }.onFailure {
+            // A SecurityException can still slip through if exact-alarm access was revoked between the
+            // check and the call — degrade to inexact rather than crash.
+            runCatching { am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending) }
+        }
     }
 
     fun cancel() {
-        workManager.cancelUniqueWork(WORK_NAME)
+        runCatching { WorkManager.getInstance(context).cancelUniqueWork(LEGACY_WORK_NAME) }
+        alarmManager?.cancel(firePendingIntent())
     }
 
-    private fun initialDelayMillis(hour: Int, minute: Int): Long {
+    private fun firePendingIntent(): PendingIntent {
+        val intent = Intent(context, ReminderReceiver::class.java).setAction(ReminderReceiver.ACTION_FIRE)
+        return PendingIntent.getBroadcast(
+            context, REQUEST_CODE, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+    }
+
+    /** Epoch-millis of the next occurrence of hour:minute (today if still ahead, else tomorrow). */
+    private fun nextTriggerMillis(hour: Int, minute: Int): Long {
         val now = ZonedDateTime.now()
         var next = now.withHour(hour.coerceIn(0, 23)).withMinute(minute.coerceIn(0, 59)).withSecond(0).withNano(0)
         if (!next.isAfter(now)) next = next.plusDays(1)
-        return Duration.between(now, next).toMillis().coerceAtLeast(0)
+        return next.toInstant().toEpochMilli()
     }
 
     private companion object {
-        const val WORK_NAME = "daily_reminder"
+        const val REQUEST_CODE = 4711
+        const val LEGACY_WORK_NAME = "daily_reminder"
     }
 }

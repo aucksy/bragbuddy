@@ -48,6 +48,19 @@ class AiPromptsTest {
     }
 
     @Test
+    fun `combine mode adds the single-entry merge directive, default does not`() {
+        val plain = AiPrompts.categorizer(today = "2026-07-03", framework = "", projects = emptyList())
+        assertThat(plain).doesNotContain("COMBINE MODE")
+
+        val combined = AiPrompts.categorizer(
+            today = "2026-07-03", framework = "", projects = emptyList(), combineSingle = true,
+        )
+        assertThat(combined).contains("COMBINE MODE")
+        assertThat(combined).contains("EXACTLY ONE entry")
+        assertThat(combined).doesNotContain("{{")
+    }
+
+    @Test
     fun `summary injects the role`() {
         val prompt = AiPrompts.summary(
             period = "full-year", lengthCap = "", framework = "", pinned = emptyList(), rollup = "",

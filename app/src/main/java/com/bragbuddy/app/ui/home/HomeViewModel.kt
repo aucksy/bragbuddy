@@ -53,6 +53,11 @@ class HomeViewModel @Inject constructor(
 
     fun dismissRolePrompt() = viewModelScope.launch { settings.dismissRolePrompt() }
 
+    /** Per-entry actions for the inline folder expansion on Home (mirror the deep pillar view). */
+    fun editText(id: Long, text: String) = repository.replaceText(id, text)
+
+    fun delete(id: Long) = repository.delete(id)
+
     /** Create a folder under [goalArea] (or the framework's first goal category when null). */
     fun createFolder(name: String, goalArea: String? = null) = viewModelScope.launch {
         val area = goalArea?.takeIf { it.isNotBlank() }

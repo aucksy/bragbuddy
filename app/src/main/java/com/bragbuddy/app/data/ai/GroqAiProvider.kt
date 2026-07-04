@@ -44,6 +44,7 @@ class GroqAiProvider @Inject constructor(
     override suspend fun categorize(request: CategorizeRequest): Result<CategorizeResult> {
         val system = AiPrompts.categorizer(
             request.today, request.framework, request.projects, request.role, request.projectAnchor,
+            request.combineSingle,
         )
         val user = request.transcript.trim()
         if (user.isEmpty()) return Result.success(CategorizeResult(emptyList()))

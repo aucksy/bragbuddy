@@ -12,6 +12,68 @@ current code — that is the context, not chat history.
 
 ---
 
+## Status: v0.11.0 — v0.10.0 feedback batch (5 items) 🚧 tagged, awaiting green CI
+
+**APK (once green):** `github.com/aucksy/bragbuddy/releases/download/v0.11.0/BragBuddy-v0.11.0.apk`
+(signed; `.aab` alongside). Third on-device-testing pass (creator, 5 items; UI choices locked via
+AskUserQuestion). Room stays **v3** (no schema change).
+
+### v0.11.0 — what changed (`versionCode 12`)
+1. **Reliable 9 PM reminder (was firing at random times).** Root cause: the daily reminder used
+   **WorkManager periodic work**, which the OS batches into Doze windows and which drops the
+   time-of-day anchor after the first run → drift. Rewritten to an **exact `AlarmManager` alarm**
+   (`setExactAndAllowWhileIdle`, inexact `setAndAllowWhileIdle` fallback if exact-alarm access is
+   unavailable) that a new **`ReminderReceiver`** re-arms every day (on fire) and after boot / clock /
+   timezone changes. `MainActivity` still re-syncs on launch; the legacy WorkManager `daily_reminder`
+   work is **cancelled** in `schedule()`/`cancel()` so an upgraded install can't double-fire. Manifest
+   gains `USE_EXACT_ALARM` (API 33+, auto-granted) + `SCHEDULE_EXACT_ALARM` (API 31-32) + the receiver.
+2. **"Add impact/number" now yields ONE merged, deduped bullet** (was appending the follow-up as a
+   separate thing). New **combine mode**: `CategorizeRequest.combineSingle` → `AiPrompts` appends a
+   `COMBINE_MODE` directive ("return EXACTLY ONE entry; merge the follow-up, remove repetition, keep
+   every distinct fact & number"). `EntryProcessor.process/replace` route to the single-output
+   `refileSingle` when set (never split, never drop the number). `CaptureViewModel` tracks
+   `impactAdded` (set when a number is typed or spoken and folded in) and passes `combineSingle`
+   through `save → capture/replaceText`; the typed post-save `confirmNumber` also uses it. A plain
+   multi-item note (no number added) still splits normally.
+3. **Consistent expand/collapse animation.** The deep pillar view previously popped items in with no
+   animation while Home/Framework used `AnimatedVisibility`. Restructured the pillar view so each
+   project/evidence group's entries live inside `AnimatedVisibility` — identical fade/expand
+   everywhere.
+4. **Home folders expand INLINE** (were opening a screen that re-listed the same folders). Tapping a
+   folder now expands it in place to its recent entries (**fully actionable**: ⋮ edit/redo/delete +
+   "Add entry"), capped at **10** (`MAX_INLINE_ENTRIES`); more than 10 → a **"See all N"** row opens a
+   **dedicated single-folder screen** (`pillar/{id}?folder=…`, `PillarDetailViewModel.singleFolder`)
+   showing just that folder with full edit/delete/multi-select/add, back to Home. Entry rows are a new
+   shared `ui/common/EntryBulletRow` used by BOTH Home and the deep view (identical look). *(Deviation
+   from the Design System's "Home stays an overview; depth one tap in" — the creator explicitly chose
+   inline expansion; confirmed via AskUserQuestion.)* Behaviour sections keep their sample + tap-to-open
+   (creator's choice — only the animation was unified).
+5. **Performance Goals section expanded by default** on Home (all sections were collapsed since
+   v0.10.0). Seeded once via `LaunchedEffect(doc.goals)` + a `seededExpand` guard, so the user can
+   collapse it and it stays collapsed. Only the "Performance Goals" section (creator's choice); folders
+   inside stay collapsed.
+
+### Adversarial review before tagging (compile + logic; per protocol)
+Compile pass: **clean** (0 findings — every call site / import / signature cross-checked, incl. the
+new shared `EntryBulletRow` and the `onOpenFolder` threading). Logic pass found **1 HIGH + 4 LOW**:
+- **[HIGH · fixed]** `ReminderReceiver` (a Hilt `@AndroidEntryPoint` receiver) didn't call
+  `super.onReceive()`, so field injection never ran → `settingsStore`/`scheduler` uninitialized →
+  **crash on every alarm fire and boot**, killing the reminder entirely. Fixed: added
+  `super.onReceive(context, intent)` first, plus a `catch` so a reminder can never crash the app.
+- **[LOW · accepted]** the `combineSingle` flag lives only in the fire-and-forget lambda; if the
+  process dies between the capture insert and processing, the launch-time drain re-files in split mode
+  (the note may split instead of merging). Rare; entry never lost. Persisting it would need a Room
+  migration — deferred.
+- **[LOW · accepted]** `impactAdded` latches until the next take; heavily rewriting the review text
+  after adding a number could still force one bullet. Narrow edge.
+- **[LOW · accepted]** the single-folder "See all" screen shows an empty stale view if the folder is
+  renamed/deleted while open (graceful — no crash/loss; mirrors how a vanished pillar is handled).
+- **[NOTE]** `USE_EXACT_ALARM` is Play-restricted (alarm/calendar/reminder apps). BragBuddy currently
+  ships as a direct signed APK (not Play), so it's fine now — revisit before any Play submission
+  (could drop to `SCHEDULE_EXACT_ALARM` + a settings redirect on API 33+).
+
+---
+
 ## Status: v0.10.0 — UX batch (6 items) ✅ DONE (verified green · signed)
 
 **APK:** `github.com/aucksy/bragbuddy/releases/download/v0.10.0/BragBuddy-v0.10.0.apk` (signed; `.aab`

@@ -1,5 +1,6 @@
 package com.bragbuddy.app.ui.home
 
+import android.content.Intent
 import android.text.format.DateUtils
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -38,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +58,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.R
 import com.bragbuddy.app.data.local.EntryEntity
+import com.bragbuddy.app.ui.capture.CaptureActivity
+import com.bragbuddy.app.ui.common.EntryBulletRow
 import com.bragbuddy.app.ui.role.RoleInput
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
@@ -76,19 +81,49 @@ import com.bragbuddy.app.ui.theme.pillarColor
 fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenPillar: (String) -> Unit,
+    onOpenFolder: (String, String) -> Unit,
     onReviewInbox: () -> Unit,
     contentBottomPadding: androidx.compose.ui.unit.Dp,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val palette = BragBuddyTheme.palette
+    val context = LocalContext.current
     val doc by viewModel.doc.collectAsStateWithLifecycle()
     val showRolePrompt by viewModel.showRolePrompt.collectAsStateWithLifecycle()
 
     // When set, the folder-create dialog is open for this goal area (null area = first goal area).
     var createFolderFor by remember { mutableStateOf<CreateFolderTarget?>(null) }
-    // Collapsible sections — expanded ids; default = none (everything starts collapsed).
+    // Per-entry edit / delete (inline folder expansion mirrors the deep pillar view's actions).
+    var editTarget by remember { mutableStateOf<EntryEntity?>(null) }
+    var deleteTarget by remember { mutableStateOf<EntryEntity?>(null) }
+    // Collapsible sections — expanded ids; default = none (everything starts collapsed) except the
+    // Performance Goals section, seeded open once below (fix: it should be expanded by default).
     val expanded = remember { mutableStateListOf<String>() }
     fun toggle(key: String) { if (expanded.contains(key)) expanded.remove(key) else expanded.add(key) }
+    // Folder-level inline expansion, keyed "<pillarId>::<folderName>". Default = collapsed.
+    val expandedFolders = remember { mutableStateListOf<String>() }
+    fun toggleFolder(key: String) { if (expandedFolders.contains(key)) expandedFolders.remove(key) else expandedFolders.add(key) }
+
+    // Seed the Performance Goals section open once (user can then collapse it and it stays collapsed).
+    var seededExpand by remember { mutableStateOf(false) }
+    LaunchedEffect(doc.goals) {
+        if (!seededExpand && doc.goals.isNotEmpty()) {
+            doc.goals.firstOrNull { it.pillar.name.equals("Performance Goals", ignoreCase = true) }
+                ?.let { expanded.add("goal-" + it.pillar.id) }
+            seededExpand = true
+        }
+    }
+
+    fun capture(project: String?) {
+        val intent = Intent(context, CaptureActivity::class.java)
+        if (project != null) intent.putExtra(CaptureActivity.EXTRA_PROJECT, project)
+        context.startActivity(intent)
+    }
+    fun redo(entry: EntryEntity) {
+        context.startActivity(
+            Intent(context, CaptureActivity::class.java).putExtra(CaptureActivity.EXTRA_REPLACE_ID, entry.id),
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -146,7 +181,13 @@ fun HomeScreen(
                         palette = palette,
                         expanded = expanded.contains("goal-" + section.pillar.id),
                         onToggle = { toggle("goal-" + section.pillar.id) },
-                        onOpen = { onOpenPillar(section.pillar.id) },
+                        isFolderExpanded = { folder -> expandedFolders.contains(section.pillar.id + "::" + folder) },
+                        onToggleFolder = { folder -> toggleFolder(section.pillar.id + "::" + folder) },
+                        onSeeMore = { folder -> onOpenFolder(section.pillar.id, folder) },
+                        onAddEntry = { folder -> capture(folder) },
+                        onEdit = { editTarget = it },
+                        onRedo = { redo(it) },
+                        onDelete = { deleteTarget = it },
                         onAddProject = { createFolderFor = CreateFolderTarget(section.pillar.name) },
                     )
                 }
@@ -175,9 +216,35 @@ fun HomeScreen(
             onDismiss = { createFolderFor = null },
         )
     }
+
+    editTarget?.let { target ->
+        EditEntryDialog(
+            initial = target.bullet?.takeIf { it.isNotBlank() } ?: target.rawTranscript,
+            palette = palette,
+            onSave = { viewModel.editText(target.id, it); editTarget = null },
+            onDismiss = { editTarget = null },
+        )
+    }
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            confirmButton = {
+                TextButton(onClick = { viewModel.delete(target.id); deleteTarget = null }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
+            title = { Text("Delete this entry?", color = palette.text1) },
+            text = { Text("This removes it for good. The record can't get it back.", color = palette.text3) },
+            containerColor = palette.surface,
+        )
+    }
 }
 
 private data class CreateFolderTarget(val goalArea: String?)
+
+/** Cap on entries shown inline under a folder on Home; more are reached via "See more" → folder screen. */
+private const val MAX_INLINE_ENTRIES = 10
 
 // ---------------- Goal / growth pillar section ----------------
 
@@ -187,7 +254,13 @@ private fun GoalSectionView(
     palette: BragPalette,
     expanded: Boolean,
     onToggle: () -> Unit,
-    onOpen: () -> Unit,
+    isFolderExpanded: (String) -> Boolean,
+    onToggleFolder: (String) -> Unit,
+    onSeeMore: (String) -> Unit,
+    onAddEntry: (String) -> Unit,
+    onEdit: (EntryEntity) -> Unit,
+    onRedo: (EntryEntity) -> Unit,
+    onDelete: (EntryEntity) -> Unit,
     onAddProject: () -> Unit,
 ) {
     val hue = pillarColor(section.colorIndex)
@@ -207,7 +280,19 @@ private fun GoalSectionView(
         AnimatedVisibility(visible = expanded) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
                 section.projects.forEach { project ->
-                    ProjectCard(project = project, palette = palette, onClick = onOpen)
+                    val key = if (project.isOutside) OUTSIDE_PROJECT_LABEL else project.name
+                    FolderCard(
+                        project = project,
+                        hue = hue.solid,
+                        palette = palette,
+                        expanded = isFolderExpanded(key),
+                        onToggle = { onToggleFolder(key) },
+                        onSeeMore = { onSeeMore(key) },
+                        onAddEntry = { onAddEntry(project.name) },
+                        onEdit = onEdit,
+                        onRedo = onRedo,
+                        onDelete = onDelete,
+                    )
                 }
                 AddRow(text = "Add project", palette = palette, onClick = onAddProject)
             }
@@ -215,8 +300,24 @@ private fun GoalSectionView(
     }
 }
 
+/**
+ * A project folder on Home — tap to expand its recent entries inline (fully actionable: ⋮ edit / redo
+ * / delete + "Add entry"). Only the last [MAX_INLINE_ENTRIES] show inline; if there are more, a
+ * "See all N" row opens the dedicated folder screen ([onSeeMore]). Collapsed, it looks like before.
+ */
 @Composable
-private fun ProjectCard(project: ProjectBullets, palette: BragPalette, onClick: () -> Unit) {
+private fun FolderCard(
+    project: ProjectBullets,
+    hue: Color,
+    palette: BragPalette,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onSeeMore: () -> Unit,
+    onAddEntry: () -> Unit,
+    onEdit: (EntryEntity) -> Unit,
+    onRedo: (EntryEntity) -> Unit,
+    onDelete: (EntryEntity) -> Unit,
+) {
     val subtitle = when {
         project.entryCount == 0 -> "No entries yet"
         else -> {
@@ -226,41 +327,106 @@ private fun ProjectCard(project: ProjectBullets, palette: BragPalette, onClick: 
             "${project.entryCount} ${plural(project.entryCount, "entry", "entries")} · updated $rel"
         }
     }
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Radii.lg))
             .background(palette.surface)
-            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg)),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = Spacing.card, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(30.dp).clip(RoundedCornerShape(9.dp))
+                    .background(if (project.isOutside) palette.surface2 else palette.primarySoft),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.Folder,
+                    null,
+                    tint = if (project.isOutside) palette.text3 else palette.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            Spacer(Modifier.size(Spacing.s3))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (project.isOutside) OUTSIDE_PROJECT_LABEL else project.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = palette.text1,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = palette.text3, maxLines = 1)
+            }
+            Icon(
+                if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                if (expanded) "Collapse" else "Expand",
+                tint = palette.text3,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            Column(
+                Modifier.padding(start = Spacing.card, end = Spacing.card, bottom = Spacing.card),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s2),
+            ) {
+                if (project.entries.isEmpty()) {
+                    Text("No entries yet", style = MaterialTheme.typography.bodySmall, color = palette.text3)
+                } else {
+                    project.entries.take(MAX_INLINE_ENTRIES).forEach { entry ->
+                        EntryBulletRow(
+                            entry = entry,
+                            hue = hue,
+                            showFromProject = false,
+                            onEdit = { onEdit(entry) },
+                            onRedo = { onRedo(entry) },
+                            onDelete = { onDelete(entry) },
+                        )
+                    }
+                    if (project.entryCount > MAX_INLINE_ENTRIES) {
+                        SeeMoreRow(project.entryCount, palette, onSeeMore)
+                    }
+                }
+                if (!project.isOutside) {
+                    AddRow(text = "Add entry to ${project.name}", palette = palette, onClick = onAddEntry)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeeMoreRow(total: Int, palette: BragPalette, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.lg))
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.card, vertical = 13.dp),
+            .padding(horizontal = Spacing.card, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier.size(30.dp).clip(RoundedCornerShape(9.dp))
-                .background(if (project.isOutside) palette.surface2 else palette.primarySoft),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Outlined.Folder,
-                null,
-                tint = if (project.isOutside) palette.text3 else palette.primary,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-        Spacer(Modifier.size(Spacing.s3))
-        Column(Modifier.weight(1f)) {
-            Text(
-                if (project.isOutside) OUTSIDE_PROJECT_LABEL else project.name,
-                style = MaterialTheme.typography.titleSmall,
-                color = palette.text1,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-            )
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = palette.text3, maxLines = 1)
-        }
-        Icon(Icons.Outlined.ChevronRight, null, tint = palette.text3, modifier = Modifier.size(20.dp))
+        Text("See all $total", style = MaterialTheme.typography.labelLarge, color = palette.primary, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.weight(1f))
+        Icon(Icons.Outlined.ChevronRight, null, tint = palette.primary, modifier = Modifier.size(18.dp))
     }
+}
+
+@Composable
+private fun EditEntryDialog(initial: String, palette: BragPalette, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = { onSave(text) }, enabled = text.isNotBlank()) { Text("Save & re-file") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text("Edit entry", color = palette.text1) },
+        text = {
+            OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+        },
+        containerColor = palette.surface,
+    )
 }
 
 // ---------------- Behaviour pillar section ----------------

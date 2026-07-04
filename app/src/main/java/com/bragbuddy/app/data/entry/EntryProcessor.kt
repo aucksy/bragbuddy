@@ -53,14 +53,15 @@ class EntryProcessor @Inject constructor(
      * row inside the lock and only processes work that is still awaiting it (RAW) or that previously
      * failed and can be retried (FAILED). A PROCESSED/INBOX row is skipped, so nothing is split twice.
      */
-    suspend fun process(id: Long) {
+    suspend fun process(id: Long, combineSingle: Boolean = false) {
         mutex.withLock {
             val entry = entryDao.getById(id) ?: return@withLock
             if (entry.status != EntryStatus.RAW && entry.status != EntryStatus.FAILED) return@withLock
             // Backstop: ANY throw (a malformed key char in a header, a DataStore read error, etc.)
             // must still leave the entry visible in the Inbox rather than crashing the fire-and-forget
             // scope and stranding the row as RAW (which would re-throw and crash-loop on next launch).
-            runCatching { processEntry(entry) }
+            // Combine mode (add-a-number flow) files as ONE merged entry — never split.
+            runCatching { if (combineSingle) refileSingle(entry, combineSingle = true) else processEntry(entry) }
                 .onFailure { runCatching { entryDao.update(entry.copy(status = EntryStatus.FAILED)) } }
         }
     }
@@ -71,7 +72,7 @@ class EntryProcessor @Inject constructor(
      * delete/duplicate the other items from the same original capture. Runs under the processing lock
      * so it can't be clobbered by an in-flight categorization of the same row. No-op if the row is gone.
      */
-    suspend fun replace(id: Long, text: String) {
+    suspend fun replace(id: Long, text: String, combineSingle: Boolean = false) {
         val clean = text.trim()
         if (clean.isEmpty()) return
         mutex.withLock {
@@ -93,7 +94,7 @@ class EntryProcessor @Inject constructor(
                 suggestedProjects = emptyList(),
             )
             entryDao.update(reset)
-            runCatching { refileSingle(reset) }
+            runCatching { refileSingle(reset, combineSingle) }
                 .onFailure { runCatching { entryDao.update(reset.copy(status = EntryStatus.FAILED)) } }
         }
     }
@@ -143,7 +144,7 @@ class EntryProcessor @Inject constructor(
     /** Everything the categorizer call needs for one entry, plus the resolved anchor. */
     private data class Prep(val request: CategorizeRequest, val anchor: String?, val anchorGoalArea: String?)
 
-    private suspend fun prepare(entry: EntryEntity): Prep {
+    private suspend fun prepare(entry: EntryEntity, combineSingle: Boolean = false): Prep {
         val role = settings.settings.first().jobRole
         val fw = frameworkStore.framework.first()
         val activeProjects = projectDao.observeActive().first()
@@ -171,6 +172,7 @@ class EntryProcessor @Inject constructor(
                 projects = projects,
                 role = role,
                 projectAnchor = anchor,
+                combineSingle = combineSingle,
             ),
             anchor,
             anchorGoalArea,
@@ -228,8 +230,8 @@ class EntryProcessor @Inject constructor(
 
     /** Edit/redo path: re-file exactly this one row (take the first result only) — never split, never
      *  insert siblings, never delete peers. Fixing one entry can't disturb the others. */
-    private suspend fun refileSingle(entry: EntryEntity) {
-        val p = prepare(entry)
+    private suspend fun refileSingle(entry: EntryEntity, combineSingle: Boolean = false) {
+        val p = prepare(entry, combineSingle)
         aiProvider.categorize(p.request).fold(
             onSuccess = { result ->
                 val first = result.entries.firstOrNull()

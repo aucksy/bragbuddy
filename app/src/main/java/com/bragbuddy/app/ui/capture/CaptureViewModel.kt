@@ -87,6 +87,9 @@ class CaptureViewModel @Inject constructor(
     private var lastAudio: File? = null
     private var numberAudio: File? = null
     private var savedText = "" // the just-saved text, so an added number appends to it (typed path)
+    // True once the user has folded an impact/number follow-up into this take → file it as ONE merged
+    // bullet (combine mode), not a normal split, so the AI rephrases both together and dedupes repeats.
+    private var impactAdded = false
 
     /** When set (Home → Redo), Add replaces this existing entry instead of inserting a new one. */
     private var replaceId: Long? = null
@@ -123,6 +126,7 @@ class CaptureViewModel @Inject constructor(
         submitting = false
         didSave = false
         lastAudio = null
+        impactAdded = false
         viewModelScope.launch {
             if (settings.settings.first().groqApiKey.isBlank()) {
                 _state.update {
@@ -210,11 +214,13 @@ class CaptureViewModel @Inject constructor(
         // Fold in a number the user typed but didn't explicitly "Add to note" before tapping Add.
         if (_state.value.numberStage == NumberStage.TYPING && _state.value.numberDraft.isNotBlank()) {
             appendToReview(_state.value.numberDraft)
+            impactAdded = true
             _state.update { it.copy(numberStage = NumberStage.NONE, numberDraft = "") }
         }
         val text = _state.value.reviewText.trim()
         if (text.isBlank()) return
-        save(text, EntrySource.VOICE) { lastAudio?.delete(); lastAudio = null }
+        // Combine mode only when a follow-up was actually added, so a plain multi-item note still splits.
+        save(text, EntrySource.VOICE, combineSingle = impactAdded) { lastAudio?.delete(); lastAudio = null }
     }
 
     /** Discard this take and record again from scratch. */
@@ -232,7 +238,9 @@ class CaptureViewModel @Inject constructor(
 
     /** Append the typed metric to the transcript being reviewed, then collapse the number field. */
     fun confirmTypeNumber() {
+        val added = _state.value.numberDraft.isNotBlank()
         appendToReview(_state.value.numberDraft)
+        if (added) impactAdded = true
         _state.update { it.copy(numberStage = NumberStage.NONE, numberDraft = "") }
     }
 
@@ -265,6 +273,7 @@ class CaptureViewModel @Inject constructor(
             groqTranscriber.transcribe(file).fold(
                 onSuccess = { text ->
                     file.delete(); numberAudio = null
+                    if (text.isNotBlank()) impactAdded = true
                     appendToReview(text)
                     _state.update { it.copy(numberStage = NumberStage.NONE) }
                 },
@@ -309,13 +318,13 @@ class CaptureViewModel @Inject constructor(
         if (audio != null && audio.exists()) transcribe(audio) else startVoice()
     }
 
-    private fun save(text: String, source: EntrySource, onDone: () -> Unit = {}) {
+    private fun save(text: String, source: EntrySource, combineSingle: Boolean = false, onDone: () -> Unit = {}) {
         if (didSave) return
         didSave = true
         viewModelScope.launch {
             val replace = replaceId
-            val id = if (replace != null) { entries.replaceText(replace, text); replace }
-                     else entries.capture(text, source, anchorProject = anchorProject)
+            val id = if (replace != null) { entries.replaceText(replace, text, combineSingle); replace }
+                     else entries.capture(text, source, anchorProject = anchorProject, combineSingle = combineSingle)
             onDone()
             when {
                 // Voice offered the number at review already → just dismiss.
@@ -337,7 +346,8 @@ class CaptureViewModel @Inject constructor(
         val metric = _state.value.numberDraft.trim()
         val id = _state.value.savedEntryId
         if (metric.isNotBlank() && id > 0L) {
-            entries.replaceText(id, "$savedText $metric".trim())
+            // Combine mode: the AI rewrites savedText + the metric into one clean bullet, not a splice.
+            entries.replaceText(id, "$savedText $metric".trim(), combineSingle = true)
         }
     }
 

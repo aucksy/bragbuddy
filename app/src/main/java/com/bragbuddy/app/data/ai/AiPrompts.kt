@@ -95,21 +95,36 @@ OUTPUT
 }
 If there is no usable work contribution, return exactly: { "entries": [] }"""
 
+    // Appended when the caller is combining a follow-up (impact / numbers / a correction) into a
+    // single existing note — overrides the "split into separate entries" default for this one call.
+    private const val COMBINE_MODE = """
+
+COMBINE MODE (overrides rule 2 "split"):
+This transcript is a SINGLE work item. The user recorded it and then added more detail — usually
+the impact, a number, or a clarification — as a follow-up in the same text. Treat it as ONE entry:
+- Return EXACTLY ONE entry. Never split it, whatever it seems to contain.
+- Read the whole transcript together and write ONE clean bullet that combines everything.
+- The follow-up usually REPEATS part of the original. Merge them: remove the repetition, keep every
+  distinct fact, name and number, and fold the metric into the sentence. Never just tack the
+  follow-up on at the end."""
+
     fun categorizer(
         today: String,
         framework: String,
         projects: List<String>,
         role: String = "",
         projectAnchor: String? = null,
+        combineSingle: Boolean = false,
     ): String {
         val frameworkBlock = framework.ifBlank { "(none set)" }
         val projectBlock = if (projects.isEmpty()) "(none yet)" else projects.joinToString("\n")
-        return CATEGORIZER
+        val base = CATEGORIZER
             .replace("{{TODAY}}", today)
             .replace("{{ROLE}}", role.ifBlank { "(not set)" })
             .replace("{{APPRAISAL_FRAMEWORK}}", frameworkBlock)
             .replace("{{PROJECTS}}", projectBlock)
             .replace("{{PROJECT_ANCHOR}}", projectAnchor?.takeIf { it.isNotBlank() } ?: "none")
+        return if (combineSingle) base + COMBINE_MODE else base
     }
 
     // ---------------- PART C · framework refine (setup + ongoing voice edits) ----------------
