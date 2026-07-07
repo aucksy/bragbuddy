@@ -205,8 +205,11 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     (battery-only counts just on aggressive OEMs) with per-risk-signature dismissal. Calm offline copy
     in Inbox/Summary/capture. Pre-tag: 5-dimension adversarially-verified review (15 findings incl. 2
     HIGH data-loss races — all fixed) + a fix-diff re-review (4 edge defects fixed).
-- **Next: iOS port** — Android (Build Brief Phases 0–7) is complete. Everything under "Out of scope"
-  stays parked. (`USE_EXACT_ALARM`/`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` are Play-restricted —
+- **Next: Android v2 batch** (agreed 2026-07-07) — image scanning · "+" radial capture menu ·
+  onboarding + privacy/legal, sliced **A→B→C**, one phase per chat (full **▶ NEXT ROADMAP** at the top
+  of `PROGRESS.md`). **iOS is DEFERRED** (creator's call — Android changes first; the stack/CI/signing
+  research is parked in `PROGRESS.md` so it isn't re-done). Android Build-Brief Phases 0–7 are complete;
+  everything under "Out of scope" stays parked. (`USE_EXACT_ALARM`/`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` are Play-restricted —
   pre-Play items; BragBuddy ships as a direct signed APK.)
   **Phase 6 owner gate still pending:** add a `com.bragbuddy.app` Android OAuth client + the release
   SHA-1 (`B8:B2:F2:86:05:BF:C8:44:94:98:E9:58:02:EA:55:74:9E:58:A4:D3`) to project `gmailapi-491903`.

@@ -12,6 +12,123 @@ current code — that is the context, not chat history.
 
 ---
 
+## ▶ NEXT ROADMAP — Android v2 (agreed 2026-07-07): image scan → "+" radial capture → onboarding + privacy · THEN iOS
+
+> This is the live "what's next." Three vertical-slice phases, **one per chat**, same rhythm as Phases 0–7.
+> iOS is **deferred** (research parked at the end of this section). Start each phase in a fresh chat
+> pointed at `CONTEXT.md`. **Exact next step:** build **Phase A — image scanning**.
+
+**Why this batch:** the creator wants five Android changes before any iOS work. Locked via AskUserQuestion
+(2026-07-07, all "recommended"):
+- **Image-scan flow = extract → editable review → file** (mirrors the voice review-before-Add; you verify
+  the read before anything saves).
+- **Terms & Privacy = hard gate, accept once** (version-stamped; re-prompt only on a material change).
+- **Onboarding = guided but skippable** (privacy → role → framework/projects via any of the 3 inputs →
+  Home; Skip at any step keeps `Framework.DEFAULT`).
+- **Proceed = lock roadmap, build one phase per chat** (this section is that roadmap).
+- Defaults (correctable): image source = **camera + gallery** (gallery lets you scan a screenshot of
+  Slack/email praise); **1 image per capture** for now.
+
+**Groq VISION (verified live 2026-07-07):** use **`qwen/qwen3.6-27b`** — production, multimodal, 131K,
+JSON mode. `meta-llama/llama-4-scout-17b-16e-instruct` is **Preview + deprecating — do NOT build on it.**
+Images = base64 `data:` URL, **4 MB cap** (downscale/compress first), ≤5/req, 33 MP cap. Fits the existing
+`GroqAiProvider.callChat` pattern + the `AiConfig` slug list. **RE-VERIFY the slug live before the Phase A
+tag** (standing rule — slugs move). Sources: console.groq.com/docs/vision · /docs/models · /docs/deprecations.
+
+### Phase A — Image scanning (the 3rd input; foundation for B + onboarding)
+Add a Groq **vision** path behind the existing `AiProvider` seam; camera/gallery → downscale < 4 MB →
+base64 → `qwen/qwen3.6-27b` (JSON) → **editable extracted-text review** (reuse the voice REVIEW stage
+pattern) → Add → the normal `EntryProcessor` categorizer.
+- `AiProvider` gains a vision method (+ Groq/Stub impls); `AiConfig.visionModel`. New `CaptureMode.IMAGE`
+  (`SettingsStore.kt:21`) + an image phase flow paralleling `VoicePhase`; `CaptureScreen` `when(mode)`
+  branch (`:155`). `EntrySource.IMAGE` — **stored by `.name` → NO Room migration** (Room stays **v4**).
+- Permissions: **CAMERA** + `PickVisualMedia`/`TakePicture` (`ActivityResultContracts`, mirror the existing
+  `RequestPermission` at `CaptureActivity.kt:55` + the SAF launchers in `BackupScreen.kt:81-85`). Only
+  `RECORD_AUDIO` exists today (`AndroidManifest.xml:10`).
+- **Invariants hold for free** (same pipeline): fire-and-forget, Inbox-fallback on low confidence / parse
+  fail, transcript/derived-text always kept. The **image is sent to Groq, NEVER stored** (privacy —
+  consistent with audio).
+- **Flags:** `CaptureMode` is also threaded through **backup** (`BackupCodec`/`BackupRepository`/`changeSignal`),
+  the Speak/Type toggle, and the SPEAK-only auto-start `LaunchedEffect` (`CaptureActivity.kt:84-88`) — all
+  assume 2 modes; extend carefully (unknown-value `runCatching{valueOf}` fallbacks already exist). The image
+  review UI is **NOT in the Design System** — build from tokens, propose the look for approval.
+- **Testable:** scan a photo/screenshot on-device → extract → edit → files (or Inbox); no-key → clear "add
+  key / type instead" state; oversized image compresses under 4 MB; offline → fails safe (queue or Inbox).
+
+### Phase B — "+" radial capture menu + default input method + notification routing
+Replace the mic icon (4 spots: FAB `MainScaffold.kt:171`, daily-nudge `HomeScreen.kt:722`, capture toggle
+`CaptureScreen.kt:231`, number-nudge `CaptureScreen.kt:530,532`) with **"+"**; tapping it opens a
+**3-option radial (Voice / Text / Image) with a slick circular animation** on Home, and the appropriate
+equivalent elsewhere. Introduce **ONE shared capture launcher** (kills the 5-site duplication —
+`HomeScreen.kt:151-160`, `PillarDetailScreen.kt:145-154`, `MainScaffold.kt:114,121`, `Notifications.kt:30`)
+taking a new **`EXTRA_START_MODE`**.
+- Settings **"Default capture method"** = Voice / Text / Image / **Ask each time** (new DataStore pref;
+  reuse the `CaptureMode` `runCatching{valueOf}.getOrDefault` pattern). Notification tap → starts that
+  method (auto-record / keyboard / camera); **if "Ask" → opens the radial** (new `CaptureActivity` entry
+  state). Single notification intent to change (`Notifications.kt:30`, `FLAG_UPDATE_CURRENT` already set).
+- **Flags:** the radial is **NOT in the Design System** — propose the look for approval; **preserve FAB
+  symmetry/alignment** and every existing mic-launch surface. In-context "Add entry to <project>" AddRows
+  become "+" and open the same 3-choice, anchored. If the default should survive restore, add
+  `defaultCaptureMethod` to the backup mirror (`BackupCodec`/`BackupRepository`/`changeSignal` — copy how
+  `lastCaptureMode` is threaded).
+- **Testable:** each default routes correctly from BOTH the FAB and the notification; "Ask" opens the
+  radial; animation is smooth; every old mic-launch surface still works (regression).
+
+### Phase C — Onboarding wizard + Privacy/legal (+ remove the audio-storage option)
+First-run **guided-but-skippable** wizard (branch `BragNavHost` start destination `:20` on a new
+`SettingsStore.onboardingComplete` flag): **(1) Privacy & Terms — hard gate, version-stamped acceptance**
+→ **(2) role** → **(3) framework/projects setup via Voice/Text/Image** (reuse the **built-but-unused**
+`refineFramework` seam [`AiProvider.kt:37`] + `FrameworkStore.save`; image = scan a job-description /
+review-criteria doc) → Home. Skip keeps `Framework.DEFAULT`.
+- **Privacy screen** also in Settings (nav Card like Drive/Reliability, `SettingsScreen.kt:313-328`
+  pattern). Research-backed content: local-only storage / no account; **explicit third-party AI — name
+  Groq** (entry text + scanned images are sent there); **no audio/image retention** (transcribed/read then
+  discarded); AI-accuracy / no-warranty; limitation of liability; deletion control; on-device BYOK key;
+  age; governing law + updates + contact (default **India / simpleapps108@gmail.com** — confirm); and the
+  **emphasised closing point: the user is solely responsible for what they disclose — strongly recommend
+  never entering company name, client names, or confidential/employer info.** Draft a hosted-ready privacy
+  `.md` in the repo (sibling-app pattern). **NOT legal advice — recommend a lawyer review before public
+  launch.** ⏳ **MERGE the creator's attached privacy points — STILL PENDING; get the attachment before
+  building Phase C.**
+- **Remove audio-storage everywhere:** delete the disabled **"+ Voice notes"** `OptionRow`
+  (`BackupScreen.kt:125-133`) + its KDoc (`:55-60`); correct the **inaccurate manifest comment**
+  (`AndroidManifest.xml:5-9`) claiming audio stays on-device (it goes to Groq Whisper). **LEAVE** the
+  genuine offline-queue temp-clip path (`EntryEntity.audioPath`/`PENDING_AUDIO`/`OfflineRecovery`) — that's
+  the never-lose-a-take safety net, not stored notes.
+- **Testable:** fresh install → must accept terms before Home → guided setup via all 3 inputs → Skip works
+  → re-accept only on a version bump; Settings → Privacy readable; no "voice notes" language anywhere.
+
+**Per-phase ritual (unchanged):** clarify via AskUserQuestion → build → **compile review + adversarial
+logic review** → fix → **tag the signed release** → thorough on-device test (edge / negative / regression —
+act like an expert tester) → update PROGRESS + commit → suggest a fresh chat for the next phase. Cloud-only
+build; **the CI compiler is the only gate.** Guard UI symmetry/alignment. Reuse the app's custom-scrim
+sheet pattern (never a Material `ModalBottomSheet` — the veto-freeze trap).
+
+### iOS — DEFERRED (2026-07-07); scoping parked so it isn't re-done
+Creator: "not building iOS yet — Android changes first"; Apple enrollment "not yet". **No stack decision
+was made.** When it resumes, this is the pre-done research:
+- **Stack options** (my lean was **Native Swift/SwiftUI**, *not chosen*): port the reviewed Kotlin as the
+  executable spec (prompts verbatim, unit tests → XCTest); vs **Kotlin Multiplatform** (share the brain,
+  but refactor the shipped Android app incl. **Room v4** — regression risk for zero Android gain + heavier
+  Kotlin/Native CI). Compose-MP and Flutter both **advised against** (non-native feel / the JS-CI pain the
+  PRD explicitly rejected).
+- **Portability audit:** the whole brain is pure Kotlin or **DI-only-coupled** — `AiProvider` + prompts +
+  `AiJson`, `RollupAggregator` + `ReviewPeriod`, `RetentionPolicy`, `ImpactCheck`, `BackupCodec`,
+  `Framework`, and **`EntryProcessor`** (coupled only by `javax.inject`). Android-only = UI (Compose), Room,
+  DataStore, audio, connectivity, alarms/notifications, Drive sign-in, Hilt. Transcription is already a
+  plain Groq REST call (portable). iOS reliability is *lighter* (no OEM battery wizard).
+- **Windows→iOS CI reality (researched):** Xcode is Mac-only → **cloud macOS CI is the ONLY path** (fits
+  "CI is the only gate"). GitHub-hosted **standard macOS runners are FREE on public repos** (bragbuddy is
+  public). Signing = App Store Connect **API key (.p8)** + fastlane match, secrets-as-base64 (same model as
+  the Android keystore) — set up entirely from Windows. Distribution = **TestFlight** (no Mac/cable).
+- **Owner gates (iOS):** Apple Developer Program **$99/yr**, an App Store Connect API key + app record, and
+  an **iOS OAuth client** on `gmailapi-491903` for Drive (parallel to the pending Android one).
+- **Capture parity:** no iOS overlay (Apple forbids) — the notification opens the app straight into a
+  minimal auto-recording screen + App Intents (Siri/Shortcuts/Action Button/Lock-Screen). Blessed in the
+  PRD/Brief.
+
+---
+
 ## Status: v0.15.0 — Phase 7 · Reliability + retention polish ✅ DONE (verified green · signed · first-try CI) — the LAST Android phase
 
 **APK:** `github.com/aucksy/bragbuddy/releases/download/v0.15.0/BragBuddy-v0.15.0.apk` (signed; `.aab`
@@ -103,8 +220,9 @@ Drive sign-in stays gated until a `com.bragbuddy.app` Android OAuth client + rel
 Local Export/Import works regardless.
 
 ### Next
-**Android is feature-complete** (Build Brief Phases 0–7 all shipped). Next frontier: **iOS port**
-(everything under "Out of scope" stays parked). On-device verification for this phase: reminders fire
+**Android is feature-complete** (Build Brief Phases 0–7 all shipped). **Next = the Android v2 batch**
+(image scan → "+" radial capture → onboarding + privacy) — see **▶ NEXT ROADMAP** at the top of this
+file; **iOS is deferred** (research parked there). Everything under "Out of scope" stays parked. On-device verification for this phase: reminders fire
 reliably on the Find X9s (walk the Reliable-reminders screen once), an offline voice/typed entry
 recovers when the network returns, nothing is lost.
 
