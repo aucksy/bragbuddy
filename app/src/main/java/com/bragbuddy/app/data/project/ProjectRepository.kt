@@ -20,8 +20,10 @@ class ProjectRepository @Inject constructor(
     fun observeActive(): Flow<List<ProjectEntity>> = dao.observeActive()
 
     /**
-     * Create a folder. No-op if the (unique) name already exists — the insert ignores on conflict,
-     * so tapping "add" twice can't duplicate. Returns the new row id, or 0 if it already existed.
+     * Create a folder. No-op if the (unique) name already exists under this category — the insert
+     * ignores on conflict, so tapping "add" twice can't duplicate. Returns the new row id, or a
+     * NON-POSITIVE value (Room returns -1 on an IGNOREd conflict; 0 for a blank name) when nothing
+     * was inserted — callers must treat `<= 0` as "not created".
      */
     suspend fun create(name: String, goalArea: String, description: String? = null): Long {
         val clean = name.trim()

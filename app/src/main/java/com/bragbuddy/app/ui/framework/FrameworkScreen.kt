@@ -28,7 +28,6 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,7 +39,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -74,6 +72,7 @@ fun FrameworkScreen(
     var editing by remember { mutableStateOf<Pillar?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     var removeTarget by remember { mutableStateOf<Pillar?>(null) }
+    val pendingRemap by viewModel.pendingCategoryRemap.collectAsStateWithLifecycle()
     val expanded = remember { mutableStateListOf<String>() } // expanded category ids; default = none
 
     val hueOf: (Pillar) -> PillarColor = { p -> pillarColor(framework.pillars.indexOfFirst { it.id == p.id }) }
@@ -138,11 +137,35 @@ fun FrameworkScreen(
     }
 
     if (showAdd) {
-        AddCategoryDialog(
-            palette = palette,
+        CategoryEditSheet(
+            pillar = null,
+            subFolders = emptyList(),
             takenNames = framework.pillars.map { it.name.trim().lowercase() }.toSet(),
-            onConfirm = { name, desc, kind -> viewModel.addCategory(name, desc, kind); showAdd = false },
-            onDismiss = { showAdd = false },
+            viewModel = viewModel,
+            onClose = { showAdd = false },
+        )
+    }
+
+    // Deterministic category rename-remap offer (Phase B2): filed records still carry the old label.
+    pendingRemap?.let { r ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissCategoryRemap() },
+            confirmButton = {
+                TextButton(onClick = { viewModel.applyCategoryRemap() }) {
+                    Text("Relabel", color = palette.primary)
+                }
+            },
+            dismissButton = { TextButton(onClick = { viewModel.dismissCategoryRemap() }) { Text("Leave") } },
+            title = { Text("Relabel filed records?", color = palette.text1) },
+            text = {
+                Text(
+                    "${r.count} filed ${if (r.count == 1) "record is" else "records are"} labelled “${r.oldName}”. " +
+                        "Move ${if (r.count == 1) "it" else "them"} to “${r.newName}” too? " +
+                        "Otherwise they'll show under “Uncategorized” until you re-home them.",
+                    color = palette.text3,
+                )
+            },
+            containerColor = palette.surface,
         )
     }
 
@@ -284,66 +307,3 @@ private fun DashedAddButton(text: String, palette: BragPalette, onClick: () -> U
     }
 }
 
-@Composable
-private fun AddCategoryDialog(
-    palette: BragPalette,
-    takenNames: Set<String>,
-    onConfirm: (String, String, PillarKind) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var name by remember { mutableStateOf("") }
-    var desc by remember { mutableStateOf("") }
-    var kind by remember { mutableStateOf(PillarKind.GOAL_AREA) }
-    val nameTaken = name.isNotBlank() && takenNames.contains(name.trim().lowercase())
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = { onConfirm(name, desc, kind) }, enabled = name.isNotBlank() && !nameTaken) { Text("Add") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Add a category", color = palette.text1) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    singleLine = true,
-                    label = { Text("Name") },
-                    placeholder = { Text("e.g. Customer Focus", color = palette.text3) },
-                    isError = nameTaken,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (nameTaken) {
-                    Text("A category with this name already exists.", style = MaterialTheme.typography.labelSmall, color = palette.extraInk)
-                }
-                Spacer(Modifier.height(Spacing.s3))
-                OutlinedTextField(
-                    value = desc,
-                    onValueChange = { desc = it },
-                    minLines = 2,
-                    label = { Text("Summary (optional)") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(Spacing.s3))
-                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(999.dp)).background(palette.surface2).padding(4.dp)) {
-                    SegToggle("Goal", kind == PillarKind.GOAL_AREA, { kind = PillarKind.GOAL_AREA }, Modifier.weight(1f), palette)
-                    SegToggle("Behaviour", kind == PillarKind.BEHAVIOUR, { kind = PillarKind.BEHAVIOUR }, Modifier.weight(1f), palette)
-                    SegToggle("Growth", kind == PillarKind.DEVELOPMENT, { kind = PillarKind.DEVELOPMENT }, Modifier.weight(1f), palette)
-                }
-            }
-        },
-        containerColor = palette.surface,
-    )
-}
-
-@Composable
-private fun SegToggle(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier, palette: BragPalette) {
-    Row(
-        modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) palette.surface else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(vertical = 9.dp),
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = if (selected) palette.primary else palette.text3, fontWeight = FontWeight.Bold)
-    }
-}

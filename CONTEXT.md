@@ -205,14 +205,18 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     (battery-only counts just on aggressive OEMs) with per-risk-signature dismissal. Calm offline copy
     in Inbox/Summary/capture. Pre-tag: 5-dimension adversarially-verified review (15 findings incl. 2
     HIGH data-loss races — all fixed) + a fix-diff re-review (4 edge defects fixed).
-- **Next: Android v2 batch · Phase B2 (framework editing), then Phase C** — **Phase A (image scanning)
-  shipped as v0.16.0** and **Phase B (the "+" radial capture menu + Default capture method + one shared
-  launcher) shipped as v0.17.0** (both verified green). Next = **Phase B2 (v0.18.0): framework editing** —
-  3-input (Voice/Text/Scan) add/update via the built-but-unused `refineFramework` seam + Reset framework in
-  Settings + deterministic category **rename-remap** across filed entries + rollup (creator's requests
-  2026-07-07; independently valuable + NOT blocked on the privacy attachment) — **then Phase C** (onboarding
-  + privacy/legal, which reuses B2's framework input and is blocked on the pending privacy attachment). Sliced
-  **A→B→B2→C**, one phase per chat (full **▶ NEXT ROADMAP**
+- **Next: Phase B2b (v0.19.0), then Phase C** — **Phase A (image scan) v0.16.0**, **Phase B ("+" radial
+  capture) v0.17.0**, and **Phase B2a (framework editing) v0.18.0** all shipped & verified green. **B2 was
+  RESHAPED mid-phase (creator, 2026-07-07): NO AI reshapes the framework** — the user builds it by hand;
+  `refineFramework` stays unused. "3 inputs" = **Type + Scan** on a detail box (the per-field **mic was
+  removed**); **Scan** = OCR a job-description/review doc into the field (`AiProvider.readDocumentText`).
+  Two-level model: a **category** detail feeds the **summary**, a **project** detail feeds the **daily
+  categorizer**; **per-item Save** with confirm-before-save; **category rename → prompt-first** deterministic
+  relabel. **v0.18.0 shipped:** Type+Scan editing, mic removed, per-item Save, Reset framework (keeps folders +
+  records), category rename-remap. **Next = Phase B2b (v0.19.0):** project rename-remap (3-option) + the
+  **daily-categorizer prompt change** (use category NAMES + project details only, drop category blurbs;
+  behaviours still tagged) + **Home daily-record Save buttons**. **Then Phase C** (onboarding + privacy/legal,
+  reuses B2's input; blocked on the pending privacy attachment). One phase per chat (full **▶ NEXT ROADMAP**
   at the top of `PROGRESS.md`). **iOS is DEFERRED** (creator's call — Android changes first; the
   stack/CI/signing research is parked in `PROGRESS.md`). Android Build-Brief Phases 0–7 are complete;
   everything under "Out of scope" stays parked. (`USE_EXACT_ALARM`/`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` are Play-restricted —

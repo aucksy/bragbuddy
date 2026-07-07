@@ -279,6 +279,47 @@ class EntryProcessor @Inject constructor(
         true
     }
 
+    /**
+     * How many filed records still carry a category name (Phase B2 · category rename-remap) — either
+     * as their goal-area label or as a behaviour tag. Read-only, so no lock is taken; it just decides
+     * whether to offer the relabel prompt (and shows the count). Case-insensitive.
+     */
+    suspend fun countCategoryReferences(name: String): Int {
+        val n = name.trim()
+        if (n.isEmpty()) return 0
+        return entryDao.getAllOnce().count { e ->
+            e.goalCategory?.equals(n, ignoreCase = true) == true ||
+                e.demonstrates.any { it.equals(n, ignoreCase = true) }
+        }
+    }
+
+    /**
+     * Deterministically relabel every record from a renamed category ([old] → [new]) — NO AI, instant,
+     * reversible (rename back). Updates the goal-area label ([EntryDao.updateGoalCategory]) AND rewrites
+     * behaviour tags in the `demonstrates` JSON list (SQL can't touch a list column), all under the
+     * processing [mutex] so it can't race a categorization, then rebuilds the rollup so the summary
+     * follows the new name. Folders already cascade separately (v0.9.0 `renameCategory`).
+     */
+    suspend fun renameCategoryEverywhere(old: String, new: String) = mutex.withLock {
+        val o = old.trim()
+        val nw = new.trim()
+        if (o.isEmpty() || nw.isEmpty() || o.equals(nw, ignoreCase = true)) return@withLock
+        runCatching {
+            // Goal-area label (SQL, case-insensitive on the old name).
+            entryDao.updateGoalCategory(o, nw)
+            // Behaviour tags — re-read fresh rows (goalCategory already updated) and rewrite any
+            // `demonstrates` list containing the old name; dedupe in case the new name was already present.
+            entryDao.getAllOnce().forEach { e ->
+                if (e.demonstrates.any { it.equals(o, ignoreCase = true) }) {
+                    val rewritten = e.demonstrates.map { if (it.equals(o, ignoreCase = true)) nw else it }.distinct()
+                    entryDao.update(e.copy(demonstrates = rewritten))
+                }
+            }
+            reconcileLocked()
+        }
+        Unit
+    }
+
     /** Drain every entry still awaiting processing (called on launch after an interrupted run). */
     suspend fun processPending() {
         entryDao.listByStatus(EntryStatus.RAW).forEach { process(it.id) }

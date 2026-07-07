@@ -93,6 +93,21 @@ class GroqAiProvider @Inject constructor(
         return Result.failure(last)
     }
 
+    override suspend fun readDocumentText(request: ImageExtractRequest): Result<ImageExtractResult> {
+        if (request.imageDataUrl.isBlank()) return Result.failure(IllegalStateException("No image"))
+        // Same vision pipeline + model routing as extractFromImage, but the doc-scan prompt — the
+        // scanned image is reference material (a job description / review criteria), not an achievement.
+        val prompt = AiPrompts.documentScan(request.role)
+        var last: Throwable = IllegalStateException("No vision model responded")
+        for (model in listOf(AiConfig.visionModel, AiConfig.visionFallback)) {
+            val parsed = callVision(model, prompt, request.imageDataUrl)
+                .mapCatching { AiJson.parse(it, ImageExtractResult.serializer()) }
+            if (parsed.isSuccess) return parsed
+            parsed.exceptionOrNull()?.let { last = it }
+        }
+        return Result.failure(last)
+    }
+
     // ---------------- HTTP + parsing plumbing ----------------
 
     /**

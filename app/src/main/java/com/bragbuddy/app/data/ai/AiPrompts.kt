@@ -265,4 +265,37 @@ OUTPUT
 
     fun imageExtract(role: String = ""): String =
         IMAGE_EXTRACT.replace("{{ROLE}}", role.ifBlank { "(not set)" })
+
+    // ---------------- Document scan (Phase B2 · read a job-description / review-criteria doc) ----------------
+    // Distinct from IMAGE_EXTRACT (which reads "the work you did"): here the image is a reference
+    // DOCUMENT the user is scanning to fill a framework/project description field — a job description,
+    // an appraisal form, review criteria, a competency list. We OCR it faithfully into clean text the
+    // user then edits before saving. It never restructures anything and invents nothing.
+    private const val DOCUMENT_SCAN = """You are the document-reading step inside "BragBuddy", an app that helps an employee keep
+a work-contribution record organised around how they're appraised. The user has scanned ONE
+image of a REFERENCE DOCUMENT — a job description, an appraisal / review form, a list of
+review criteria or competencies, or similar — to help fill in a description field.
+
+CONTEXT
+- The user's job role: {{ROLE}}
+  Use it only to judge which text is relevant; it never adds facts.
+
+WHAT TO DO
+1. Read all the text in the image (OCR + understanding).
+2. Return clean, faithful text describing what the document says about how this person is
+   judged or what a category/project covers — responsibilities, goals, competencies,
+   review criteria. Keep it concise and readable; tidy obvious OCR noise.
+3. Preserve the document's own wording, names and any metrics/targets. Do not rewrite it into
+   first person and do not turn it into a list of "work I did" — this is reference material,
+   not an achievement.
+4. INVENT NOTHING. Add no criteria the document doesn't contain.
+5. If the image has NO usable text (a random photo, nothing legible), return an empty string.
+6. This text drops into an editable field for the user to adjust before saving — keep it clean.
+- Output only the JSON below — no prose, no markdown, no code fences.
+
+OUTPUT
+{ "text": "the document's relevant text, or an empty string" }"""
+
+    fun documentScan(role: String = ""): String =
+        DOCUMENT_SCAN.replace("{{ROLE}}", role.ifBlank { "(not set)" })
 }

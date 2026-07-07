@@ -1,19 +1,23 @@
 package com.bragbuddy.app.ui.framework
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bragbuddy.app.data.ai.AiProvider
+import com.bragbuddy.app.data.ai.ImageExtractRequest
+import com.bragbuddy.app.data.entry.EntryRepository
 import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
+import com.bragbuddy.app.data.image.ImageInput
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.project.ProjectRepository
-import com.bragbuddy.app.data.speech.AudioRecorder
-import com.bragbuddy.app.data.speech.GroqTranscriber
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,32 +29,33 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.io.File
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
-/** A project row being edited in the category sheet ([id] null = a new, unsaved project). */
-data class ProjectDraft(val id: Long?, val name: String, val summary: String)
+/** State of the per-field document scan used inside the category edit sheet. */
+enum class ScanState { IDLE, READING }
 
-/** State of the per-field voice dictation used inside the category edit sheet. */
-enum class FieldVoice { IDLE, RECORDING, TRANSCRIBING }
+/** A pending category rename-remap offer: [count] filed records still carry [oldName]. */
+data class CategoryRemap(val oldName: String, val newName: String, val count: Int)
 
 /**
- * Drives the **Framework editor** (Design System §3). Categories are the framework; each category can
- * be renamed, re-described, removed, and given **projects that each carry their own summary**. Editing
- * happens in a dedicated sheet where every summary field takes **voice or text** (voice = cloud
- * Whisper via the Groq key). The old "refine the whole framework by voice" flow was removed — editing
- * is now direct and per-field. The company name is never asked.
+ * Drives the **Framework editor** (Design System §3, Phase B2). Categories are the framework; each is
+ * added/edited with its **name** (typed), **detail** (typed or **scanned** from a document), and its
+ * **projects** (each name + detail, typed or scanned). Editing is **per-item** — every detail box has
+ * its own Save, so the effect can be confirmed distinctly (a category detail feeds the next summary; a
+ * project detail feeds future filing). Voice dictation was removed (Phase B2 — Scan replaces the mic).
+ * Renaming a category offers a deterministic, no-AI relabel of already-filed records. The company name
+ * is never asked.
  */
 @HiltViewModel
 class FrameworkViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val frameworkStore: FrameworkStore,
     private val settings: SettingsStore,
-    private val groqTranscriber: GroqTranscriber,
     private val projects: ProjectRepository,
+    private val entries: EntryRepository,
+    private val aiProvider: AiProvider,
 ) : ViewModel() {
-
-    private val recorder by lazy { AudioRecorder(appContext) }
 
     val framework: StateFlow<Framework> = frameworkStore.framework
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Framework.DEFAULT)
@@ -60,20 +65,20 @@ class FrameworkViewModel @Inject constructor(
     val folders: StateFlow<List<ProjectEntity>> = projects.observeActive()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** Whether voice dictation is available (a Groq key is set). Without it, the sheet is type-only. */
-    val voiceEnabled: StateFlow<Boolean> = settings.settings
+    /** Whether document scanning is available (a Groq key is set). Without it, fields are type-only. */
+    val scanEnabled: StateFlow<Boolean> = settings.settings
         .map { it.groqApiKey.isNotBlank() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    // ---------------- Category CRUD ----------------
+    // ---------------- Category CRUD (per-item) ----------------
 
-    fun addCategory(name: String, description: String, kind: PillarKind) {
+    fun addCategory(name: String, detail: String, kind: PillarKind) {
         val clean = name.trim().ifBlank { return }
         val pillar = Pillar(
             id = uniqueId(clean, framework.value.pillars),
             name = clean,
             kind = kind,
-            blurb = description.trim().ifBlank { defaultBlurb(kind) },
+            blurb = detail.trim().ifBlank { defaultBlurb(kind) },
         )
         persist(framework.value.pillars + pillar)
     }
@@ -82,97 +87,123 @@ class FrameworkViewModel @Inject constructor(
         val p = framework.value.pillars.firstOrNull { it.id == id }
         persist(framework.value.pillars.filterNot { it.id == id })
         // Removing a category also removes its folders (entries already filed stay in the record).
-        if (p != null) viewModelScope.launch { projects.deleteByCategory(p.name) }
+        if (p != null) viewModelScope.launch { runCatching { projects.deleteByCategory(p.name) } }
     }
 
     /**
-     * Save everything edited in the category sheet: the category's name/summary/kind, plus its
-     * projects (create new, update existing, delete removed). A rename carries the folders with it.
+     * Save one category's name / detail / axis (per-item Save). If the name changed, the folders
+     * cascade with it (existing behaviour) and — when filed records still carry the old label — a
+     * deterministic relabel is OFFERED via [pendingCategoryRemap]. Duplicate names are rejected (kept
+     * as the old name) so a rename can't merge two categories' folder namespaces.
      */
-    fun saveCategory(id: String, name: String, summary: String, kind: PillarKind, rows: List<ProjectDraft>) {
+    fun saveCategory(id: String, name: String, detail: String, kind: PillarKind) {
         val n = name.trim().ifBlank { return }
-        val old = framework.value.pillars.firstOrNull { it.id == id } ?: return
-        // Don't let a duplicate category name through (the sheet also blocks it): keep the old name so
-        // renameCategory can't merge two categories' folder namespaces. Uniqueness is by pillar id +
-        // name; a collision here means the UI guard was bypassed — fail safe to the current name.
-        val finalName = if (framework.value.pillars.any { it.id != id && it.name.equals(n, ignoreCase = true) }) old.name else n
-        persist(framework.value.pillars.map { if (it.id == id) it.copy(name = finalName, blurb = summary.trim(), kind = kind) else it })
+        val pillars = framework.value.pillars
+        val old = pillars.firstOrNull { it.id == id } ?: return
+        val finalName = if (pillars.any { it.id != id && it.name.equals(n, ignoreCase = true) }) old.name else n
         viewModelScope.launch {
-            // The whole project diff is best-effort and must never crash the app (unique-index
-            // violations are IGNOREd at the DAO; this catch is the final backstop).
-            runCatching {
-                if (old.name != finalName) projects.renameCategory(old.name, finalName)
-                val originalIds = folders.value
-                    .filter { it.goalArea.equals(old.name, ignoreCase = true) || it.goalArea.equals(finalName, ignoreCase = true) }
-                    .map { it.id }
-                val keptIds = rows.mapNotNull { it.id }.toSet()
-                // Delete removed rows first (so a re-added same name doesn't collide with a leftover).
-                originalIds.filterNot { it in keptIds }.forEach { projects.delete(it) }
-                rows.forEach { r ->
-                    val rn = r.name.trim()
-                    if (r.id == null) {
-                        if (rn.isNotBlank()) projects.create(rn, finalName, r.summary.trim().ifBlank { null })
-                    } else if (rn.isNotBlank()) {
-                        projects.update(r.id, rn, finalName, r.summary.trim().takeIf { it.isNotBlank() })
-                    }
-                }
+            frameworkStore.save(
+                pillars.map { if (it.id == id) it.copy(name = finalName, blurb = detail.trim(), kind = kind) else it },
+            )
+            if (!old.name.equals(finalName, ignoreCase = true)) {
+                runCatching { projects.renameCategory(old.name, finalName) }
+                val count = runCatching { entries.countCategoryReferences(old.name) }.getOrDefault(0)
+                if (count > 0) _pendingCategoryRemap.value = CategoryRemap(old.name, finalName, count)
             }
         }
     }
 
-    private fun persist(pillars: List<Pillar>) = viewModelScope.launch { frameworkStore.save(pillars) }
+    // ---------------- Project CRUD (per-item) ----------------
 
-    // ---------------- Per-field voice dictation (category sheet) ----------------
-
-    private val _fieldVoice = MutableStateFlow(FieldVoice.IDLE)
-    val fieldVoice: StateFlow<FieldVoice> = _fieldVoice.asStateFlow()
-
-    /** Emits the transcript of a completed dictation; the sheet appends it to the active field. */
-    private val _fieldTranscript = MutableSharedFlow<String>(extraBufferCapacity = 1)
-    val fieldTranscript: SharedFlow<String> = _fieldTranscript
-
-    private var fieldAudio: File? = null
-    private var fieldJob: Job? = null
-
-    fun startFieldVoice() {
-        if (_fieldVoice.value != FieldVoice.IDLE) return
-        // Flip to RECORDING synchronously so a fast second tap (on another field) is rejected before
-        // the async recorder start; revert if there's no key or the recorder won't start.
-        _fieldVoice.value = FieldVoice.RECORDING
+    /** Save one project row: create a new folder ([id] null) or update an existing one, under [category].
+     *  [onSaved] receives the row's id (the new id after a create) so the sheet can switch a just-created
+     *  row to update-mode and avoid a duplicate on a second save. Renaming a folder here does NOT re-file
+     *  already-tagged records (that 3-option flow ships next). */
+    fun saveProject(id: Long?, name: String, detail: String, category: String, onSaved: (Long) -> Unit = {}) {
+        val rn = name.trim().ifBlank { return }
+        val area = category.trim()
         viewModelScope.launch {
-            if (settings.settings.first().groqApiKey.isBlank()) { _fieldVoice.value = FieldVoice.IDLE; return@launch }
-            runCatching { fieldAudio = recorder.start() }.onFailure { _fieldVoice.value = FieldVoice.IDLE }
+            val newId = runCatching {
+                if (id == null) projects.create(rn, area, detail.trim().ifBlank { null })
+                else { projects.update(id, rn, area, detail.trim().takeIf { it.isNotBlank() }); id }
+            }.getOrDefault(id ?: 0L)
+            onSaved(newId)
         }
     }
 
-    fun stopFieldVoice() {
-        if (_fieldVoice.value != FieldVoice.RECORDING) return
-        val file = runCatching { recorder.stop() }.getOrNull()
-        fieldAudio = file
-        if (file == null) { _fieldVoice.value = FieldVoice.IDLE; return }
-        _fieldVoice.value = FieldVoice.TRANSCRIBING
-        fieldJob = viewModelScope.launch {
-            groqTranscriber.transcribe(file).fold(
-                onSuccess = { text ->
-                    file.delete(); fieldAudio = null
-                    if (text.isNotBlank()) _fieldTranscript.tryEmit(text.trim())
-                    _fieldVoice.value = FieldVoice.IDLE
+    fun deleteProject(id: Long) = viewModelScope.launch { runCatching { projects.delete(id) } }
+
+    private fun persist(pillars: List<Pillar>) = viewModelScope.launch { frameworkStore.save(pillars) }
+
+    // ---------------- Category rename-remap (deterministic, no AI) ----------------
+
+    private val _pendingCategoryRemap = MutableStateFlow<CategoryRemap?>(null)
+    val pendingCategoryRemap: StateFlow<CategoryRemap?> = _pendingCategoryRemap.asStateFlow()
+
+    /** The user confirmed the relabel — move every record's goal-area label + behaviour tags old → new. */
+    fun applyCategoryRemap() {
+        val r = _pendingCategoryRemap.value ?: return
+        entries.renameCategoryEntries(r.oldName, r.newName)
+        _pendingCategoryRemap.value = null
+    }
+
+    /** The user left records as-is — they'll surface under "Uncategorized" until re-homed. */
+    fun dismissCategoryRemap() { _pendingCategoryRemap.value = null }
+
+    // ---------------- Per-field document scan (category sheet) ----------------
+
+    private val _scanState = MutableStateFlow(ScanState.IDLE)
+    val scanState: StateFlow<ScanState> = _scanState.asStateFlow()
+
+    /** Emits the OCR'd text of a completed scan; the sheet appends it to the active field. */
+    private val _scanText = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val scanText: SharedFlow<String> = _scanText
+
+    /** Emits a calm error message when a scan can't be read; the sheet surfaces it (no field change). */
+    private val _scanError = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val scanError: SharedFlow<String> = _scanError
+
+    private var scanJob: Job? = null
+
+    /**
+     * A document image (camera/gallery) was picked for the active field. Downscale + base64 it, read it
+     * with Groq vision (the doc-scan prompt), and emit the text to append. Online-only + fail-safe: on
+     * any error the field is left unchanged and a calm message is emitted. Guards a double-pick.
+     */
+    fun onScanImage(uri: Uri) {
+        if (_scanState.value != ScanState.IDLE) return
+        scanJob?.cancel()
+        _scanState.value = ScanState.READING
+        scanJob = viewModelScope.launch {
+            val s = settings.settings.first()
+            if (s.groqApiKey.isBlank()) {
+                _scanState.value = ScanState.IDLE
+                _scanError.tryEmit("Add your Groq key to scan — or type it instead.")
+                return@launch
+            }
+            val dataUrl = withContext(Dispatchers.IO) { ImageInput.toDataUrl(appContext, uri) }
+            if (dataUrl == null) {
+                _scanState.value = ScanState.IDLE
+                _scanError.tryEmit("Couldn't read that image — try another, or type it.")
+                return@launch
+            }
+            aiProvider.readDocumentText(ImageExtractRequest(dataUrl, s.jobRole)).fold(
+                onSuccess = { r ->
+                    val text = r.text.trim()
+                    if (text.isBlank()) _scanError.tryEmit("No readable text there — try another image, or type it.")
+                    else _scanText.tryEmit(text)
+                    _scanState.value = ScanState.IDLE
                 },
-                onFailure = { file.delete(); fieldAudio = null; _fieldVoice.value = FieldVoice.IDLE },
+                onFailure = {
+                    _scanError.tryEmit(it.message ?: "Couldn't read the document — try again, or type it.")
+                    _scanState.value = ScanState.IDLE
+                },
             )
         }
     }
 
-    /** Cancel any in-flight dictation (sheet dismissed). */
-    fun cancelFieldVoice() {
-        fieldJob?.cancel(); fieldJob = null
-        runCatching { recorder.cancel() }
-        fieldAudio?.delete(); fieldAudio = null
-        _fieldVoice.value = FieldVoice.IDLE
-    }
-
     override fun onCleared() {
-        cancelFieldVoice()
+        scanJob?.cancel()
     }
 
     private companion object {

@@ -97,6 +97,15 @@ class EntryRepository @Inject constructor(
         appScope.launch { processor.reconcileRollup() }
     }
 
+    /** How many filed records carry this category name (goal-area label or behaviour tag) — decides
+     *  whether to offer the category rename-remap prompt (Phase B2). */
+    suspend fun countCategoryReferences(name: String): Int = processor.countCategoryReferences(name)
+
+    /** Relabel every record from a renamed category, old → new (Phase B2 · deterministic, no AI). */
+    fun renameCategoryEntries(old: String, new: String) {
+        appScope.launch { processor.renameCategoryEverywhere(old, new) }
+    }
+
     /** Retry one failed entry on demand (from the Inbox). */
     fun retry(id: Long) {
         appScope.launch { processor.process(id) }

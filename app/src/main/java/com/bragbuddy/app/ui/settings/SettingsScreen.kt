@@ -84,6 +84,7 @@ fun SettingsScreen(
     var editFolder by remember { mutableStateOf<ProjectEntity?>(null) }
     var deleteFolder by remember { mutableStateOf<ProjectEntity?>(null) }
     var showAddFolder by remember { mutableStateOf(false) }
+    var showResetFramework by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = palette.bg,
@@ -320,6 +321,31 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(Spacing.s4))
 
+            // Appraisal framework — reset to the shipped default (Phase B2). Editing lives in the
+            // Framework tab; this is the one framework-wide action that belongs in Settings.
+            Card(palette) {
+                Text("Appraisal framework", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                Text(
+                    "Edit your categories in the Framework tab. Reset here to start over from the default three.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.text3,
+                )
+                Spacer(Modifier.height(Spacing.s3))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Radii.md))
+                        .border(1.5.dp, palette.border, RoundedCornerShape(Radii.md))
+                        .clickable { showResetFramework = true }
+                        .padding(vertical = 11.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Reset to default", style = MaterialTheme.typography.titleSmall, color = palette.text2, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(Modifier.height(Spacing.s4))
+
             // Google Drive backup — opens the dedicated backup screen (Phase 6).
             Card(palette) {
                 Row(
@@ -385,6 +411,26 @@ fun SettingsScreen(
             dismissButton = { TextButton(onClick = { deleteFolder = null }) { Text("Cancel") } },
             title = { Text("Delete “${p.name}”?", color = palette.text1) },
             text = { Text("Removes the folder. Entries already filed to it stay in your record.", color = palette.text3) },
+            containerColor = palette.surface,
+        )
+    }
+
+    if (showResetFramework) {
+        AlertDialog(
+            onDismissRequest = { showResetFramework = false },
+            confirmButton = {
+                TextButton(onClick = { viewModel.resetFramework(); showResetFramework = false }) {
+                    Text("Reset", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { showResetFramework = false }) { Text("Cancel") } },
+            title = { Text("Reset framework?", color = palette.text1) },
+            text = {
+                Text(
+                    "The default three categories come back. Your project folders and every filed record are kept — records under changed categories just show under “Uncategorized” until you re-home them.",
+                    color = palette.text3,
+                )
+            },
             containerColor = palette.surface,
         )
     }

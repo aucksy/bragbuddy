@@ -43,6 +43,12 @@ interface EntryDao {
     @Query("UPDATE entries SET isPinned = :value WHERE id = :id")
     suspend fun setPinned(id: Long, value: Boolean)
 
+    /** Relabel every entry filed under a renamed goal-area category (Phase B2 · category rename-remap).
+     *  Case-insensitive match on the OLD name. The `demonstrates` JSON list (behaviour tags) is a list
+     *  column SQL can't touch — the processor rewrites those rows in Kotlin. */
+    @Query("UPDATE entries SET goalCategory = :new WHERE goalCategory = :old COLLATE NOCASE")
+    suspend fun updateGoalCategory(old: String, new: String)
+
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteById(id: Long)
 

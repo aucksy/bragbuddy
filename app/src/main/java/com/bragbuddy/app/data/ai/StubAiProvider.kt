@@ -36,4 +36,8 @@ class StubAiProvider @Inject constructor() : AiProvider {
     // hint rather than an error (fail-safe: nothing is filed either way).
     override suspend fun extractFromImage(request: ImageExtractRequest): Result<ImageExtractResult> =
         Result.success(ImageExtractResult(""))
+
+    // No vision without a real provider — "no readable text" leaves the field unchanged (fail-safe).
+    override suspend fun readDocumentText(request: ImageExtractRequest): Result<ImageExtractResult> =
+        Result.success(ImageExtractResult(""))
 }

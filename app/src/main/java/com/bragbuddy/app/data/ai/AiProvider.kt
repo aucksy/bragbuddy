@@ -45,6 +45,16 @@ interface AiProvider {
      */
     suspend fun extractFromImage(request: ImageExtractRequest): Result<ImageExtractResult>
 
+    /**
+     * Read a scanned REFERENCE DOCUMENT (a job description / appraisal form / review criteria — a
+     * base64 `data:` URL) into clean text the user edits before it fills a framework or project
+     * description field (Phase B2 · framework editing). Runs on the multimodal [AiConfig.visionModel]
+     * with the doc-scan prompt (distinct from [extractFromImage], which reads "the work you did").
+     * Failure is safe — the caller keeps the field unchanged so the user types instead. A successful
+     * call with an empty [ImageExtractResult.text] means "no readable text in this image".
+     */
+    suspend fun readDocumentText(request: ImageExtractRequest): Result<ImageExtractResult>
+
     /** Human-readable id of the active provider/model (for the backup-health / debug surfaces). */
     val label: String
 }

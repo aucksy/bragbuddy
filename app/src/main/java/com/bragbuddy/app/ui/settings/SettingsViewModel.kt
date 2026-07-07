@@ -97,4 +97,8 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun deleteProject(id: Long) = viewModelScope.launch { projectRepository.delete(id) }
+
+    /** Reset the appraisal framework to the shipped default (Phase B2). Projects and filed records are
+     *  KEPT — records under changed categories simply surface under "Uncategorized" until re-homed. */
+    fun resetFramework() = viewModelScope.launch { frameworkStore.reset() }
 }

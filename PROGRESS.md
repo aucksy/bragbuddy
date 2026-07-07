@@ -14,12 +14,30 @@ current code — that is the context, not chat history.
 
 ## ▶ NEXT ROADMAP — Android v2 (agreed 2026-07-07): image scan → "+" radial capture → onboarding + privacy · THEN iOS
 
-> This is the live "what's next." Three vertical-slice phases, **one per chat**, same rhythm as Phases 0–7.
+> This is the live "what's next." Vertical-slice phases, **one per chat**, same rhythm as Phases 0–7.
 > iOS is **deferred** (research parked at the end of this section). Start each phase in a fresh chat
-> pointed at `CONTEXT.md`. **Exact next step:** build **Phase B2 — Framework editing** (3-input add/update +
-> Reset + rename-remap; see its subsection below), then **Phase C** (onboarding + Privacy/legal, which is
-> blocked on the pending privacy attachment and reuses B2's framework input). Phase A · image scanning
-> shipped as **v0.16.0**; Phase B · the "+" radial capture menu shipped as **v0.17.0** — both verified green.
+> pointed at `CONTEXT.md`. **Exact next step:** build **Phase B2b — v0.19.0** (project rename-remap 3-option
+> flow + the daily-categorizer prompt change + Home daily-record Save buttons; see the subsection below),
+> then **Phase C** (onboarding + Privacy/legal, blocked on the pending privacy attachment, reuses B2's
+> framework input). Phase A · image scan **v0.16.0**; Phase B · "+" radial capture **v0.17.0**; **Phase B2a ·
+> framework editing (Type+Scan, mic removed, per-item Save, Reset, category rename-remap) shipped v0.18.0** —
+> all verified green.
+
+**⚠️ SCOPE RESHAPE (creator, 2026-07-07, mid-B2):** the written B2 scope ("3-input add/update via the
+`refineFramework` AI seam") was **corrected by the creator** — they do **NOT** want AI to interpret/rewrite
+the framework. The framework is exactly what the user builds by hand; the AI never reshapes it. So:
+- **`refineFramework` is NOT used** (the seam stays built-but-unused). "3 inputs" = how you fill a **detail
+  text box**: **Type + Scan** (the per-field **mic was removed**). **Scan** = OCR a job-description /
+  review-criteria **document** into the field (append, editable, deletes nothing) via the vision pipeline +
+  a new doc-OCR prompt (`AiProvider.readDocumentText`).
+- **Two-level model, feeding different AI steps:** a **CATEGORY** detail feeds the **summary**; a **PROJECT**
+  detail feeds the **daily categorizer** (future filing). Editing either shows a **confirm-before-save** that
+  names the effect. **Per-item Save** (each item its own Save; replaces the batched top-bar Save).
+- **Category rename → prompt-me-first** deterministic relabel of filed records (creator's pick over auto/AI).
+- **Daily categorizer will use category NAMES + project details only** (drop category detail blurbs; behaviours
+  still tagged) — **deferred to v0.19.0** (touches the core pipeline).
+- **SPLIT into two releases** (creator's call): **v0.18.0** = framework/project editing (done); **v0.19.0** =
+  project rename-remap (3-option) + the categorizer prompt change + Home daily-record Save buttons.
 
 **Why this batch:** the creator wants five Android changes before any iOS work. Locked via AskUserQuestion
 (2026-07-07, all "recommended"):
@@ -180,6 +198,70 @@ was made.** When it resumes, this is the pre-done research:
 - **Capture parity:** no iOS overlay (Apple forbids) — the notification opens the app straight into a
   minimal auto-recording screen + App Intents (Siri/Shortcuts/Action Button/Lock-Screen). Blessed in the
   PRD/Brief.
+
+---
+
+## Status: v0.18.0 — Android v2 · Phase B2a · Framework editing (Type+Scan, per-item Save, Reset, category rename-remap) ✅ DONE (compile + adversarial review clean; awaiting CI)
+
+**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.18.0/BragBuddy-v0.18.0.apk` (signed;
+`.aab` alongside). Part 1 of the reshaped Phase B2 (see the ⚠️ SCOPE RESHAPE note in ▶ NEXT ROADMAP). **No
+AI reshapes the framework** — the user builds it by hand; Scan is just OCR into a field. **Room stays v4**
+(no schema change — the rename-remap edits existing columns; no new pref).
+
+### v0.18.0 — what was built (`versionCode 19`)
+1. **Framework editor reworked to Type + Scan, per-item Save** (`ui/framework/CategoryEditSheet.kt` rewritten,
+   `FrameworkViewModel.kt` rewritten, `FrameworkScreen.kt`): the per-field **mic/voice was removed**
+   (`AudioRecorder`/`GroqTranscriber`/`fieldVoice` machinery gone from the framework VM). Each **detail box**
+   is now **type or Scan** — a `ScanField` with a **Scan** button that OCRs a document into the field
+   (append, editable, deletes nothing). **Add a category** now opens the **same full-screen sheet** in
+   add-mode (`pillar = null`; the old `AddCategoryDialog`/`SegToggle` deleted). Editing is **per-item**: the
+   category (name/axis/detail) has its own **Save** with a confirm ("your next summary will use this updated
+   detail" + rename note); each **project** row (name/detail) has its own **Save** with a confirm ("future
+   entries will use this; existing records unchanged"). A create that hits the `(name, goalArea)` unique index
+   returns `<= 0` → the row stays dirty + a clear toast (never a false "saved").
+2. **Document scan behind the seam** (`data/ai/`): `AiProvider.readDocumentText` (+ `GroqAiProvider` impl —
+   reuses the Phase A vision pipeline `callVision` + `AiConfig.visionModel`/`visionFallback`, but with a NEW
+   **doc-OCR prompt** `AiPrompts.documentScan` — the scanned image is *reference material* (a job description /
+   review criteria), not "the work you did"; `StubAiProvider` returns empty). `FrameworkViewModel.onScanImage`
+   downscales via `data/image/ImageInput`, reads with vision, and emits the text to append; camera
+   (FileProvider, reuses `capture_images`) + gallery (`PickVisualMedia`) launchers live in the sheet. Fail-safe
+   throughout (no key / offline / unreadable / empty → field unchanged, calm toast, never a stuck "Reading…").
+   **All Save actions are disabled while a scan is in flight** (a save/close mid-OCR would drop the result —
+   it's delivered on a replay=0 SharedFlow only while the sheet is collecting).
+3. **Deterministic category rename-remap (NO AI, prompt-first)** (`EntryProcessor.renameCategoryEverywhere` +
+   `countCategoryReferences`, `EntryDao.updateGoalCategory`, `EntryRepository` passthroughs): when a category is
+   renamed + saved, its folders cascade (existing `projects.renameCategory`) and — if filed records still carry
+   the old label — the user is **prompted** (`FrameworkScreen`) to relabel them. Confirm → under the processing
+   **mutex**: SQL `UPDATE goalCategory old → new COLLATE NOCASE` + a Kotlin rewrite of the `demonstrates`
+   JSON-list (behaviour tags, `.distinct()`), then `reconcileLocked()` so the summary follows. Declining leaves
+   records under "Uncategorized" (the prompt warns; creator's chosen behaviour).
+4. **Reset framework in Settings** (`SettingsViewModel.resetFramework` → `FrameworkStore.reset()` + a card +
+   confirm dialog): back to the default 3 categories; **project folders and every filed record are KEPT**
+   (records under changed categories surface under "Uncategorized" until re-homed).
+
+### Adversarial review before tagging (compile + logic; per protocol)
+Compile pass (agent, "you are the compiler"): **clean** across all 14 changed files — every import/symbol/
+signature/scoped-modifier/`by mutableStateOf` delegate/`rememberSaveable<Uri?>`/Room `@Query`/`when`
+exhaustiveness verified; no dangling refs to the removed voice machinery / `ProjectDraft` / `AddCategoryDialog`.
+Logic pass: **0 firm-invariant breaks** (no entry loss, capture never blocked, rollup reconciled, mutex sound).
+**3 findings fixed pre-tag:** (MED) a scan completing after the sheet saved/closed dropped the OCR result →
+**all Save actions gated on scan-in-flight**; (MED) `rememberSaveable` scan-targets vs. plain-`remember` editor
+state mismatched → a restored scan could land in a vanished row → **scan-targets moved to plain `remember`** so
+the editor resets together (matches the pre-existing rotation behaviour); (LOW-MED) a new project hitting the
+unique index returned `-1` but the row showed "saved" → **`doSaveProject` now reflects the real persist outcome**
+(+ `ProjectRepository.create` KDoc corrected). Accepted (LOW): declining the relabel prompt splits the view
+(empty renamed folders + records in Uncategorized) — the prompt copy warns; it's the creator's "prompt-first" pick.
+
+### Flags / on-device test (the creator's step)
+New UI (per-item Save layout, `ScanField` with the Scan button, camera/gallery chooser, Reset card, rename-remap
+prompt) is **not in the Design System** — built from tokens; the per-item layout + Scan approach were confirmed
+with the creator via AskUserQuestion. **To verify on-device:** (1) edit a category detail → Save → confirm →
+"next summary will use this"; (2) Scan a job-description photo/screenshot into a detail box (no key → toast; offline
+→ calm toast; nothing lost); (3) add/edit a project detail → its own Save + confirm; (4) rename a category with
+filed records → the relabel prompt → Relabel moves them (check Home + a regenerated summary follow the new name),
+Leave → they sit in Uncategorized; (5) Reset framework in Settings → default 3 categories, folders + records kept.
+**Next: Phase B2b — v0.19.0** (project rename-remap 3-option + categorizer prompt change [names + projects, drop
+category blurbs] + Home daily-record Save buttons). Start in a fresh chat pointed at `CONTEXT.md`.
 
 ---
 
