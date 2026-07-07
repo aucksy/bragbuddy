@@ -201,9 +201,9 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
-## Status: v0.18.0 — Android v2 · Phase B2a · Framework editing (Type+Scan, per-item Save, Reset, category rename-remap) ✅ DONE (compile + adversarial review clean; awaiting CI)
+## Status: v0.18.0 — Android v2 · Phase B2a · Framework editing (Type+Scan, per-item Save, Reset, category rename-remap) ✅ DONE (verified green · signed; fixed via 2 CI round-trips — the Room `new` Java-keyword codegen break)
 
-**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.18.0/BragBuddy-v0.18.0.apk` (signed;
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.18.0/BragBuddy-v0.18.0.apk` (signed;
 `.aab` alongside). Part 1 of the reshaped Phase B2 (see the ⚠️ SCOPE RESHAPE note in ▶ NEXT ROADMAP). **No
 AI reshapes the framework** — the user builds it by hand; Scan is just OCR into a field. **Room stays v4**
 (no schema change — the rename-remap edits existing columns; no new pref).
