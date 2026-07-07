@@ -85,6 +85,10 @@ class CaptureActivity : ComponentActivity() {
         pendingPhotoUri = savedInstanceState?.let { BundleCompat.getParcelable(it, KEY_PENDING_PHOTO, Uri::class.java) }
         if (savedInstanceState == null) clearCaptureTempDir()
 
+        // How this launch wants the surface to open: an explicit Speak/Type/Scan (Home radial pick),
+        // ASK (in-context "+" chooser), DEFAULT (notification / nudge → the user's default method), or
+        // absent (Redo → last-used mode). Applied synchronously before the sheet composes.
+        vm.applyStart(intent.getStringExtra(EXTRA_START_MODE))
         // Redo (from Home) re-records over an existing entry instead of creating a new one.
         intent.getLongExtra(EXTRA_REPLACE_ID, 0L).let { if (it > 0L) vm.setReplaceId(it) }
         // Folder tap → capture straight into that project (no spoken prefix needed).
@@ -105,9 +109,12 @@ class CaptureActivity : ComponentActivity() {
 
                 // Enter voice mode → ensure mic permission, then listen. Waits for settings to load
                 // (initialized) so a Type-preferring user isn't hit with the mic before their last
-                // mode resolves. Re-runs when the mode or initialized flips.
-                LaunchedEffect(state.mode, state.initialized) {
-                    if (state.initialized && state.mode == CaptureMode.SPEAK && state.phase == VoicePhase.IDLE) {
+                // mode resolves, and holds while the "Ask each time" chooser is up (awaitingChoice).
+                // Re-runs when the mode / initialized / awaitingChoice flips — so picking "Speak" from
+                // the chooser (which clears awaitingChoice) auto-starts recording.
+                LaunchedEffect(state.mode, state.initialized, state.awaitingChoice) {
+                    if (state.initialized && !state.awaitingChoice &&
+                        state.mode == CaptureMode.SPEAK && state.phase == VoicePhase.IDLE) {
                         if (hasMic()) vm.startVoice() else requestMic.launch(Manifest.permission.RECORD_AUDIO)
                     }
                 }
@@ -132,6 +139,7 @@ class CaptureActivity : ComponentActivity() {
                     else -> CaptureScreen(
                         state = state,
                         onSetMode = vm::setMode,
+                        onPickMode = vm::pickStartMode,
                         onStopSubmit = vm::stopAndSubmitVoice,
                         onRetry = vm::retryVoice,
                         onSaveForLater = vm::saveForLater,
@@ -208,6 +216,12 @@ class CaptureActivity : ComponentActivity() {
 
         /** String extra: a project name to anchor this capture to (Home folder tap). */
         const val EXTRA_PROJECT = "anchor_project"
+
+        /** String extra: how to open (Phase B). A [CaptureMode] name (explicit pick), [START_ASK]
+         *  (show the chooser), or [START_DEFAULT] (resolve the user's default method). Absent = last-used. */
+        const val EXTRA_START_MODE = "start_mode"
+        const val START_ASK = "ASK"
+        const val START_DEFAULT = "DEFAULT"
     }
 }
 

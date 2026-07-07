@@ -1,11 +1,15 @@
 package com.bragbuddy.app.ui.main
 
-import android.content.Intent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -23,11 +27,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -48,7 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.bragbuddy.app.ui.capture.CaptureActivity
+import com.bragbuddy.app.data.prefs.CaptureMode
+import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.framework.FrameworkScreen
 import com.bragbuddy.app.ui.home.HomeScreen
 import com.bragbuddy.app.ui.inbox.InboxScreen
@@ -73,6 +82,10 @@ fun MainScaffold(
     val palette = BragBuddyTheme.palette
     val context = LocalContext.current
     var tab by rememberSaveable { mutableStateOf(HomeTab.HOME) }
+    // The Home "+" radial (Phase B): tapping the FAB fans Speak / Type / Scan; tap again or the scrim
+    // to close. Always the deliberate chooser — independent of the Default capture method.
+    var radialOpen by rememberSaveable { mutableStateOf(false) }
+    val fabRotation by animateFloatAsState(if (radialOpen) 45f else 0f, label = "fabRotation")
     // Set by Home's early-preview banner: land on Summary and generate right away (the tap is the
     // consent for the one metered call). Consumed by SummaryScreen once its state is ready.
     var summaryAutoGenerate by rememberSaveable { mutableStateOf(false) }
@@ -111,14 +124,30 @@ fun MainScaffold(
             selected = tab,
             inboxCount = inboxCount,
             onSelect = { tab = it },
-            onCapture = { context.startActivity(Intent(context, CaptureActivity::class.java)) },
+        )
+
+        // The radial overlay (scrim + fanned options) sits above the bar but below the FAB, so the
+        // FAB stays tappable to close and its "+" → "×" rotation reads on top.
+        if (radialOpen) {
+            CaptureRadial(
+                navInset = navInset,
+                onPick = { mode -> radialOpen = false; CaptureLauncher.openMode(context, mode) },
+                onDismiss = { radialOpen = false },
+            )
+        }
+        CaptureFab(
+            modifier = Modifier.align(Alignment.BottomCenter),
+            navInset = navInset,
+            rotation = fabRotation,
+            open = radialOpen,
+            onClick = { radialOpen = !radialOpen },
         )
 
         if (showCatchup) {
             CatchupSheet(
                 onAdd = {
                     viewModel.catchupHandled()
-                    context.startActivity(Intent(context, CaptureActivity::class.java))
+                    CaptureLauncher.openDefault(context)
                 },
                 onSkip = { viewModel.catchupHandled() },
             )
@@ -132,44 +161,136 @@ private fun BottomBar(
     selected: HomeTab,
     inboxCount: Int,
     onSelect: (HomeTab) -> Unit,
-    onCapture: () -> Unit,
 ) {
     val palette = BragBuddyTheme.palette
-    Box(modifier.fillMaxWidth()) {
-        Column(
+    // The bar itself; the raised "+" FAB is now rendered at the scaffold level (above the radial
+    // overlay) — the central Spacer below still reserves its slot so the tab metrics are unchanged.
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(palette.surface),
+    ) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+        Row(
             Modifier
                 .fillMaxWidth()
-                .background(palette.surface)
-                .align(Alignment.BottomCenter),
+                .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+                .padding(start = 14.dp, end = 14.dp, top = 9.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
-                    .padding(start = 14.dp, end = 14.dp, top = 9.dp, bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TabItem(HomeTab.HOME, selected, Icons.Filled.Home, Icons.Outlined.Home, onSelect, Modifier.weight(1f))
-                TabItem(HomeTab.SUMMARY, selected, Icons.Outlined.Description, Icons.Outlined.Description, onSelect, Modifier.weight(1f))
-                Spacer(Modifier.weight(1f)) // space for the FAB
-                TabItem(HomeTab.FRAMEWORK, selected, Icons.Outlined.Dashboard, Icons.Outlined.Dashboard, onSelect, Modifier.weight(1f))
-                TabItem(HomeTab.INBOX, selected, Icons.Outlined.Inbox, Icons.Outlined.Inbox, onSelect, Modifier.weight(1f), badge = inboxCount)
-            }
+            TabItem(HomeTab.HOME, selected, Icons.Filled.Home, Icons.Outlined.Home, onSelect, Modifier.weight(1f))
+            TabItem(HomeTab.SUMMARY, selected, Icons.Outlined.Description, Icons.Outlined.Description, onSelect, Modifier.weight(1f))
+            Spacer(Modifier.weight(1f)) // space for the FAB
+            TabItem(HomeTab.FRAMEWORK, selected, Icons.Outlined.Dashboard, Icons.Outlined.Dashboard, onSelect, Modifier.weight(1f))
+            TabItem(HomeTab.INBOX, selected, Icons.Outlined.Inbox, Icons.Outlined.Inbox, onSelect, Modifier.weight(1f), badge = inboxCount)
         }
-        // Raised capture FAB, centered and straddling the top edge of the bar.
+    }
+}
+
+/**
+ * The raised capture FAB — a "+" that straddles the top edge of the bar (Phase B). Tapping it opens
+ * the radial; while open the "+" rotates 45° into an "×". Rendered at the scaffold level so it sits
+ * above the radial scrim. Its bottom offset (navInset + 23dp) reproduces the pre-Phase-B geometry
+ * exactly (it used to be `align(TopCenter).offset(y = -20dp)` inside the bar), so symmetry is intact.
+ */
+@Composable
+private fun BoxScope.CaptureFab(modifier: Modifier, navInset: androidx.compose.ui.unit.Dp, rotation: Float, open: Boolean, onClick: () -> Unit) {
+    val palette = BragBuddyTheme.palette
+    Box(
+        modifier
+            .padding(bottom = navInset + 23.dp)
+            .size(52.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(palette.primary)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Outlined.Add,
+            if (open) "Close" else "Capture",
+            tint = Color.White,
+            modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = rotation },
+        )
+    }
+}
+
+/**
+ * The three-option capture radial (Speak / Type / Scan) fanned up from the FAB. Not in the Design
+ * System — built from tokens; look approved via the Phase B mockup. Options animate out from the FAB
+ * (staggered scale + fade + travel); the scrim is the app's own capture scrim. Closing is instant
+ * (unmount), so the full-screen scrim never lingers to swallow taps.
+ */
+@Composable
+private fun BoxScope.CaptureRadial(navInset: androidx.compose.ui.unit.Dp, onPick: (CaptureMode) -> Unit, onDismiss: () -> Unit) {
+    val noRipple = remember { MutableInteractionSource() }
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val scrimAlpha by animateFloatAsState(if (shown) 1f else 0f, tween(200), label = "radialScrim")
+
+    // Scrim (tap to dismiss).
+    Box(
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer { alpha = scrimAlpha }
+            .background(Color(0xFF0E0F1A).copy(alpha = 0.42f))
+            .clickable(interactionSource = noRipple, indication = null, onClick = onDismiss),
+    )
+    // Option cluster anchored at the FAB centre; each option offsets out along the upward arc.
+    Box(
+        Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = navInset + 23.dp)
+            .size(52.dp),
+    ) {
+        RadialOption(shown, 0, -84f, -66f, Icons.Outlined.Mic, "Speak") { onPick(CaptureMode.SPEAK) }
+        RadialOption(shown, 1, 0f, -112f, Icons.Outlined.Keyboard, "Type") { onPick(CaptureMode.TYPE) }
+        RadialOption(shown, 2, 84f, -66f, Icons.Outlined.PhotoCamera, "Scan") { onPick(CaptureMode.IMAGE) }
+    }
+}
+
+@Composable
+private fun BoxScope.RadialOption(
+    shown: Boolean,
+    index: Int,
+    dx: Float,
+    dy: Float,
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    val palette = BragBuddyTheme.palette
+    val p by animateFloatAsState(
+        if (shown) 1f else 0f,
+        tween(durationMillis = 260, delayMillis = index * 45, easing = FastOutSlowInEasing),
+        label = "radialOption$index",
+    )
+    Column(
+        Modifier
+            .align(Alignment.Center)
+            .offset(x = (dx * p).dp, y = (dy * p).dp)
+            .graphicsLayer { alpha = p; scaleX = 0.6f + 0.4f * p; scaleY = 0.6f + 0.4f * p },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Box(
             Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = (-20).dp)
                 .size(52.dp)
                 .clip(RoundedCornerShape(999.dp))
-                .background(palette.primary)
-                .clickable(onClick = onCapture),
+                .background(palette.surface)
+                .border(1.dp, palette.border, RoundedCornerShape(999.dp))
+                .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Outlined.Mic, "Capture", tint = Color.White, modifier = Modifier.size(24.dp))
-        }
+        ) { Icon(icon, label, tint = palette.primary, modifier = Modifier.size(22.dp)) }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            label,
+            fontSize = 11.sp,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color(0xFF0E0F1A).copy(alpha = 0.5f))
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+        )
     }
 }
 

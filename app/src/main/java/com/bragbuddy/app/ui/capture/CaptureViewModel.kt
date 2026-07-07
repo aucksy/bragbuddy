@@ -12,7 +12,9 @@ import com.bragbuddy.app.data.image.ImageInput
 import com.bragbuddy.app.data.impact.ImpactCheck
 import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.net.ConnectivityMonitor
+import com.bragbuddy.app.data.prefs.AppSettings
 import com.bragbuddy.app.data.prefs.CaptureMode
+import com.bragbuddy.app.data.prefs.DefaultCaptureMethod
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.speech.AudioRecorder
 import com.bragbuddy.app.data.speech.GroqTranscriber
@@ -55,6 +57,9 @@ data class CaptureUiState(
     val queuedOffline: Boolean = false,
     /** Set once settings (last mode) have loaded — the host waits for this before auto-starting voice. */
     val initialized: Boolean = false,
+    /** True when the surface opened in "Ask each time" mode — show the 3-choice chooser and DON'T
+     *  auto-start anything until the user picks (Phase B). Cleared by [pickStartMode]. */
+    val awaitingChoice: Boolean = false,
     /** When capturing into a folder, the project name this entry is anchored to (shown as a chip). */
     val anchorProject: String? = null,
     /** The scanned image (IMAGE mode) — kept for the review thumbnail; null in voice/text modes. */
@@ -113,6 +118,12 @@ class CaptureViewModel @Inject constructor(
     private var replaceId: Long? = null
     fun setReplaceId(id: Long) { if (id > 0L) replaceId = id }
 
+    /** The requested start mode from the launch intent (EXTRA_START_MODE). Set synchronously in the
+     *  activity's onCreate — always before [init]'s coroutine resumes past its first suspension, so
+     *  the resolved opening mode below sees it. */
+    private var requestedStart: String? = null
+    fun applyStart(extra: String?) { requestedStart = extra }
+
     /** When set (folder tap), the capture is anchored to this project — no spoken prefix needed. */
     private var anchorProject: String? = null
     fun setAnchorProject(name: String) {
@@ -125,8 +136,31 @@ class CaptureViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val s = settings.settings.first()
-            _state.update { it.copy(mode = s.lastCaptureMode, initialized = true) }
+            val (mode, ask) = resolveStart(requestedStart, s)
+            _state.update { it.copy(mode = mode, awaitingChoice = ask, initialized = true) }
         }
+    }
+
+    /** Turn the launch's EXTRA_START_MODE into the opening (mode, awaitingChoice). */
+    private fun resolveStart(extra: String?, s: AppSettings): Pair<CaptureMode, Boolean> = when (extra) {
+        null -> s.lastCaptureMode to false                     // Redo / legacy launch → last-used mode
+        CaptureActivity.START_ASK -> s.lastCaptureMode to true // in-context "+" → the 3-choice chooser
+        CaptureActivity.START_DEFAULT -> when (s.defaultCaptureMethod) { // notification / nudges
+            DefaultCaptureMethod.ASK -> s.lastCaptureMode to true
+            DefaultCaptureMethod.SPEAK -> CaptureMode.SPEAK to false
+            DefaultCaptureMethod.TYPE -> CaptureMode.TYPE to false
+            DefaultCaptureMethod.IMAGE -> CaptureMode.IMAGE to false
+        }
+        else -> runCatching { CaptureMode.valueOf(extra) }.getOrDefault(s.lastCaptureMode) to false
+    }
+
+    /** The chooser's pick (Speak / Type / Scan) — leave the chooser and open into that mode. Voice is
+     *  auto-started by the activity (it owns mic permission); Type focuses the keyboard; Scan shows the
+     *  pick-a-source screen. */
+    fun pickStartMode(mode: CaptureMode) {
+        if (!_state.value.awaitingChoice) return
+        viewModelScope.launch { settings.setLastCaptureMode(mode) }
+        _state.update { it.copy(awaitingChoice = false, mode = mode, phase = VoicePhase.IDLE, error = null) }
     }
 
     fun setMode(mode: CaptureMode) {

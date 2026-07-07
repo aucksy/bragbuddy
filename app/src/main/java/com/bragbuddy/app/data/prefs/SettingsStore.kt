@@ -20,12 +20,22 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
 /** Which capture mode the sheet opens to (last used). */
 enum class CaptureMode { SPEAK, TYPE, IMAGE }
 
+/**
+ * What a "generic" capture launch (the notification tap, the daily-nudge / catch-up buttons) opens to.
+ * [ASK] shows the 3-choice chooser; the others go straight to that mode. The Home "+" FAB always shows
+ * the radial regardless of this — this governs only the surfaces that can't host the radial animation.
+ */
+enum class DefaultCaptureMethod { ASK, SPEAK, TYPE, IMAGE }
+
 /** User settings for the daily reminder + capture preferences. Device-local. */
 data class AppSettings(
     val reminderEnabled: Boolean = true,
     val reminderHour: Int = 18,      // 24h
     val reminderMinute: Int = 0,
     val lastCaptureMode: CaptureMode = CaptureMode.SPEAK,
+    /** What the notification / daily-nudge open to (Voice by default, preserving today's behaviour).
+     *  "Ask each time" ([DefaultCaptureMethod.ASK]) opens the 3-choice chooser instead. */
+    val defaultCaptureMethod: DefaultCaptureMethod = DefaultCaptureMethod.SPEAK,
     /** Groq API key (gsk_…). Powers BOTH cloud Whisper transcription and the AI brain (categorizer +
      *  framework refine). Stored on-device only — never committed or shipped. */
     val groqApiKey: String = "",
@@ -79,6 +89,8 @@ class SettingsStore @Inject constructor(
             reminderMinute = p[KEY_REMINDER_MINUTE] ?: 0,
             lastCaptureMode = runCatching { CaptureMode.valueOf(p[KEY_LAST_MODE] ?: "SPEAK") }
                 .getOrDefault(CaptureMode.SPEAK),
+            defaultCaptureMethod = runCatching { DefaultCaptureMethod.valueOf(p[KEY_DEFAULT_CAPTURE] ?: "SPEAK") }
+                .getOrDefault(DefaultCaptureMethod.SPEAK),
             groqApiKey = p[KEY_GROQ_KEY] ?: "",
             jobRole = p[KEY_JOB_ROLE] ?: "",
             rolePromptDismissed = p[KEY_ROLE_PROMPT_DISMISSED] ?: false,
@@ -106,6 +118,9 @@ class SettingsStore @Inject constructor(
 
     suspend fun setLastCaptureMode(mode: CaptureMode) =
         store.edit { it[KEY_LAST_MODE] = mode.name }
+
+    suspend fun setDefaultCaptureMethod(method: DefaultCaptureMethod) =
+        store.edit { it[KEY_DEFAULT_CAPTURE] = method.name }
 
     suspend fun setGroqApiKey(key: String) =
         store.edit { it[KEY_GROQ_KEY] = key.trim() }
@@ -152,6 +167,7 @@ class SettingsStore @Inject constructor(
         val KEY_REMINDER_HOUR = intPreferencesKey("reminder_hour")
         val KEY_REMINDER_MINUTE = intPreferencesKey("reminder_minute")
         val KEY_LAST_MODE = stringPreferencesKey("last_capture_mode")
+        val KEY_DEFAULT_CAPTURE = stringPreferencesKey("default_capture_method")
         val KEY_GROQ_KEY = stringPreferencesKey("groq_api_key")
         val KEY_JOB_ROLE = stringPreferencesKey("job_role")
         val KEY_ROLE_PROMPT_DISMISSED = booleanPreferencesKey("role_prompt_dismissed")

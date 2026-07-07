@@ -65,6 +65,7 @@ class BackupRepository @Inject constructor(
                     jobRole = s.jobRole,
                     rolePromptDismissed = s.rolePromptDismissed,
                     reviewYearStartMonth = s.reviewYearStartMonth,
+                    defaultCaptureMethod = s.defaultCaptureMethod,
                 ),
                 summariesRaw = summaryStore.exportRaw(),
             ),
@@ -98,6 +99,7 @@ class BackupRepository @Inject constructor(
                 settingsStore.setReminderEnabled(reminderEnabled)
                 settingsStore.setReminderTime(reminderHour, reminderMinute)
                 settingsStore.setLastCaptureMode(lastCaptureMode)
+                settingsStore.setDefaultCaptureMethod(defaultCaptureMethod)
                 settingsStore.setReviewYearStartMonth(reviewYearStartMonth)
                 if (jobRole.isNotBlank()) settingsStore.setJobRole(jobRole)
                 else if (rolePromptDismissed) settingsStore.dismissRolePrompt()
@@ -156,7 +158,7 @@ class BackupRepository @Inject constructor(
             entries.filter { it.status != EntryStatus.PENDING_AUDIO },
             folders, fw.pillars,
             s.reminderEnabled, s.reminderHour, s.reminderMinute, s.lastCaptureMode,
-            s.jobRole, s.rolePromptDismissed, s.reviewYearStartMonth,
+            s.jobRole, s.rolePromptDismissed, s.reviewYearStartMonth, s.defaultCaptureMethod,
         ).hashCode()
     }.distinctUntilChanged()
 

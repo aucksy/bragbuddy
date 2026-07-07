@@ -7,6 +7,7 @@ import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.CaptureMode
+import com.bragbuddy.app.data.prefs.DefaultCaptureMethod
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -24,6 +25,8 @@ data class BackupSettings(
     val jobRole: String,
     val rolePromptDismissed: Boolean,
     val reviewYearStartMonth: Int,
+    /** New field is last with a default so older callers / backups still (de)serialise cleanly. */
+    val defaultCaptureMethod: DefaultCaptureMethod = DefaultCaptureMethod.SPEAK,
 )
 
 data class BackupSnapshot(
@@ -171,6 +174,7 @@ object BackupCodec {
         put("jobRole", jobRole)
         put("rolePromptDismissed", rolePromptDismissed)
         put("reviewYearStartMonth", reviewYearStartMonth)
+        put("defaultCaptureMethod", defaultCaptureMethod.name)
     }
 
     private fun JSONObject.toSettings() = BackupSettings(
@@ -181,6 +185,7 @@ object BackupCodec {
         jobRole = optString("jobRole", ""),
         rolePromptDismissed = optBoolean("rolePromptDismissed", false),
         reviewYearStartMonth = optInt("reviewYearStartMonth", 1).coerceIn(1, 12),
+        defaultCaptureMethod = enumOr(optString("defaultCaptureMethod"), DefaultCaptureMethod.SPEAK),
     )
 
     private fun defaultSettings() = BackupSettings(true, 18, 0, CaptureMode.SPEAK, "", false, 1)

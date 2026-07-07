@@ -9,6 +9,7 @@ import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.CaptureMode
+import com.bragbuddy.app.data.prefs.DefaultCaptureMethod
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -37,6 +38,7 @@ class BackupCodecTest {
             reminderEnabled = false, reminderHour = 9, reminderMinute = 30,
             lastCaptureMode = CaptureMode.TYPE, jobRole = "Product Owner",
             rolePromptDismissed = true, reviewYearStartMonth = 4,
+            defaultCaptureMethod = DefaultCaptureMethod.IMAGE,
         ),
         summariesRaw = """{"YEAR_END::ONE_PAGE":{"period":"YEAR_END"}}""",
     )
@@ -70,6 +72,7 @@ class BackupCodecTest {
 
         assertThat(decoded.settings.reminderEnabled).isFalse()
         assertThat(decoded.settings.lastCaptureMode).isEqualTo(CaptureMode.TYPE)
+        assertThat(decoded.settings.defaultCaptureMethod).isEqualTo(DefaultCaptureMethod.IMAGE)
         assertThat(decoded.settings.jobRole).isEqualTo("Product Owner")
         assertThat(decoded.settings.reviewYearStartMonth).isEqualTo(4)
 

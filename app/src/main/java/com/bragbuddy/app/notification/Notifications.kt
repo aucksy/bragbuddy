@@ -8,7 +8,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.bragbuddy.app.R
-import com.bragbuddy.app.ui.capture.CaptureActivity
+import com.bragbuddy.app.ui.capture.CaptureLauncher
 
 /** Notification channel + the daily reminder. Voice/tone per the design: warm, brief, never nagging. */
 object Notifications {
@@ -25,9 +25,10 @@ object Notifications {
         mgr.createNotificationChannel(channel)
     }
 
-    /** Post the reminder. Tapping it opens the capture surface straight into the last-used mode. */
+    /** Post the reminder. Tapping it opens the capture surface into the user's *Default capture
+     *  method* (Voice by default; "Ask each time" shows the 3-choice chooser) — resolved in the VM. */
     fun postReminder(context: Context) {
-        val intent = Intent(context, CaptureActivity::class.java).apply {
+        val intent = CaptureLauncher.intentForDefault(context).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pending = PendingIntent.getActivity(

@@ -16,8 +16,9 @@ current code — that is the context, not chat history.
 
 > This is the live "what's next." Three vertical-slice phases, **one per chat**, same rhythm as Phases 0–7.
 > iOS is **deferred** (research parked at the end of this section). Start each phase in a fresh chat
-> pointed at `CONTEXT.md`. **Exact next step:** build **Phase B — the "+" radial capture menu**
-> (Phase A · image scanning shipped as **v0.16.0**, verified green — see the status section below).
+> pointed at `CONTEXT.md`. **Exact next step:** build **Phase C — the onboarding wizard + Privacy/legal**
+> (Phase A · image scanning shipped as **v0.16.0**; Phase B · the "+" radial capture menu shipped as
+> **v0.17.0** — both verified green; see the status sections below).
 
 **Why this batch:** the creator wants five Android changes before any iOS work. Locked via AskUserQuestion
 (2026-07-07, all "recommended"):
@@ -56,7 +57,7 @@ pattern) → Add → the normal `EntryProcessor` categorizer.
 - **Testable:** scan a photo/screenshot on-device → extract → edit → files (or Inbox); no-key → clear "add
   key / type instead" state; oversized image compresses under 4 MB; offline → fails safe (queue or Inbox).
 
-### Phase B — "+" radial capture menu + default input method + notification routing
+### Phase B — "+" radial capture menu + default input method + notification routing ✅ SHIPPED v0.17.0
 Replace the mic icon (4 spots: FAB `MainScaffold.kt:171`, daily-nudge `HomeScreen.kt:722`, capture toggle
 `CaptureScreen.kt:231`, number-nudge `CaptureScreen.kt:530,532`) with **"+"**; tapping it opens a
 **3-option radial (Voice / Text / Image) with a slick circular animation** on Home, and the appropriate
@@ -140,6 +141,78 @@ was made.** When it resumes, this is the pre-done research:
 - **Capture parity:** no iOS overlay (Apple forbids) — the notification opens the app straight into a
   minimal auto-recording screen + App Intents (Siri/Shortcuts/Action Button/Lock-Screen). Blessed in the
   PRD/Brief.
+
+---
+
+## Status: v0.17.0 — Android v2 · Phase B · "+" radial capture menu ✅ DONE (compile + adversarial review clean; awaiting CI)
+
+**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.17.0/BragBuddy-v0.17.0.apk` (signed;
+`.aab` alongside). The second Android-v2 slice: the mic FAB becomes a **"+"** that opens a 3-option
+**radial (Speak / Type / Scan)**, a new **Default capture method** setting, and **one shared capture
+launcher**. Scope locked via AskUserQuestion (2026-07-07): **FAB always opens the radial** (it's the
+deliberate chooser; the default governs only the notification/nudge); **default = Voice** (preserves
+today's open-to-voice feel); **labels = Speak / Type / Scan** (match the existing in-sheet toggle). The
+radial look was proposed as a token-built mockup and approved before coding. **Room stays v4** (no schema
+change — the new pref is DataStore).
+
+### v0.17.0 — what was built (`versionCode 18`)
+1. **The "+" radial** (`ui/main/MainScaffold.kt`): the raised FAB moved from inside `BottomBar` to the
+   **scaffold level** (so it sits above the radial scrim and stays tappable to close), its geometry
+   reproduced exactly (`padding(bottom = navInset + 23.dp)` == the old `align(TopCenter).offset(y=-20)`
+   in a `navInset+55dp` bar — symmetry intact). The "+" rotates 45°→"×" (`graphicsLayer{rotationZ}`);
+   three option circles fan up from the FAB (Speak `-84,-66` / Type `0,-112` / Scan `+84,-66` dp) with a
+   staggered scale+fade+travel enter (`animateFloatAsState` per item, `delayMillis = index*45`); the app's
+   own capture scrim dims the screen (tap to dismiss); **close is by unmount** so the full-screen scrim
+   never lingers to swallow taps. Each pick → `CaptureLauncher.openMode(mode)`.
+2. **One shared launcher** (`ui/capture/CaptureLauncher.kt`, new): kills the 5-site
+   `Intent(…CaptureActivity…)` duplication (Home, pillar view, FAB, catch-up, notification). Carries a new
+   **`CaptureActivity.EXTRA_START_MODE`**: a `CaptureMode` name (explicit radial pick), `START_ASK` (the
+   3-choice chooser — in-context "+"), `START_DEFAULT` (the notification/nudge → the user's default,
+   resolved in the VM), or absent (Redo → last-used mode). `intentForMode/Chooser/Default/Redo` + `open*`.
+3. **Default capture method** (`data/prefs/SettingsStore.kt` `enum DefaultCaptureMethod {ASK,SPEAK,TYPE,
+   IMAGE}` + `defaultCaptureMethod` pref, default `SPEAK`; reader reuses the `runCatching{valueOf}
+   .getOrDefault` pattern). New **Settings card** (`ui/settings` `DefaultCaptureCard`, segmented
+   Ask/Voice/Type/Scan). The **notification** (`notification/Notifications.kt`) + **daily nudge**
+   (`HomeScreen`) + **catch-up** (`MainScaffold`) now open via `openDefault` → the VM resolves the pref
+   (ASK → the chooser). In-context **"Add entry to …" rows** (Home folders, pillar view) open `openChooser`
+   (the 3-choice, **anchored** to that folder). The daily-nudge button icon went mic → "+".
+4. **The in-sheet chooser** (`ui/capture/CaptureScreen.kt` `StartChooser`, `CaptureViewModel.awaitingChoice`
+   + `pickStartMode`): when a launch is `START_ASK` (or `START_DEFAULT` with default=Ask) the sheet shows
+   three big Speak/Type/Scan cards (reusing the image mode's `SourceButton` look); picking opens straight
+   into it (Speak auto-records via the activity's mic-permission flow — the auto-voice `LaunchedEffect` now
+   keys on `awaitingChoice` so clearing it re-fires; Type focuses the keyboard; Scan shows pick-a-source).
+   The ✕ / scrim / handle are rendered **before** the chooser branch, so it's always cancellable, and the
+   anchor banner shows above it. `EXTRA_START_MODE` is applied synchronously in `onCreate` (`vm.applyStart`)
+   — always before the VM's init coroutine resumes past its first `settings.first()` suspension, so the
+   opening mode is deterministic.
+5. **Backup mirror**: `defaultCaptureMethod` threaded through `BackupCodec` (field w/ default +
+   `toJson`/`toSettings`), `BackupRepository` (export / import / `changeSignal`), and `BackupCodecTest`
+   (round-trips `IMAGE`) — it survives a Drive restore, exactly like `lastCaptureMode`.
+
+### Adversarial review before tagging (compile + logic; per protocol)
+- **Compile pass (agent, "you are the compiler"):** **clean** across all 14 files + the new launcher —
+  every import/symbol/signature/scoped-modifier (`Modifier.weight`/`align` in the right scope, `return@Column`,
+  `by`/getValue/setValue, `when(enum)` exhaustiveness, the `SourceButton`/`StartChooser` call) verified;
+  removed imports (`Intent`, `CaptureActivity`, `Mic`) grep-confirmed unreferenced.
+- **Adversarial logic pass (agent):** **0 HIGH, 0 MED.** Both flagged risks resolved: (a) the **radial
+  options are tappable** though drawn outside their 52dp parent — Compose doesn't clip hit-testing on
+  non-clipping ancestors (`NodeCoordinator.hitTest` forwards the pointer), and every option sits well inside
+  the screen; (b) **`requestedStart` timing is safe** — `onCreate` sets it before the retained VM's init
+  coroutine resumes past `settings.first()`. Routing verified correct across all surfaces; anchor survives
+  the chooser; no Material `ModalBottomSheet` (veto-freeze) introduced. **3 LOW, all accepted** (documented,
+  consistent with prior phases): L1 double-`recorder.start()` only if you rotate in the sub-second
+  pre-LISTENING window (VM is retained across rotation → tiny; worst case a leaked temp file, never a
+  lost/dup entry — fixing it risks the never-lose-a-take path); L2 mic-permanently-denied → Speak toggle
+  bounces to Type (pre-existing); L3 two-finger simultaneous pick (singleTop collapses it).
+
+### Flags / on-device test (the creator's step)
+New UI (radial, in-sheet 3-card chooser, Default-capture segmented control) is **not in the Design System** —
+built from tokens; look approved via the Phase B mockup. **#1 to verify on-device:** tap each of the three
+radial options actually launches (confirms the offset hit-testing). Then: each default routes correctly from
+the FAB (always radial) AND the notification/daily-nudge (goes straight to Voice; "Ask" → chooser); the "+"
+in-context rows open the anchored 3-choice and file into the right folder; Redo still opens last-used; the
+FAB sits exactly where the mic did (symmetry); Drive backup/restore carries the default. **Next: Phase C —
+onboarding wizard + Privacy/legal** (see ▶ NEXT ROADMAP). Start in a fresh chat pointed at `CONTEXT.md`.
 
 ---
 

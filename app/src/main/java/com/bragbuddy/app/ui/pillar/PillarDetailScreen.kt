@@ -1,6 +1,5 @@
 package com.bragbuddy.app.ui.pillar
 
-import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -61,7 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.local.EntryEntity
-import com.bragbuddy.app.ui.capture.CaptureActivity
+import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.common.EntryBulletRow
 import com.bragbuddy.app.ui.entry.EntryDetailSheet
 import com.bragbuddy.app.ui.home.OUTSIDE_PROJECT_LABEL
@@ -79,8 +78,8 @@ import com.bragbuddy.app.ui.theme.pillarColor
  * The deep pillar view — the depth that lives "one tap in" from the Home overview. For a goal /
  * growth pillar it lists projects with their dated bullets (add-entry per project, add-project);
  * for a behaviour pillar it lists the entries that evidence it. Per-entry edit / redo / delete lives
- * here now (Home is a clean overview). Adding an entry to a project anchors the capture to it
- * ([CaptureActivity.EXTRA_PROJECT]) so no spoken prefix is needed.
+ * here now (Home is a clean overview). Adding an entry to a project opens the 3-choice capture
+ * chooser anchored to it ([CaptureLauncher.openChooser]) so no spoken prefix is needed.
  */
 @Composable
 fun PillarDetailScreen(
@@ -142,16 +141,9 @@ fun PillarDetailScreen(
         if (selected.isEmpty()) selectionMode = false
     }
 
-    fun capture(project: String?) {
-        val intent = Intent(context, CaptureActivity::class.java)
-        if (project != null) intent.putExtra(CaptureActivity.EXTRA_PROJECT, project)
-        context.startActivity(intent)
-    }
-    fun redo(entry: EntryEntity) {
-        context.startActivity(
-            Intent(context, CaptureActivity::class.java).putExtra(CaptureActivity.EXTRA_REPLACE_ID, entry.id),
-        )
-    }
+    // In-context "+" (Add a note / Add entry to a project) → the 3-choice chooser, anchored if named.
+    fun capture(project: String?) = CaptureLauncher.openChooser(context, project)
+    fun redo(entry: EntryEntity) = CaptureLauncher.redo(context, entry.id)
 
     Column(
         Modifier.fillMaxSize().background(palette.bg).statusBarsPadding().padding(horizontal = Spacing.screen),

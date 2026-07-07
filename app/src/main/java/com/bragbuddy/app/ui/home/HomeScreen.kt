@@ -1,6 +1,5 @@
 package com.bragbuddy.app.ui.home
 
-import android.content.Intent
 import android.text.format.DateUtils
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -33,7 +32,6 @@ import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
@@ -66,7 +64,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.R
 import com.bragbuddy.app.data.local.EntryEntity
-import com.bragbuddy.app.ui.capture.CaptureActivity
+import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.common.EntryBulletRow
 import com.bragbuddy.app.ui.entry.EntryDetailSheet
 import com.bragbuddy.app.ui.role.RoleInput
@@ -148,16 +146,9 @@ fun HomeScreen(
         }
     }
 
-    fun capture(project: String?) {
-        val intent = Intent(context, CaptureActivity::class.java)
-        if (project != null) intent.putExtra(CaptureActivity.EXTRA_PROJECT, project)
-        context.startActivity(intent)
-    }
-    fun redo(entry: EntryEntity) {
-        context.startActivity(
-            Intent(context, CaptureActivity::class.java).putExtra(CaptureActivity.EXTRA_REPLACE_ID, entry.id),
-        )
-    }
+    // In-context "+" (Add entry to a folder) → the 3-choice chooser, anchored to that folder.
+    fun captureInto(project: String?) = CaptureLauncher.openChooser(context, project)
+    fun redo(entry: EntryEntity) = CaptureLauncher.redo(context, entry.id)
 
     Column(
         modifier = Modifier
@@ -231,7 +222,7 @@ fun HomeScreen(
                 }
                 if (showDailyNudge) {
                     item(key = "daily-nudge") {
-                        DailyNudgeCard(palette, onAdd = { capture(null) }, onDismiss = { viewModel.dismissDailyNudge() })
+                        DailyNudgeCard(palette, onAdd = { CaptureLauncher.openDefault(context) }, onDismiss = { viewModel.dismissDailyNudge() })
                     }
                 }
                 previewBannerCount?.let { count ->
@@ -261,7 +252,7 @@ fun HomeScreen(
                         isFolderExpanded = { folder -> expandedFolders.contains(section.pillar.id + "::" + folder) },
                         onToggleFolder = { folder -> toggleFolder(section.pillar.id + "::" + folder) },
                         onSeeMore = { folder -> onOpenFolder(section.pillar.id, folder) },
-                        onAddEntry = { folder -> capture(folder) },
+                        onAddEntry = { folder -> captureInto(folder) },
                         onOpenDetail = { detailEntry = it },
                         onEdit = { editTarget = it },
                         onRedo = { redo(it) },
@@ -719,7 +710,7 @@ private fun DailyNudgeCard(palette: BragPalette, onAdd: () -> Unit, onDismiss: (
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Outlined.Mic, null, tint = Color.White, modifier = Modifier.size(16.dp))
+            Icon(Icons.Outlined.Add, null, tint = Color.White, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(7.dp))
             Text("Add something", style = MaterialTheme.typography.titleSmall, color = Color.White, fontWeight = FontWeight.Bold)
         }

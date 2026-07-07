@@ -93,6 +93,7 @@ import com.bragbuddy.app.ui.theme.Spacing
 fun CaptureScreen(
     state: CaptureUiState,
     onSetMode: (CaptureMode) -> Unit,
+    onPickMode: (CaptureMode) -> Unit,
     onStopSubmit: () -> Unit,
     onRetry: () -> Unit,
     onSaveForLater: () -> Unit,
@@ -161,6 +162,18 @@ fun CaptureScreen(
             state.anchorProject?.let { project ->
                 AnchorBanner(project)
                 Spacer(Modifier.height(Spacing.s3))
+            }
+
+            // "Ask each time" → the 3-choice chooser (Speak / Type / Scan). Nothing auto-starts until
+            // the user picks; anchoring (if any) is shown by the banner above.
+            if (state.awaitingChoice) {
+                StartChooser(onPick = onPickMode)
+                val bottomInset = maxOf(
+                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                    WindowInsets.ime.asPaddingValues().calculateBottomPadding(),
+                )
+                Spacer(Modifier.height(18.dp + bottomInset))
+                return@Column
             }
 
             if (showToggle) {
@@ -248,6 +261,25 @@ private fun AnchorBanner(project: String) {
             fontWeight = FontWeight.Bold,
             maxLines = 1,
         )
+    }
+}
+
+/**
+ * The "Ask each time" chooser (Phase B) — three big cards (Speak / Type / Scan) shown when a launch
+ * doesn't name a mode (the in-context "+" rows, or the notification when the default is "Ask"). Picking
+ * one opens straight into it. Reuses the image mode's [SourceButton] card style for a consistent look.
+ */
+@Composable
+private fun StartChooser(onPick: (CaptureMode) -> Unit) {
+    val palette = BragBuddyTheme.palette
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("How do you want to add this?", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+        Spacer(Modifier.height(Spacing.s4))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
+            SourceButton(Icons.Outlined.Mic, "Speak", Modifier.weight(1f)) { onPick(CaptureMode.SPEAK) }
+            SourceButton(Icons.Outlined.Keyboard, "Type", Modifier.weight(1f)) { onPick(CaptureMode.TYPE) }
+            SourceButton(Icons.Outlined.PhotoCamera, "Scan", Modifier.weight(1f)) { onPick(CaptureMode.IMAGE) }
+        }
     }
 }
 
