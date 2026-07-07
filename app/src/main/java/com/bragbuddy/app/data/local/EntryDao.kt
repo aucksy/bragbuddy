@@ -44,11 +44,12 @@ interface EntryDao {
     suspend fun setPinned(id: Long, value: Boolean)
 
     /** Relabel every entry filed under a renamed goal-area category (Phase B2 · category rename-remap).
-     *  Case-insensitive match on the OLD name (LOWER() rather than COLLATE on the bind parameter). The
-     *  `demonstrates` JSON list (behaviour tags) is a list column SQL can't touch — the processor
+     *  Case-insensitive match on the OLD name. NB: the param is `newName`, NOT `new` — Room generates
+     *  Java from this DAO and `new` is a Java reserved word (it produced an invalid `EntryDao_Impl.java`).
+     *  The `demonstrates` JSON list (behaviour tags) is a list column SQL can't touch — the processor
      *  rewrites those rows in Kotlin. */
-    @Query("UPDATE entries SET goalCategory = :new WHERE LOWER(goalCategory) = LOWER(:old)")
-    suspend fun updateGoalCategory(old: String, new: String)
+    @Query("UPDATE entries SET goalCategory = :newName WHERE LOWER(goalCategory) = LOWER(:old)")
+    suspend fun updateGoalCategory(old: String, newName: String)
 
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteById(id: Long)

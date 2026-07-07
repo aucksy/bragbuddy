@@ -240,9 +240,14 @@ AI reshapes the framework** — the user builds it by hand; Scan is just OCR int
    (records under changed categories surface under "Uncategorized" until re-homed).
 
 ### Adversarial review before tagging (compile + logic; per protocol)
-Compile pass (agent, "you are the compiler"): **clean** across all 14 changed files — every import/symbol/
-signature/scoped-modifier/`by mutableStateOf` delegate/`rememberSaveable<Uri?>`/Room `@Query`/`when`
-exhaustiveness verified; no dangling refs to the removed voice machinery / `ProjectDraft` / `AddCategoryDialog`.
+Compile pass (agent, "you are the compiler"): passed Kotlin type-checking, **but MISSED a Room codegen
+break** — the first two tags failed CI at `testDebugUnitTest` with `EntryDao_Impl.java:382: error:
+<identifier> expected`. Root cause: the new DAO param was named **`new`** — a valid Kotlin identifier but a
+**Java reserved word**, so Room's generated Java `EntryDao_Impl` was invalid. Fixed by renaming the param to
+`newName` (and the `:new` bind). **LESSON (added to memory):** Room generates Java from Kotlin `@Dao`s — never
+name a `@Query`/`@Insert` param after a Java keyword (`new`, `default`, `class`, `int`, …); Kotlin/agents won't
+catch it, only the Java compile of the generated impl does. (Also switched `COLLATE NOCASE` → `LOWER()=LOWER()`
+for the case-insensitive match — a red herring for the failure, but the cleaner form, kept.)
 Logic pass: **0 firm-invariant breaks** (no entry loss, capture never blocked, rollup reconciled, mutex sound).
 **3 findings fixed pre-tag:** (MED) a scan completing after the sheet saved/closed dropped the OCR result →
 **all Save actions gated on scan-in-flight**; (MED) `rememberSaveable` scan-targets vs. plain-`remember` editor
