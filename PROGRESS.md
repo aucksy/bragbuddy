@@ -16,7 +16,8 @@ current code — that is the context, not chat history.
 
 > This is the live "what's next." Three vertical-slice phases, **one per chat**, same rhythm as Phases 0–7.
 > iOS is **deferred** (research parked at the end of this section). Start each phase in a fresh chat
-> pointed at `CONTEXT.md`. **Exact next step:** build **Phase A — image scanning**.
+> pointed at `CONTEXT.md`. **Exact next step:** build **Phase B — the "+" radial capture menu**
+> (Phase A · image scanning shipped as **v0.16.0**, verified green — see the status section below).
 
 **Why this batch:** the creator wants five Android changes before any iOS work. Locked via AskUserQuestion
 (2026-07-07, all "recommended"):
@@ -35,7 +36,7 @@ Images = base64 `data:` URL, **4 MB cap** (downscale/compress first), ≤5/req, 
 `GroqAiProvider.callChat` pattern + the `AiConfig` slug list. **RE-VERIFY the slug live before the Phase A
 tag** (standing rule — slugs move). Sources: console.groq.com/docs/vision · /docs/models · /docs/deprecations.
 
-### Phase A — Image scanning (the 3rd input; foundation for B + onboarding)
+### Phase A — Image scanning ✅ SHIPPED v0.16.0 (the 3rd input; foundation for B + onboarding)
 Add a Groq **vision** path behind the existing `AiProvider` seam; camera/gallery → downscale < 4 MB →
 base64 → `qwen/qwen3.6-27b` (JSON) → **editable extracted-text review** (reuse the voice REVIEW stage
 pattern) → Add → the normal `EntryProcessor` categorizer.
@@ -139,6 +140,60 @@ was made.** When it resumes, this is the pre-done research:
 - **Capture parity:** no iOS overlay (Apple forbids) — the notification opens the app straight into a
   minimal auto-recording screen + App Intents (Siri/Shortcuts/Action Button/Lock-Screen). Blessed in the
   PRD/Brief.
+
+---
+
+## Status: v0.16.0 — Android v2 · Phase A · Image scanning ✅ DONE (verified green · signed · first-try CI)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.16.0/BragBuddy-v0.16.0.apk` (signed; `.aab`
+alongside; Android Release run `28871752443`, **first-try green** — the compile pass + adversarial review
++ fix-diff held, no CI round-trips). The first phase of the Android v2 batch: a **3rd capture input**.
+Scope locked via AskUserQuestion: image flow = **extract → editable review → file** (verify the read before
+it saves); review shows a **thumbnail**; source = **camera + gallery**; 1 image/capture. **Room stays v4**
+(`EntrySource.IMAGE` is stored by name — no migration).
+
+### v0.16.0 — what was built (`versionCode 17`)
+1. **Groq vision behind the seam** (`data/ai/`): `AiProvider.extractFromImage` (+ `GroqAiProvider.callVision`
+   — one multimodal user turn: a `content` array of `{text}` + base64 `{image_url}` with `json_object`;
+   `StubAiProvider` fails safe). `AiConfig.visionModel = qwen/qwen3.6-27b` (**production, re-verified live
+   2026-07-07** on console.groq.com/docs) + `visionFallback = meta-llama/llama-4-scout-…` (tried if the
+   primary is retired). `AiPrompts.imageExtract` — a first-person, **faithful** extraction that **invents
+   nothing**; an empty string = "no work content" (distinct from an error). `ImageExtractRequest/Result`.
+2. **`data/image/ImageInput`** (pure Android framework, **no image-loading dependency**): bounds-decode →
+   downscale (≤ 1600 px longest side) → JPEG (< 2.6 MB → < 4 MB base64) → `data:` URL; null on an
+   undecodable/corrupt/0-byte image; bitmaps recycled on every path.
+3. **Capture flow** (`ui/capture/`): `CaptureMode.IMAGE` + a 3-way **Speak / Type / Scan** toggle;
+   `ImageContent` (pick source → "Reading your image…" → the **shared** editable `ReviewContent` with a
+   decoded **thumbnail**; calm error states — no-key / unreadable / offline / empty). `CaptureViewModel.
+   onImageChosen` runs off the sheet under an `imageJob` (double-pick + mode-switch race guards; `impactAdded`
+   reset per image so a multi-item scan never wrongly merges into one bullet), fails safe (the **source image
+   persists** → retry, no queue needed), and files via `EntryRepository.capture(text, EntrySource.IMAGE)`.
+   The image is **sent to Groq and never stored**.
+4. **Image acquisition** (`CaptureActivity`): gallery = **`PickVisualMedia`** (no permission); camera =
+   **`TakePicture`** to a **FileProvider** Uri (no CAMERA permission — the system camera handles it).
+   `pendingPhotoUri` is **persisted across config-change / process-death** (`onSaveInstanceState` +
+   `BundleCompat` restore) so a returning photo is never dropped; temp scans are **swept** on a fresh launch
+   and on finish (privacy + bounded cache). Manifest **FileProvider** (`${applicationId}.fileprovider`) +
+   `res/xml/file_paths.xml`.
+
+### Adversarial review before tagging (compile + logic; per protocol)
+Compile pass: **clean** (every import/symbol/signature cross-checked; the `AiProvider` change is overridden
+in both impls with no test fake; `when(CaptureMode)` exhaustive; activity-compose 1.9.3 has PickVisualMedia).
+Logic pass: **2 HIGH + 1 MED + LOWs — all fixed pre-tag, fixes re-checked:**
+- **[HIGH]** the camera photo was **dropped on process-death / rotation** mid-capture (`pendingPhotoUri` was
+  a plain Activity field) → **persisted** via `onSaveInstanceState`/`BundleCompat` + an orphan sweep.
+- **[HIGH]** the review agent doubted the vision slug → **re-verified `qwen/qwen3.6-27b` live** on Groq's docs
+  (it postdates the agent's training) + added the `llama-4-scout` fallback for resilience.
+- **[MED]** stale `impactAdded` after an image **Re-scan** could force a multi-item image into one merged
+  bullet → reset in `onImageChosen`.
+- **[LOW]** base64 headroom tightened (2.6 MB JPEG target); the decode-peak OOM is already caught → `imageFail`.
+
+### Flags / next
+New UI (3-way toggle, image pick screen, thumbnail, error states) is **not in the Design System** — built
+from tokens; look confirmed via AskUserQuestion (thumbnail in review). On-device test: scan a
+screenshot/whiteboard → extract → edit → files (or Inbox); no-key → "add key / type instead"; offline → calm
+retry; nothing lost. **Next: Phase B — the "+" radial capture menu** + default input method + notification
+routing (see the ▶ NEXT ROADMAP at the top). Start in a fresh chat pointed at `CONTEXT.md`.
 
 ---
 
