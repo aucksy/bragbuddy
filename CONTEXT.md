@@ -205,10 +205,14 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     (battery-only counts just on aggressive OEMs) with per-risk-signature dismissal. Calm offline copy
     in Inbox/Summary/capture. Pre-tag: 5-dimension adversarially-verified review (15 findings incl. 2
     HIGH data-loss races — all fixed) + a fix-diff re-review (4 edge defects fixed).
-- **Next: Android v2 batch · Phase C** — **Phase A (image scanning) shipped as v0.16.0** and **Phase B (the
-  "+" radial capture menu + Default capture method + one shared launcher) shipped as v0.17.0** (both verified
-  green); next = **Phase C** (onboarding wizard + privacy/legal + remove the audio-storage option). Sliced
-  **A→B→C**, one phase per chat (full **▶ NEXT ROADMAP**
+- **Next: Android v2 batch · Phase B2 (framework editing), then Phase C** — **Phase A (image scanning)
+  shipped as v0.16.0** and **Phase B (the "+" radial capture menu + Default capture method + one shared
+  launcher) shipped as v0.17.0** (both verified green). Next = **Phase B2 (v0.18.0): framework editing** —
+  3-input (Voice/Text/Scan) add/update via the built-but-unused `refineFramework` seam + Reset framework in
+  Settings + deterministic category **rename-remap** across filed entries + rollup (creator's requests
+  2026-07-07; independently valuable + NOT blocked on the privacy attachment) — **then Phase C** (onboarding
+  + privacy/legal, which reuses B2's framework input and is blocked on the pending privacy attachment). Sliced
+  **A→B→B2→C**, one phase per chat (full **▶ NEXT ROADMAP**
   at the top of `PROGRESS.md`). **iOS is DEFERRED** (creator's call — Android changes first; the
   stack/CI/signing research is parked in `PROGRESS.md`). Android Build-Brief Phases 0–7 are complete;
   everything under "Out of scope" stays parked. (`USE_EXACT_ALARM`/`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` are Play-restricted —

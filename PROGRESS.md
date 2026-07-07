@@ -16,9 +16,10 @@ current code — that is the context, not chat history.
 
 > This is the live "what's next." Three vertical-slice phases, **one per chat**, same rhythm as Phases 0–7.
 > iOS is **deferred** (research parked at the end of this section). Start each phase in a fresh chat
-> pointed at `CONTEXT.md`. **Exact next step:** build **Phase C — the onboarding wizard + Privacy/legal**
-> (Phase A · image scanning shipped as **v0.16.0**; Phase B · the "+" radial capture menu shipped as
-> **v0.17.0** — both verified green; see the status sections below).
+> pointed at `CONTEXT.md`. **Exact next step:** build **Phase B2 — Framework editing** (3-input add/update +
+> Reset + rename-remap; see its subsection below), then **Phase C** (onboarding + Privacy/legal, which is
+> blocked on the pending privacy attachment and reuses B2's framework input). Phase A · image scanning
+> shipped as **v0.16.0**; Phase B · the "+" radial capture menu shipped as **v0.17.0** — both verified green.
 
 **Why this batch:** the creator wants five Android changes before any iOS work. Locked via AskUserQuestion
 (2026-07-07, all "recommended"):
@@ -75,6 +76,44 @@ taking a new **`EXTRA_START_MODE`**.
   `lastCaptureMode` is threaded).
 - **Testable:** each default routes correctly from BOTH the FAB and the notification; "Ask" opens the
   radial; animation is smooth; every old mic-launch surface still works (regression).
+
+### Phase B2 — Framework editing: 3-input add/update + Reset + rename-remap ✅ NEXT (agreed 2026-07-07)
+> Requested by the creator right after Phase B (understanding-questions about how the AI uses the framework
+> led here). Build it in a **fresh chat BEFORE Phase C** — it's independently valuable and, unlike Phase C,
+> **NOT blocked** on the pending privacy attachment; **Phase C's onboarding step 3 then reuses this exact
+> framework-input capability.** Ships as **v0.18.0**.
+
+**Confirmed to the creator (from the code — carry these facts):** the framework is presented **first** in
+both prompts (categorizer `CONTEXT` before the transcript; summary `CONTEXT` before the rollup —
+`AiPrompts.kt`) and is **re-injected on EVERY categorize + summary call** (`EntryProcessor.kt:297` reads
+`frameworkStore.framework.first()` per entry; the model is stateless). **Updating the framework affects only
+FUTURE filing** — already-filed entries are NOT re-run; any whose `goalCategory`/`demonstrates` no longer
+match a current pillar surface in the **"Uncategorized"** catch-all (`HomeDoc.kt:126-133`), never lost.
+
+**Scope (locked via AskUserQuestion 2026-07-07):**
+- **3-input framework add/update** in the Framework editor — today it's **type + per-field VOICE only**
+  (`FrameworkViewModel.fieldVoice`/`fieldTranscript`, `CategoryEditSheet`). Add a natural-language **Text**
+  refine and a **Scan** refine, both via the **built-but-unused `refineFramework` seam**
+  (`AiProvider.refineFramework` + `AiPrompts.framework` PART C already work end-to-end; **NO UI calls them
+  yet** — grep-confirmed). **Scan** = reuse the Phase A vision path (`AiProvider.extractFromImage` +
+  `data/image/ImageInput`) on a job-description / review-criteria doc → feed the extracted text into
+  `refineFramework` → apply to the current framework via `FrameworkStore.save`. Build the input so **Phase
+  C onboarding step 3 reuses it verbatim.**
+- **Reset framework** in Settings — **`FrameworkStore.reset()` ALREADY EXISTS** (→ `Framework.DEFAULT`) but
+  is wired to **no UI** (grep-confirmed). Add a Settings action + confirm dialog (warn: filed entries keep
+  their labels → they surface under Uncategorized; reset doesn't delete entries).
+- **Deterministic rename-remap** (creator's pick over keep-Uncategorized-only / AI-bulk-refile): when a
+  category is **renamed** in the editor, offer to remap **old-name → new-name** across filed entries — **NO
+  AI, instant, reversible**: `UPDATE entries SET goalCategory = :new WHERE goalCategory = :old` (new DAO
+  query) **AND** rewrite `demonstrates` lists that contain the old name (Kotlin load→rewrite→save, since
+  it's a JSON list column — SQL can't touch it), **all under the `EntryProcessor` mutex**, then
+  `reconcileRollup()` so the summary follows. Category rename **already cascades to sub-folders**
+  (`ProjectEntity.goalArea`, v0.9.0 `renameCategory`) — this extends the cascade to **entries + rollup**.
+  Removes/adds still fall to Uncategorized (safe).
+- **Testable:** type/scan a framework description → applies (or fails safe, keeping the old framework);
+  Reset → back to default and old entries appear under Uncategorized; rename a category → prompt → filed
+  entries + the rollup/summary follow the new name; no-key → the AI-backed Text/Scan paths degrade to the
+  existing manual editing.
 
 ### Phase C — Onboarding wizard + Privacy/legal (+ remove the audio-storage option)
 First-run **guided-but-skippable** wizard (branch `BragNavHost` start destination `:20` on a new
