@@ -38,7 +38,17 @@ jobs:
           chmod +x gradlew
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace 2>&1 | tee build.log
+
+      - name: Surface compile errors
+        if: failure()
+        run: |
+          echo "=== extracted error lines ==="
+          grep -nE "^e: |error:|: error:|Unresolved reference|None of the following|Type mismatch|cannot|expected|overload" build.log | head -60 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done || true
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
