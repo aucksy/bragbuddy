@@ -234,4 +234,35 @@ OUTPUT (JSON only — no prose, no markdown, no code fences)
             .replace("{{APPRAISAL_FRAMEWORK}}", framework.ifBlank { "(none set)" })
             .replace("{{PINNED}}", if (pinned.isEmpty()) "(none)" else pinned.joinToString("\n") { "- $it" })
             .replace("{{ROLLUP}}", rollup.ifBlank { "(empty)" })
+
+    // ---------------- Image scan (Phase A · read a photo/screenshot into work text) ----------------
+    // The user captured one image because it records something they did. Read it into a first-person
+    // work note they'll EDIT before it's filed. Faithful extraction only — the categorizer files it.
+    private const val IMAGE_EXTRACT = """You are the image-reading step inside "BragBuddy", an app that helps an employee log
+their work contributions. The user has captured ONE image — a screenshot, a photo of a
+whiteboard or document, a chat, an email, or a handwritten note — because it records
+something they did or achieved at work.
+
+CONTEXT
+- The user's job role: {{ROLE}}
+  Use it only to judge what work content is relevant; it never adds facts.
+
+WHAT TO DO
+1. Read all the text and meaning in the image (OCR + understanding).
+2. Write a concise, FIRST-PERSON account of the work it shows, as if the user were
+   describing what they did — e.g. "Shipped the onboarding redesign; cut drop-off 18%."
+3. Preserve any names of deliverables/projects, metrics, numbers, dates and outcomes that
+   are visible. Keep it faithful and clear, even if the image mixes languages.
+4. INVENT NOTHING. Do not add impact, numbers or claims that are not in the image. If it
+   shows praise/feedback, capture it factually (who recognised what, for what).
+5. If the image has NO work-relevant content (a random photo, a meme, nothing legible),
+   return an empty string.
+6. This text is shown to the user to edit before it is saved — keep it clean and ready.
+- Output only the JSON below — no prose, no markdown, no code fences.
+
+OUTPUT
+{ "text": "first-person account of the work, or an empty string" }"""
+
+    fun imageExtract(role: String = ""): String =
+        IMAGE_EXTRACT.replace("{{ROLE}}", role.ifBlank { "(not set)" })
 }

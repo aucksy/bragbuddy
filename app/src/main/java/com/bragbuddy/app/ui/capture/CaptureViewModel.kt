@@ -1,10 +1,14 @@
 package com.bragbuddy.app.ui.capture
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bragbuddy.app.data.ai.AiProvider
+import com.bragbuddy.app.data.ai.ImageExtractRequest
 import com.bragbuddy.app.data.entry.EntryRepository
 import com.bragbuddy.app.data.entry.OfflineRecovery
+import com.bragbuddy.app.data.image.ImageInput
 import com.bragbuddy.app.data.impact.ImpactCheck
 import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.net.ConnectivityMonitor
@@ -14,6 +18,7 @@ import com.bragbuddy.app.data.speech.AudioRecorder
 import com.bragbuddy.app.data.speech.GroqTranscriber
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -24,6 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
@@ -51,6 +57,8 @@ data class CaptureUiState(
     val initialized: Boolean = false,
     /** When capturing into a folder, the project name this entry is anchored to (shown as a chip). */
     val anchorProject: String? = null,
+    /** The scanned image (IMAGE mode) — kept for the review thumbnail; null in voice/text modes. */
+    val imageThumb: Uri? = null,
     // ---- Review-stage number nudge (voice): record again just for the metric, or type it ----
     val numberStage: NumberStage = NumberStage.NONE,
     // ---- Post-save number nudge (TYPED capture only; voice handles it at review) ----
@@ -78,6 +86,7 @@ class CaptureViewModel @Inject constructor(
     private val groqTranscriber: GroqTranscriber,
     private val connectivity: ConnectivityMonitor,
     private val recovery: OfflineRecovery,
+    private val aiProvider: AiProvider,
 ) : ViewModel() {
 
     private val recorder by lazy { AudioRecorder(appContext) }
@@ -90,6 +99,7 @@ class CaptureViewModel @Inject constructor(
 
     private var timerJob: Job? = null
     private var ampJob: Job? = null
+    private var imageJob: Job? = null
     private var submitting = false
     private var didSave = false
     private var lastAudio: File? = null
@@ -121,6 +131,8 @@ class CaptureViewModel @Inject constructor(
 
     fun setMode(mode: CaptureMode) {
         if (_state.value.mode == mode) return
+        // Leaving image mode → drop any in-flight extraction so a late result can't flip the new UI.
+        if (mode != CaptureMode.IMAGE) imageJob?.cancel()
         // Returning to SPEAK while a failed take is on hold must NOT reset to IDLE: the reset
         // would re-trigger auto-start, whose startVoice() drops lastAudio — silently destroying a
         // take the error screen still offers to retry / save for later. Keep the ERROR state (and
@@ -134,12 +146,77 @@ class CaptureViewModel @Inject constructor(
             )
         }
         viewModelScope.launch { settings.setLastCaptureMode(mode) }
-        if (mode == CaptureMode.TYPE) {
-            stopVoiceInternal()
-        } else if (!keepError) {
-            _state.update { it.copy(phase = VoicePhase.IDLE) }
+        when (mode) {
+            CaptureMode.TYPE -> stopVoiceInternal()
+            // Image opens on its own pick-a-source screen: stop any live voice recording and clear a
+            // leftover voice phase (REVIEW/ERROR) so it can't render inside image mode. A deliberate
+            // mode-switch abandons an unsaved voice take (the offline path already auto-queues; only
+            // an online transport-failure the user navigates away from is dropped).
+            CaptureMode.IMAGE -> {
+                stopVoiceInternal()
+                _state.update { it.copy(phase = VoicePhase.IDLE, reviewText = "", imageThumb = null) }
+            }
+            CaptureMode.SPEAK -> if (!keepError) _state.update { it.copy(phase = VoicePhase.IDLE) }
         }
     }
+
+    // ---------------- Image scan (pick a photo → Groq vision → editable review) ----------------
+
+    /**
+     * A camera/gallery image was chosen. Downscale + base64 it, read it with Groq vision, and show
+     * the extracted text for review — mirroring the voice flow (nothing is saved until [confirmAdd]).
+     * Online-only: the source image persists (gallery/cache), so a failure just offers a retry — no
+     * queue is needed. Guards: no key → the "add key / type instead" state; a double-pick mid-read is
+     * ignored; the coroutine bails if the user has switched modes.
+     */
+    fun onImageChosen(uri: Uri) {
+        if (_state.value.phase == VoicePhase.TRANSCRIBING) return // already reading one
+        imageJob?.cancel()
+        impactAdded = false // a fresh image starts fresh — never inherit a prior take's combine flag
+        _state.update {
+            it.copy(mode = CaptureMode.IMAGE, imageThumb = uri, phase = VoicePhase.TRANSCRIBING,
+                error = null, needsKey = false, reviewText = "")
+        }
+        imageJob = viewModelScope.launch {
+            val s = settings.settings.first()
+            if (s.groqApiKey.isBlank()) {
+                _state.update { it.copy(phase = VoicePhase.ERROR, needsKey = true, error = "Image scanning needs your Groq key.") }
+                return@launch
+            }
+            val dataUrl = withContext(Dispatchers.IO) { ImageInput.toDataUrl(appContext, uri) }
+            if (_state.value.mode != CaptureMode.IMAGE) return@launch // user switched away mid-read
+            if (dataUrl == null) { imageFail("Couldn't read that image — try another, or type it"); return@launch }
+            val result = aiProvider.extractFromImage(ImageExtractRequest(dataUrl, s.jobRole))
+            if (_state.value.mode != CaptureMode.IMAGE) return@launch // switched away during the read
+            result.fold(
+                onSuccess = { r ->
+                    val text = r.text.trim()
+                    if (text.isBlank()) imageFail("I couldn't find any work in that image — try another, or type it")
+                    else enterReview(text)
+                },
+                onFailure = {
+                    val offline = !connectivity.isOnline.value
+                    imageFail(if (offline) "You're offline — connect and try again, or type it"
+                              else it.message ?: "Couldn't read the image — try again, or type it")
+                },
+            )
+        }
+    }
+
+    private fun imageFail(message: String) {
+        _state.update { it.copy(phase = VoicePhase.ERROR, error = message, needsKey = false) }
+    }
+
+    /** The image error state's "Try again" — re-read the same picked image, or (if none was picked,
+     *  e.g. the camera couldn't open) return to the pick-a-source screen. */
+    fun retryImage() {
+        val uri = _state.value.imageThumb
+        if (uri != null) onImageChosen(uri)
+        else _state.update { it.copy(phase = VoicePhase.IDLE, error = null, needsKey = false) }
+    }
+
+    /** Surface an image-capture failure (e.g. no camera app) as the calm image error state. */
+    fun onImageError(message: String) = imageFail(message)
 
     /** Called once mic permission is confirmed. Voice is cloud-only — it needs a Groq key; without one
      *  the sheet shows a "set it up" prompt and typing remains available. */
@@ -300,15 +377,21 @@ class CaptureViewModel @Inject constructor(
         }
         val text = _state.value.reviewText.trim()
         if (text.isBlank()) return
+        // Review is reached from voice or image; file with the matching source.
+        val source = if (_state.value.mode == CaptureMode.IMAGE) EntrySource.IMAGE else EntrySource.VOICE
         // Combine mode only when a follow-up was actually added, so a plain multi-item note still splits.
-        save(text, EntrySource.VOICE, combineSingle = impactAdded) { lastAudio?.delete(); lastAudio = null }
+        save(text, source, combineSingle = impactAdded) { lastAudio?.delete(); lastAudio = null }
     }
 
-    /** Discard this take and record again from scratch. */
+    /** Discard this take and start over — re-record (voice) or pick another image (image). */
     fun reRecord() {
         cancelNumber()
-        _state.update { it.copy(reviewText = "", error = null) }
-        startVoice()
+        if (_state.value.mode == CaptureMode.IMAGE) {
+            _state.update { it.copy(phase = VoicePhase.IDLE, reviewText = "", imageThumb = null, error = null) }
+        } else {
+            _state.update { it.copy(reviewText = "", error = null) }
+            startVoice()
+        }
     }
 
     // ---------------- Review-stage "add a number" (voice or type) ----------------
@@ -412,8 +495,8 @@ class CaptureViewModel @Inject constructor(
                      else entries.capture(text, source, anchorProject = anchorProject, combineSingle = combineSingle)
             onDone()
             when {
-                // Voice offered the number at review already → just dismiss.
-                source == EntrySource.VOICE -> _saved.tryEmit(Unit)
+                // Voice & image both offered the number nudge at review already → just dismiss.
+                source != EntrySource.TEXT -> _saved.tryEmit(Unit)
                 // Typed with a measurable value → dismiss instantly.
                 ImpactCheck.hasMeasurable(text) -> _saved.tryEmit(Unit)
                 // Typed with no number → the free, local post-save nudge (never blocks).

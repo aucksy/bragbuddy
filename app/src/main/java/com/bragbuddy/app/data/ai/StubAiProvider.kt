@@ -31,4 +31,9 @@ class StubAiProvider @Inject constructor() : AiProvider {
 
     override suspend fun refineFramework(request: FrameworkRefineRequest): Result<FrameworkRefineResult> =
         Result.failure(IllegalStateException("No AI provider wired"))
+
+    // No vision without a real provider — return "no work content" so the caller shows its gentle
+    // hint rather than an error (fail-safe: nothing is filed either way).
+    override suspend fun extractFromImage(request: ImageExtractRequest): Result<ImageExtractResult> =
+        Result.success(ImageExtractResult(""))
 }

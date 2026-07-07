@@ -2,11 +2,13 @@ package com.bragbuddy.app.ui.capture
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -34,12 +36,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.core.os.BundleCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.prefs.CaptureMode
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.Spacing
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
+import java.io.File
 
 /**
  * The light, overlay-style capture surface (Build Brief: "a light overlay-style screen that doesn't
@@ -56,9 +61,29 @@ class CaptureActivity : ComponentActivity() {
         if (granted) vm.startVoice() else vm.setMode(CaptureMode.TYPE)
     }
 
+    // Image scanning (Phase A). Gallery = the modern photo picker (no storage permission). Camera =
+    // the system camera writing to a FileProvider Uri (no CAMERA permission needed for that path).
+    private var pendingPhotoUri: Uri? = null
+
+    private val pickImage = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) vm.onImageChosen(uri)
+    }
+
+    private val takePhoto = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val uri = pendingPhotoUri
+        pendingPhotoUri = null
+        if (success && uri != null) vm.onImageChosen(uri)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Restore an in-flight camera capture Uri across a config change / process death so the
+        // returning photo isn't dropped; on a genuinely fresh launch, sweep any orphaned temp scans
+        // left by a prior killed session (privacy + bounded cache).
+        pendingPhotoUri = savedInstanceState?.let { BundleCompat.getParcelable(it, KEY_PENDING_PHOTO, Uri::class.java) }
+        if (savedInstanceState == null) clearCaptureTempDir()
 
         // Redo (from Home) re-records over an existing entry instead of creating a new one.
         intent.getLongExtra(EXTRA_REPLACE_ID, 0L).let { if (it > 0L) vm.setReplaceId(it) }
@@ -121,6 +146,13 @@ class CaptureActivity : ComponentActivity() {
                         onNumberDraftChange = vm::onNumberDraftChange,
                         onConfirmTypeNumber = vm::confirmTypeNumber,
                         onCancelNumber = vm::cancelNumber,
+                        onTakePhoto = ::launchCamera,
+                        onChooseImage = {
+                            pickImage.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                            )
+                        },
+                        onRetryImage = vm::retryImage,
                         onDismiss = { finish() },
                     )
                 }
@@ -128,10 +160,49 @@ class CaptureActivity : ComponentActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        pendingPhotoUri?.let { outState.putParcelable(KEY_PENDING_PHOTO, it) }
+    }
+
+    override fun onDestroy() {
+        // Only when the sheet is truly finishing (NOT a config-change recreation, which still needs
+        // the pending camera Uri): clear the temp scans so images aren't left on the device.
+        if (isFinishing) clearCaptureTempDir()
+        super.onDestroy()
+    }
+
     private fun hasMic(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
+    /** Delete the camera capture temp scans (privacy: images aren't kept; also bounds the cache). */
+    private fun clearCaptureTempDir() {
+        runCatching { File(cacheDir, "capture_images").listFiles()?.forEach { it.delete() } }
+    }
+
+    /** Open the system camera to a FileProvider Uri; on capture the VM reads + files it. */
+    private fun launchCamera() {
+        val uri = runCatching { createImageCaptureUri() }.getOrNull()
+        if (uri == null) {
+            vm.onImageError("Couldn't open the camera — choose an image or type it instead")
+            return
+        }
+        pendingPhotoUri = uri
+        runCatching { takePhoto.launch(uri) }.onFailure {
+            pendingPhotoUri = null
+            vm.onImageError("No camera available — choose an image or type it instead")
+        }
+    }
+
+    private fun createImageCaptureUri(): Uri {
+        val dir = File(cacheDir, "capture_images").apply { mkdirs() }
+        val file = File(dir, "scan_${System.currentTimeMillis()}.jpg")
+        return FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+    }
+
     companion object {
+        private const val KEY_PENDING_PHOTO = "pending_photo_uri"
+
         /** Long extra: the id of an entry to re-record over (Home → Redo). */
         const val EXTRA_REPLACE_ID = "replace_entry_id"
 

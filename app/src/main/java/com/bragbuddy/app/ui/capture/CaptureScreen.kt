@@ -1,5 +1,18 @@
 package com.bragbuddy.app.ui.capture
 
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.compose.foundation.Image
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -94,6 +107,9 @@ fun CaptureScreen(
     onNumberDraftChange: (String) -> Unit,
     onConfirmTypeNumber: () -> Unit,
     onCancelNumber: () -> Unit,
+    onTakePhoto: () -> Unit,
+    onChooseImage: () -> Unit,
+    onRetryImage: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val palette = BragBuddyTheme.palette
@@ -148,7 +164,7 @@ fun CaptureScreen(
             }
 
             if (showToggle) {
-                SpeakTypeToggle(mode = state.mode, onSetMode = onSetMode)
+                CaptureModeToggle(mode = state.mode, onSetMode = onSetMode)
                 Spacer(Modifier.height(Spacing.s4))
             }
 
@@ -168,10 +184,29 @@ fun CaptureScreen(
                     onCancel = onDismiss,
                 )
                 CaptureMode.TYPE -> TypeContent(state, onTypedChange, onSubmitTyped)
+                CaptureMode.IMAGE -> ImageContent(
+                    state,
+                    onTakePhoto = onTakePhoto,
+                    onChooseImage = onChooseImage,
+                    onRetryImage = onRetryImage,
+                    onSwitchToType = { onSetMode(CaptureMode.TYPE) },
+                    onReviewChange = onReviewChange,
+                    onConfirmAdd = onConfirmAdd,
+                    onReScan = onReRecord,
+                    onStartVoiceNumber = onStartVoiceNumber,
+                    onStopVoiceNumber = onStopVoiceNumber,
+                    onStartTypeNumber = onStartTypeNumber,
+                    onNumberDraftChange = onNumberDraftChange,
+                    onConfirmTypeNumber = onConfirmTypeNumber,
+                    onCancelNumber = onCancelNumber,
+                    onCancel = onDismiss,
+                )
             }
 
-            // Persistent, faint impact-coaching hint (local, no AI). Shown while capturing.
-            if (state.phase == VoicePhase.IDLE || state.phase == VoicePhase.LISTENING) {
+            // Persistent, faint impact-coaching hint (local, no AI). Shown while capturing by
+            // voice/type — not on the image pick screen (it isn't about typing a number there).
+            if (state.mode != CaptureMode.IMAGE &&
+                (state.phase == VoicePhase.IDLE || state.phase == VoicePhase.LISTENING)) {
                 Spacer(Modifier.height(Spacing.s3))
                 Text(
                     "Tip: add a number if you can — %, time, ₹, count, people.",
@@ -217,7 +252,7 @@ private fun AnchorBanner(project: String) {
 }
 
 @Composable
-private fun SpeakTypeToggle(mode: CaptureMode, onSetMode: (CaptureMode) -> Unit) {
+private fun CaptureModeToggle(mode: CaptureMode, onSetMode: (CaptureMode) -> Unit) {
     val palette = BragBuddyTheme.palette
     Row(
         Modifier
@@ -238,6 +273,13 @@ private fun SpeakTypeToggle(mode: CaptureMode, onSetMode: (CaptureMode) -> Unit)
             icon = { Icon(Icons.Outlined.Keyboard, null, Modifier.size(15.dp)) },
             label = "Type",
             onClick = { onSetMode(CaptureMode.TYPE) },
+            modifier = Modifier.weight(1f),
+        )
+        ToggleSegment(
+            selected = mode == CaptureMode.IMAGE,
+            icon = { Icon(Icons.Outlined.PhotoCamera, null, Modifier.size(15.dp)) },
+            label = "Scan",
+            onClick = { onSetMode(CaptureMode.IMAGE) },
             modifier = Modifier.weight(1f),
         )
     }
@@ -266,7 +308,14 @@ private fun ToggleSegment(
             androidx.compose.material3.LocalContentColor provides content,
         ) { icon() }
         Spacer(Modifier.width(6.dp))
-        Text(label, style = MaterialTheme.typography.titleSmall, color = content, fontWeight = FontWeight.Bold)
+        Text(
+            label,
+            style = MaterialTheme.typography.titleSmall,
+            color = content,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 
@@ -393,6 +442,144 @@ private fun VoiceContent(
     }
 }
 
+/**
+ * Image mode (Phase A): pick a source → Groq reads it → the shared [ReviewContent] (editable, with a
+ * thumbnail). Phase-branches like [VoiceContent], reusing IDLE/TRANSCRIBING/REVIEW/ERROR.
+ */
+@Composable
+private fun ImageContent(
+    state: CaptureUiState,
+    onTakePhoto: () -> Unit,
+    onChooseImage: () -> Unit,
+    onRetryImage: () -> Unit,
+    onSwitchToType: () -> Unit,
+    onReviewChange: (String) -> Unit,
+    onConfirmAdd: () -> Unit,
+    onReScan: () -> Unit,
+    onStartVoiceNumber: () -> Unit,
+    onStopVoiceNumber: () -> Unit,
+    onStartTypeNumber: () -> Unit,
+    onNumberDraftChange: (String) -> Unit,
+    onConfirmTypeNumber: () -> Unit,
+    onCancelNumber: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val palette = BragBuddyTheme.palette
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        when (state.phase) {
+            VoicePhase.REVIEW -> ReviewContent(
+                state, onReviewChange, onConfirmAdd, onReScan, onCancel,
+                onStartVoiceNumber, onStopVoiceNumber, onStartTypeNumber,
+                onNumberDraftChange, onConfirmTypeNumber, onCancelNumber,
+            )
+            VoicePhase.TRANSCRIBING -> {
+                Spacer(Modifier.height(10.dp))
+                CircularProgressIndicator(color = palette.primary, strokeWidth = 3.dp, modifier = Modifier.size(30.dp))
+                Spacer(Modifier.height(14.dp))
+                Text("Reading your image…", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                Spacer(Modifier.height(10.dp))
+            }
+            VoicePhase.ERROR -> {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    state.error ?: "Something went wrong",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = palette.text1,
+                    textAlign = TextAlign.Center,
+                )
+                if (state.needsKey) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Add your free Groq key in Settings → AI brain. Or type it instead.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = palette.text3,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    PillButton("Type instead", primary = true, onClick = onSwitchToType)
+                } else {
+                    Spacer(Modifier.height(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PillButton("Try again", primary = true, onClick = onRetryImage)
+                        PillButton("Type instead", primary = false, onClick = onSwitchToType)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            else -> {
+                // IDLE — pick a source.
+                Spacer(Modifier.height(4.dp))
+                Text("Scan your work", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                Text(
+                    "A screenshot, whiteboard, doc or note — I'll read it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.text3,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+                Spacer(Modifier.height(Spacing.s4))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
+                    SourceButton(Icons.Outlined.PhotoCamera, "Take photo", Modifier.weight(1f), onTakePhoto)
+                    SourceButton(Icons.Outlined.PhotoLibrary, "Choose image", Modifier.weight(1f), onChooseImage)
+                }
+                Spacer(Modifier.height(4.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SourceButton(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
+    val palette = BragBuddyTheme.palette
+    Column(
+        modifier
+            .clip(RoundedCornerShape(Radii.md))
+            .background(palette.primarySoft)
+            .clickable(onClick = onClick)
+            .padding(vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, null, tint = palette.primary, modifier = Modifier.size(26.dp))
+        Spacer(Modifier.height(8.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.titleSmall,
+            color = palette.primary,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
+        )
+    }
+}
+
+/** A small preview of the scanned image on the review screen — decoded off the main thread (no image lib). */
+@Composable
+private fun ImageThumbnail(uri: Uri) {
+    val context = LocalContext.current
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, uri) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
+                context.contentResolver.openInputStream(uri)?.use {
+                    BitmapFactory.decodeStream(it, null, opts)
+                }?.asImageBitmap()
+            }.getOrNull()
+        }
+    }
+    bitmap?.let {
+        Image(
+            bitmap = it,
+            contentDescription = "Scanned image",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 150.dp)
+                .clip(RoundedCornerShape(Radii.md)),
+        )
+    }
+}
+
 @Composable
 private fun ReviewContent(
     state: CaptureUiState,
@@ -409,9 +596,19 @@ private fun ReviewContent(
 ) {
     val palette = BragBuddyTheme.palette
     Column(Modifier.fillMaxWidth()) {
-        Text("Here's what I heard", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+        val isImage = state.mode == CaptureMode.IMAGE
+        val thumb = state.imageThumb
+        Text(
+            if (isImage) "Here's what I found" else "Here's what I heard",
+            style = MaterialTheme.typography.titleMedium,
+            color = palette.text1,
+        )
         Text("Edit it if needed, then add it.", style = MaterialTheme.typography.bodySmall, color = palette.text3)
         Spacer(Modifier.height(Spacing.s3))
+        if (isImage && thumb != null) {
+            ImageThumbnail(thumb)
+            Spacer(Modifier.height(Spacing.s3))
+        }
         Box(
             Modifier
                 .fillMaxWidth()
@@ -463,7 +660,7 @@ private fun ReviewContent(
         }
         Spacer(Modifier.height(Spacing.s3))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-            TextAction("Re-record", onReRecord)
+            TextAction(if (isImage) "Re-scan" else "Re-record", onReRecord)
             Spacer(Modifier.width(28.dp))
             TextAction("Cancel", onCancel)
         }

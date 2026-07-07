@@ -10,8 +10,8 @@ const val OUTSIDE_PROJECT = "Outside-project"
 /** The reserved placement/goal-area the categorizer returns when it can't place an entry. */
 const val INBOX_PLACEMENT = "Inbox"
 
-/** How an entry was captured. */
-enum class EntrySource { VOICE, TEXT }
+/** How an entry was captured. Stored by name ([Converters]) so adding a value needs no migration. */
+enum class EntrySource { VOICE, TEXT, IMAGE }
 
 /**
  * Where an entry is in the pipeline.

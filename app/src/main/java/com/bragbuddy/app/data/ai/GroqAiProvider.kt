@@ -77,6 +77,22 @@ class GroqAiProvider @Inject constructor(
         ) { AiJson.parse(it, SummaryResult.serializer()) }
     }
 
+    override suspend fun extractFromImage(request: ImageExtractRequest): Result<ImageExtractResult> {
+        if (request.imageDataUrl.isBlank()) return Result.failure(IllegalStateException("No image"))
+        val prompt = AiPrompts.imageExtract(request.role)
+        // Try the production vision model, then the fallback slug (in case the primary was retired) —
+        // mirrors the categorizer's model routing. Any error/unparseable output drops to the next;
+        // exhausting both fails safe so the capture stays on the sheet to retry / type.
+        var last: Throwable = IllegalStateException("No vision model responded")
+        for (model in listOf(AiConfig.visionModel, AiConfig.visionFallback)) {
+            val parsed = callVision(model, prompt, request.imageDataUrl)
+                .mapCatching { AiJson.parse(it, ImageExtractResult.serializer()) }
+            if (parsed.isSuccess) return parsed
+            parsed.exceptionOrNull()?.let { last = it }
+        }
+        return Result.failure(last)
+    }
+
     // ---------------- HTTP + parsing plumbing ----------------
 
     /**
@@ -120,6 +136,57 @@ class GroqAiProvider @Inject constructor(
                 putJsonArray("messages") {
                     addJsonObject { put("role", "system"); put("content", system) }
                     addJsonObject { put("role", "user"); put("content", user) }
+                }
+            }
+            val body = AiJson.json.encodeToString(JsonObject.serializer(), payload)
+                .toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url(AiConfig.BASE_URL)
+                .header("Authorization", "Bearer $key")
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { resp ->
+                val raw = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) {
+                    error("Groq ${resp.code}${if (raw.isNotBlank()) ": ${raw.take(160)}" else ""}")
+                }
+                val content = AiJson.json.decodeFromString(ChatResponse.serializer(), raw)
+                    .choices.firstOrNull()?.message?.content
+                content?.takeIf { it.isNotBlank() } ?: error("Empty completion")
+            }
+        }
+    }
+
+    /**
+     * One Groq **multimodal** chat completion: a single user turn carrying the instruction text and
+     * one image (a base64 `data:` URL), per Groq's vision API. Same fail-safe envelope as [callChat]
+     * — everything (incl. request build) is inside `runCatching`, so nothing throws to the caller.
+     */
+    private suspend fun callVision(
+        model: String,
+        prompt: String,
+        imageDataUrl: String,
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val key = settings.settings.first().groqApiKey.trim()
+        if (key.isBlank()) return@withContext Result.failure(IllegalStateException("No Groq key set"))
+        runCatching {
+            val payload = buildJsonObject {
+                put("model", model)
+                put("temperature", 0.2)
+                // JSON mode — the prompt contains the word "JSON" (Groq's precondition).
+                putJsonObject("response_format") { put("type", "json_object") }
+                putJsonArray("messages") {
+                    addJsonObject {
+                        put("role", "user")
+                        putJsonArray("content") {
+                            addJsonObject { put("type", "text"); put("text", prompt) }
+                            addJsonObject {
+                                put("type", "image_url")
+                                putJsonObject("image_url") { put("url", imageDataUrl) }
+                            }
+                        }
+                    }
                 }
             }
             val body = AiJson.json.encodeToString(JsonObject.serializer(), payload)

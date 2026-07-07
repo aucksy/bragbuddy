@@ -143,3 +143,19 @@ data class RefinedPillar(
 data class FrameworkRefineResult(
     val pillars: List<RefinedPillar> = emptyList(),
 )
+
+// ---------------- Image scan (Phase A · vision extraction) ----------------
+
+/** One captured image to read into work text. */
+data class ImageExtractRequest(
+    /** A base64 `data:image/...;base64,…` URL, ≤4 MB (built by [com.bragbuddy.app.data.image.ImageInput]). */
+    val imageDataUrl: String,
+    /** The user's job role — light context for what work content to prioritise. Blank = unset. */
+    val role: String = "",
+)
+
+@Serializable
+data class ImageExtractResult(
+    /** A first-person account of the work the image shows, or "" when it has no work content. */
+    val text: String = "",
+)

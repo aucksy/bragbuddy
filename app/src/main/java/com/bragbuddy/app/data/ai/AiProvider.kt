@@ -36,6 +36,15 @@ interface AiProvider {
      */
     suspend fun refineFramework(request: FrameworkRefineRequest): Result<FrameworkRefineResult>
 
+    /**
+     * Read a captured image (a base64 `data:` URL) into a first-person work note the user can edit
+     * before it's filed. Runs on the multimodal [AiConfig.visionModel]. Failure is safe — the caller
+     * keeps the user on the capture sheet to retry or type instead; nothing is filed. A successful
+     * call with an empty [ImageExtractResult.text] means "no work content in this image" (the caller
+     * shows a gentle hint), which is distinct from a failure.
+     */
+    suspend fun extractFromImage(request: ImageExtractRequest): Result<ImageExtractResult>
+
     /** Human-readable id of the active provider/model (for the backup-health / debug surfaces). */
     val label: String
 }

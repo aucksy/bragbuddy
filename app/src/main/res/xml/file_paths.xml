@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Camera capture temp images live under cacheDir/capture_images (Phase A image scanning). -->
+<paths>
+    <cache-path name="capture_images" path="capture_images/" />
+</paths>

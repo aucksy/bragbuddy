@@ -18,7 +18,7 @@ import javax.inject.Singleton
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore("settings")
 
 /** Which capture mode the sheet opens to (last used). */
-enum class CaptureMode { SPEAK, TYPE }
+enum class CaptureMode { SPEAK, TYPE, IMAGE }
 
 /** User settings for the daily reminder + capture preferences. Device-local. */
 data class AppSettings(

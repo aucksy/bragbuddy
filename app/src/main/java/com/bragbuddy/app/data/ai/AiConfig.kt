@@ -38,6 +38,20 @@ object AiConfig {
     const val summaryModel = "openai/gpt-oss-120b"
     const val summaryFallback = "llama-3.3-70b-versatile"
 
+    /**
+     * Image scanning (Phase A) — Groq's **production** multimodal model, reads a photo / screenshot
+     * into work text. `qwen/qwen3.6-27b` is production + JSON mode; `meta-llama/llama-4-scout` is a
+     * *preview* model being deprecated, so it is NOT used. Verified live 2026-07 against
+     * console.groq.com/docs/vision — re-verify (and repoint) if Groq retires it. Images ride as a
+     * base64 `data:` URL capped at 4 MB (see [com.bragbuddy.app.data.image.ImageInput]).
+     */
+    const val visionModel = "qwen/qwen3.6-27b"
+
+    /** Fallback vision slug tried if [visionModel] errors (e.g. it gets retired) — the previous Groq
+     *  multimodal model. Preview/deprecating, so it's the safety net, not the primary; if it's also
+     *  gone the call fails safe (the capture stays on the sheet to retry / type). */
+    const val visionFallback = "meta-llama/llama-4-scout-17b-16e-instruct"
+
     /** A short, human label for the About / debug surface. */
     fun categorizerLabel(): String = "Groq · $categorizerModel"
 }
