@@ -88,8 +88,21 @@ review-criteria doc) → Home. Skip keeps `Framework.DEFAULT`.
   **emphasised closing point: the user is solely responsible for what they disclose — strongly recommend
   never entering company name, client names, or confidential/employer info.** Draft a hosted-ready privacy
   `.md` in the repo (sibling-app pattern). **NOT legal advice — recommend a lawyer review before public
-  launch.** ⏳ **MERGE the creator's attached privacy points — STILL PENDING; get the attachment before
-  building Phase C.**
+  launch.** **Creator's privacy reference RECEIVED (2026-07-07)** — a **"Core Privacy Principles"** card layout
+  (rounded grey cards, bold title + plain body): *Your Audio Is Never Stored · You Control Everything ·
+  Secured Encryption, Throughout · No Ads, No Tracking, No Selling.* **Adopt the card STYLE + tone, but
+  the reference is from a server/account/always-listening app — several claims are FALSE for BragBuddy and
+  MUST be rewritten, not copied (a false privacy claim is a legal risk):** (1) *Audio never stored* — KEEP,
+  adapt: audio + scanned **images are sent to Groq to process**, then not retained by us / never backed up;
+  offline clips sit briefly on-device then delete after transcription. (2) *You control everything* —
+  rewrite: **no account, no servers, no "our backups"** (data = your device + optional **your own Google
+  Drive**); **DROP "pause recording"** (tap-to-capture, not always-listening). (3) *Encryption at rest,
+  highest grade* — 🚩 **can't truthfully claim app-level at-rest encryption today** (Android OS/sandbox only,
+  no SQLCipher); **Phase C decision: add on-device encryption (SQLCipher/encrypted DataStore) vs. phrase
+  honestly** (in-transit to Groq = HTTPS, true). (4) *No ads/tracking/selling* — KEEP (true). **ADD what
+  the reference omits (BragBuddy-critical):** the **third-party AI (Groq) disclosure** (entry text + images
+  sent to Groq — the #1 disclosure) and the **closing "you are responsible for what you disclose; never
+  enter company/client/confidential info."** Screenshot lives in the creator's chat 2026-07-07.
 - **Remove audio-storage everywhere:** delete the disabled **"+ Voice notes"** `OptionRow`
   (`BackupScreen.kt:125-133`) + its KDoc (`:55-60`); correct the **inaccurate manifest comment**
   (`AndroidManifest.xml:5-9`) claiming audio stays on-device (it goes to Groq Whisper). **LEAVE** the
