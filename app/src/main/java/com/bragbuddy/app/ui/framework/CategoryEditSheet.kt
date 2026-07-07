@@ -67,12 +67,12 @@ import java.io.File
 
 /** Local editable project row. [baseName]/[baseSummary] track the last-saved values so a row can show
  *  a live "unsaved" state and reset after its own Save. [key] is a stable dictation/scan target. */
-private class ProjRowState(val key: Int, id: Long?, name: String, summary: String) {
-    var id by mutableStateOf(id)
-    var name by mutableStateOf(name)
-    var summary by mutableStateOf(summary)
-    var baseName by mutableStateOf(name)
-    var baseSummary by mutableStateOf(summary)
+private class ProjRowState(val key: Int, initialId: Long?, initialName: String, initialSummary: String) {
+    var id by mutableStateOf(initialId)
+    var name by mutableStateOf(initialName)
+    var summary by mutableStateOf(initialSummary)
+    var baseName by mutableStateOf(initialName)
+    var baseSummary by mutableStateOf(initialSummary)
     var confirmSave by mutableStateOf(false) // deferred "save this detail" confirm for this row
     val dirty: Boolean get() = name.trim() != baseName.trim() || summary.trim() != baseSummary.trim()
 }
