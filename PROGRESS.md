@@ -201,9 +201,9 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
-## Status: v0.19.0 — Android v2 · Phase B2b · Project rename-remap + categorizer prompt change + Home inline-edit Save ✅ DONE (compile + adversarial logic review clean; awaiting CI)
+## Status: v0.19.0 — Android v2 · Phase B2b · Project rename-remap + categorizer prompt change + Home inline-edit Save ✅ DONE (verified green · signed · first-try CI — run 28923683720; the compile + adversarial logic review held)
 
-**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.19.0/BragBuddy-v0.19.0.apk` (signed;
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.19.0/BragBuddy-v0.19.0.apk` (signed;
 `.aab` alongside). The deferred half of the reshaped Phase B2 — three pieces (all agreed 2026-07-07). **No
 AI anywhere here** (rename-remap is deterministic; the prompt change only drops text). **Room stays v4** (no
 schema change — the remap edits existing columns; no new pref). Decisions locked via AskUserQuestion: entry
