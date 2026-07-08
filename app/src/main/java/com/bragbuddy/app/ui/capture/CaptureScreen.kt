@@ -77,6 +77,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.bragbuddy.app.data.impact.ImpactCheck
 import com.bragbuddy.app.data.prefs.CaptureMode
+import com.bragbuddy.app.ui.common.rememberDiscardGuard
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BricolageGrotesque
 import com.bragbuddy.app.ui.theme.Radii
@@ -118,13 +119,22 @@ fun CaptureScreen(
     // The toggle is only relevant while choosing/recording — hide it once we're transcribing/reviewing.
     val showToggle = state.phase != VoicePhase.REVIEW && state.phase != VoicePhase.TRANSCRIBING
 
+    // Guard the ambient dismiss vectors (scrim tap, close ✕, system Back) against losing a typed / under-
+    // review / number-add note that hasn't been added yet. The explicit "Cancel" buttons stay direct.
+    val captureDirty = state.typed.isNotBlank() || state.reviewText.isNotBlank() || state.numberDraft.isNotBlank()
+    val requestDismiss = rememberDiscardGuard(
+        dirty = captureDirty,
+        onDismiss = onDismiss,
+        message = "This note hasn't been added yet. Discard it?",
+    )
+
     Box(Modifier.fillMaxSize()) {
         // Scrim — tap outside the sheet to dismiss (cancel).
         Box(
             Modifier
                 .fillMaxSize()
                 .background(Color(0xFF0E0F1A).copy(alpha = 0.42f))
-                .clickable(interactionSource = noRipple, indication = null, onClick = onDismiss),
+                .clickable(interactionSource = noRipple, indication = null, onClick = requestDismiss),
         )
 
         Column(
@@ -153,7 +163,7 @@ fun CaptureScreen(
                         .align(Alignment.CenterEnd)
                         .size(30.dp)
                         .clip(RoundedCornerShape(999.dp))
-                        .clickable(onClick = onDismiss),
+                        .clickable(onClick = requestDismiss),
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Outlined.Close, "Cancel", tint = palette.text3, modifier = Modifier.size(18.dp)) }
             }

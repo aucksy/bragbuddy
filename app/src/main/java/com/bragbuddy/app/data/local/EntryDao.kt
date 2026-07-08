@@ -94,6 +94,23 @@ interface EntryDao {
     @Query("SELECT COUNT(*) FROM entries WHERE status != :excluded")
     suspend fun countExcluding(excluded: EntryStatus): Int
 
+    /** Every non-null clip path referenced by ANY row. The offline-recovery orphan sweep treats these
+     *  as "owned" so a clip that already drained (its row left PENDING_AUDIO but a crash skipped the
+     *  file delete) is never re-adopted into a DUPLICATE entry. */
+    @Query("SELECT audioPath FROM entries WHERE audioPath IS NOT NULL AND audioPath != ''")
+    suspend fun allAudioPaths(): List<String>
+
+    /** Rows that still reference a clip but have already LEFT the queue (status != PENDING_AUDIO): a
+     *  drained note whose file survived a crash before its delete. Recovery deletes the file and clears
+     *  the dangling reference. */
+    @Query("SELECT * FROM entries WHERE audioPath IS NOT NULL AND audioPath != '' AND status != :pending")
+    suspend fun settledWithAudio(pending: EntryStatus): List<EntryEntity>
+
+    /** Null out a clip reference from the row(s) carrying it (the drained note + any split sibling that
+     *  inherited the path) once its file is gone. */
+    @Query("UPDATE entries SET audioPath = NULL WHERE audioPath = :path")
+    suspend fun clearAudioPath(path: String)
+
     /** Entries the user pinned "always include" — fed live to the Phase 5 summary ({{PINNED}}). */
     @Query("SELECT * FROM entries WHERE isPinned = 1 ORDER BY createdAt DESC")
     fun observePinned(): Flow<List<EntryEntity>>

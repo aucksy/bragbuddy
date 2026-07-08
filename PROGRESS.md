@@ -210,6 +210,66 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
+## Status: v0.20.1 — End-to-end audit patch (fixes + hardening from a whole-app deep audit) ✅ DONE (signed · tag-driven CI; compile = WILL COMPILE, adversarial logic = HOLD/no-HIGH, 2 review-fixes applied)
+
+**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.20.1/BragBuddy-v0.20.1.apk` (signed;
+`.aab` alongside). Not a phase — a **5-dimension end-to-end audit** of the whole Android build (data-integrity/
+concurrency · AI seam · UI/Compose/nav · build/release · privacy/security/dead-code), each dimension run by an
+independent agent, findings verified against the code, fixed, and reviewed. **Room stays v4.** Decisions locked
+via AskUserQuestion (2026-07-08): exclude the DB from OS cloud-backup (keep device-transfer); apply all four MED
+fixes; ship as v0.20.1. The creator also required a **discard-confirmation on every text editor**.
+
+### v0.20.1 — what changed (`versionCode 22`)
+1. **Privacy-truthfulness (was a live false claim): OS auto-backup no longer uploads entries.** `allowBackup`
+   stayed `true` but `res/xml/data_extraction_rules.xml` + `backup_rules.xml` **`<include database bragbuddy.db>`**
+   meant Android silently cloud-backed every raw transcript — contradicting the shipped "the only copy that leaves
+   your device is one you choose to make." Now the **`<cloud-backup>` excludes all domains** (also keeps the
+   DataStore Groq-key file out) and **`<device-transfer>` keeps db+prefs** (local phone-to-phone only). The app's
+   own opt-in Drive backup is unaffected.
+2. **Live-capture crash fixed (`data/speech/Transcriber.kt`).** The Groq Whisper request/`Authorization` header was
+   built OUTSIDE `runCatching`; a malformed key character threw `IllegalArgumentException` → uncaught in the
+   fire-and-forget caller → **crash + lost take**. Moved the request build inside `runCatching` (mirrors
+   `GroqAiProvider`) → a bad key now fails safe.
+3. **Offline-queue duplicate-on-crash fixed (never-lose core; `OfflineRecovery.kt` + 3 new `EntryDao` queries).**
+   A process-kill between the transcript commit and the clip `file.delete()` left an unreferenced clip that the
+   orphan sweep **re-adopted into a DUPLICATE entry**. Redesigned the clip lifecycle: the drain now commits the
+   transcript **keeping** `audioPath` and never deletes inline; a new `cleanupDrainedClips()` (run after the drain)
+   owns deletion for rows that have durably left the queue (`settledWithAudio(PENDING_AUDIO)` → `File.delete` +
+   `clearDrainedClipPath` **under the EntryProcessor mutex**); and `adoptOrphanClips` now references **all** rows'
+   clips (`allAudioPaths()`), so a drained-but-not-deleted clip is never re-adopted. Crash-safe + self-healing:
+   no loss, no dup, no leak (adversarially verified).
+4. **Atomic transcript split (`EntryProcessor.processEntry`).** Injected `BragBuddyDatabase`; the first-row update
+   + all sibling inserts now commit in one `db.withTransaction { }` (rollup synced after) so a crash mid-split can't
+   leave row 1 PROCESSED (skipped forever) with the extra split items lost.
+5. **Bullet-less entries reach the summary (`resolve`/`reassign`).** Resolving/reassigning a FAILED/empty row (no
+   cleaned bullet) filed it to a folder but the rollup skipped it → silently absent from the generated appraisal
+   doc. Now it falls back to the raw transcript as the bullet so it's included.
+6. **Discard-confirmation on every text editor (`ui/common/DiscardGuard.kt`, wired into `CategoryEditSheet`,
+   `EntryDetailSheet`, `CaptureScreen`).** Per the creator: unsaved typed/scanned text must not be lost by Back
+   gesture or any other ambient exit. `rememberDiscardGuard(dirty, onDismiss)` installs a `BackHandler` + a
+   "Discard changes?" dialog and returns a `requestDismiss` wired to the scrim + close ✕. When there are unsaved
+   edits it confirms; otherwise it dismisses. **Also fixes the app-wide gap where system Back on an open overlay
+   exited the app** (or discarded an edit) instead of closing the overlay. Explicit "Cancel" buttons stay direct.
+7. **Cleanups:** deleted the dead `reminder/ReminderWorker.kt` (reminders are AlarmManager now); `SummaryResult.summary`
+   defaulted so a reply omitting it degrades instead of throwing; onboarding finish-bar now hides for the project-
+   remap sheet too; stale "OpenRouter" dep comment → Groq; `exportJson`/`changeSignal` strip the transient
+   `audioPath` (no device-local path in the backup JSON; no double-upload churn).
+
+### Audit review (per protocol)
+Compile agent (Room-focused, given the prior `new`-keyword trap): **WILL COMPILE** — the 3 new DAO params
+(`pending`, `path`, none) are valid Java identifiers, the enum bind reuses the proven `EntryStatus` converter.
+Logic agent: **HOLD — 0 HIGH, firm invariants intact**; the offline redesign verified crash-safe across every
+interleaving. 2 review findings applied: (MED) `clearAudioPath` moved under the processor mutex; (LOW) `audioPath`
+stripped from the backup/change surface. **Noted, not fixed:** a resolved un-transcribable *placeholder* row can
+show its placeholder text as a summary bullet (user-initiated + editable); the remaining non-text overlays (the "+"
+radial, catch-up, remap sheets) still lack a BackHandler (Back there falls through) — a small follow-up; rotation
+still drops in-progress framework/entry **editor** text (config-change; capture is already VM-safe) — the discard
+guard covers dismissal, not rotation. **On-device testing (the creator's step)** should exercise: an offline voice
+note recovering (no dup) across a force-stop; a mid-edit Back on each editor → Discard dialog; a fresh install NOT
+appearing in the phone's Google cloud backup list.
+
+---
+
 ## Status: v0.20.0 — Android v2 · Phase C · Onboarding wizard + Privacy/legal + audio-storage removal ✅ DONE (signed · tag-driven CI; compile review = WILL COMPILE, adversarial logic review + fix-diff re-review held → SHIP)
 
 **APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.20.0/BragBuddy-v0.20.0.apk` (signed;

@@ -70,6 +70,10 @@ class OfflineRecovery @Inject constructor(
         mutex.withLock {
             runCatching { adoptOrphanClips() }
             runCatching { drainPendingAudio() }
+            // Delete the clips of notes that have durably left the queue (crash-safe: the drain keeps
+            // the clip reference until this sweep removes it, so a crash between the two can't strand an
+            // unreferenced file that the orphan sweep would re-adopt into a duplicate entry).
+            runCatching { cleanupDrainedClips() }
             // Entries that failed while the model was unreachable get one automatic retry per
             // trigger — the same guarded, idempotent path as the Inbox's "Try again".
             runCatching { processor.reprocessFailed() }
@@ -86,9 +90,10 @@ class OfflineRecovery @Inject constructor(
         val dir = File(context.filesDir, VOICE_QUEUE_DIR)
         val files = dir.listFiles()?.filter { it.isFile } ?: return
         if (files.isEmpty()) return
-        val referenced = entryDao.listByStatus(EntryStatus.PENDING_AUDIO)
-            .mapNotNull { it.audioPath }
-            .toSet()
+        // Reference clips owned by ANY row (not just PENDING_AUDIO): a note that already drained but
+        // whose file survived a crash before deletion is still referenced by its (now settled) row, so
+        // it must NOT be re-adopted into a duplicate — cleanupDrainedClips removes it instead.
+        val referenced = entryDao.allAudioPaths().toSet()
         val cutoff = System.currentTimeMillis() - ADOPT_AGE_MS
         for (file in files) {
             if (file.absolutePath in referenced) continue
@@ -136,47 +141,54 @@ class OfflineRecovery @Inject constructor(
                 onSuccess = { text ->
                     if (text.isBlank()) {
                         // Whisper heard nothing — retrying would give blank again; hold it visibly.
-                        val committed = processor.commitPendingAudio(e.id, e.audioPath) {
-                            it.copy(
-                                status = EntryStatus.INBOX,
-                                audioPath = null,
-                                rawTranscript = EMPTY_NOTE_TEXT,
-                                confidence = 0.0,
-                            )
+                        // Keep the clip reference; cleanupDrainedClips owns the file delete (crash-safe).
+                        processor.commitPendingAudio(e.id, e.audioPath) {
+                            it.copy(status = EntryStatus.INBOX, rawTranscript = EMPTY_NOTE_TEXT, confidence = 0.0)
                         }
-                        if (committed) file.delete()
                     } else {
-                        // Text is durably committed BEFORE the audio is deleted (never lose an
-                        // entry). A failed commit means a restore replaced the row — keep the clip
-                        // so the surviving pending row drains it on the next pass.
+                        // Commit the transcript, KEEPING the clip reference (never lose an entry). The
+                        // clip is deleted later by cleanupDrainedClips once the row has durably left the
+                        // queue — a crash before that used to leave an unreferenced file that the orphan
+                        // sweep re-adopted into a DUPLICATE entry. A failed commit means a restore
+                        // replaced the row — the surviving pending row drains it on the next pass.
                         val committed = processor.commitPendingAudio(e.id, e.audioPath) {
-                            it.copy(status = EntryStatus.RAW, rawTranscript = text, audioPath = null)
+                            it.copy(status = EntryStatus.RAW, rawTranscript = text)
                         }
-                        if (committed) {
-                            file.delete()
-                            processor.process(e.id)
-                        }
+                        if (committed) processor.process(e.id)
                     }
                 },
                 onFailure = { error ->
                     val http = error as? TranscriptionHttpException
                     if (http != null && http.isPermanent && !http.isAuth) {
                         // Unreadable clip / over the upload limit — can never succeed. Park it
-                        // visibly (INBOX, deletable) instead of re-uploading forever.
-                        val committed = processor.commitPendingAudio(e.id, e.audioPath) {
-                            it.copy(
-                                status = EntryStatus.INBOX,
-                                audioPath = null,
-                                rawTranscript = UNTRANSCRIBABLE_NOTE_TEXT,
-                                confidence = 0.0,
-                            )
+                        // visibly (INBOX) instead of re-uploading forever; cleanup deletes the clip.
+                        processor.commitPendingAudio(e.id, e.audioPath) {
+                            it.copy(status = EntryStatus.INBOX, rawTranscript = UNTRANSCRIBABLE_NOTE_TEXT, confidence = 0.0)
                         }
-                        if (committed) file.delete()
                     }
                     // Transient (offline, 408/429/5xx) or auth (fixable key) — stays queued; the
                     // next reconnect / launch / key-change kick tries again. Nothing is lost.
                 },
             )
+        }
+    }
+
+    /**
+     * Delete the on-disk clips of notes that have durably left the queue. The drain commits a note's
+     * text while KEEPING its clip reference, so the file (and its row's `audioPath`) survive together
+     * until this sweep removes both — making the "committed → deleted" transition crash-safe: a kill in
+     * the middle leaves a still-referenced file that the orphan sweep skips (no duplicate) and this
+     * sweep reclaims on the next pass. Idempotent; one delete + one clear per unique path.
+     */
+    private suspend fun cleanupDrainedClips() {
+        val paths = entryDao.settledWithAudio(EntryStatus.PENDING_AUDIO)
+            .mapNotNull { it.audioPath?.takeIf { p -> p.isNotBlank() } }
+            .toSet()
+        for (path in paths) {
+            runCatching { File(path).delete() }
+            // Clear the DB reference under the PROCESSOR mutex (not this recovery mutex) so a concurrent
+            // full-row re-file of the same row can't reinstate the now-dangling path.
+            processor.clearDrainedClipPath(path)
         }
     }
 

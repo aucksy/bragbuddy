@@ -79,9 +79,11 @@ fun FrameworkScreen(
     val pendingProjectRemap by viewModel.pendingProjectRemap.collectAsStateWithLifecycle()
     val expanded = remember { mutableStateListOf<String>() } // expanded category ids; default = none
 
-    // Report when a full-screen editor sheet is open (used by onboarding to hide its finish bar so it
-    // can't be tapped through the sheet). No-op for the Framework tab (default arg).
-    LaunchedEffect(editing, showAdd) { reportEditing(editing != null || showAdd) }
+    // Report when any full-screen editor / custom-scrim sheet is open (used by onboarding to hide its
+    // finish bar so it can't be tapped through the sheet). No-op for the Framework tab (default arg).
+    LaunchedEffect(editing, showAdd, pendingRemap, pendingProjectRemap) {
+        reportEditing(editing != null || showAdd || pendingRemap != null || pendingProjectRemap != null)
+    }
 
     val hueOf: (Pillar) -> PillarColor = { p -> pillarColor(framework.pillars.indexOfFirst { it.id == p.id }) }
     val subsOf: (Pillar) -> List<ProjectEntity> = { p -> folders.filter { it.goalArea.equals(p.name, ignoreCase = true) } }

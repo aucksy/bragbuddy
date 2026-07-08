@@ -1,9 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 12+ data-extraction rules (cloud backup + device transfer). -->
+<!--
+   Android 12+ data-extraction rules.
+   Privacy: BragBuddy promises that the only copy of your record that leaves your device is one you
+   choose to make (its own opt-in Google Drive backup / manual export). So NOTHING is sent to the OS
+   *cloud* auto-backup — every domain is excluded (this also keeps the DataStore file that holds the
+   Groq API key out of any backup). Local *device-transfer* (phone-to-phone clone, no server) keeps the
+   entry DB + prefs so a new-device migration still works. See PROGRESS.md (Phase C audit).
+-->
 <data-extraction-rules>
     <cloud-backup>
-        <include domain="database" path="bragbuddy.db" />
-        <include domain="sharedpref" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
     </cloud-backup>
     <device-transfer>
         <include domain="database" path="bragbuddy.db" />

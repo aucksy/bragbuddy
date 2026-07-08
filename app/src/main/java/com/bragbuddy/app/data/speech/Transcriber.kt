@@ -48,19 +48,21 @@ class GroqTranscriber @Inject constructor(
         if (key.isBlank()) return@withContext Result.failure(IllegalStateException("No transcription key set"))
         if (!audio.exists() || audio.length() == 0L) return@withContext Result.failure(IllegalStateException("No audio recorded"))
 
-        val body = MultipartBody.Builder()
-            .setType(MultipartBody.FORM)
-            .addFormDataPart("model", MODEL)
-            .addFormDataPart("response_format", "text")
-            .addFormDataPart("file", audio.name, audio.asRequestBody("audio/m4a".toMediaType()))
-            .build()
-        val request = Request.Builder()
-            .url(ENDPOINT)
-            .header("Authorization", "Bearer $key")
-            .post(body)
-            .build()
-
         runCatching {
+            // Build the request INSIDE runCatching: a malformed key character (a stray control/
+            // non-ASCII char that survived trim) makes OkHttp's .header() throw — this must become a
+            // failed Result, never a thrown crash on the live capture path (mirrors GroqAiProvider).
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("model", MODEL)
+                .addFormDataPart("response_format", "text")
+                .addFormDataPart("file", audio.name, audio.asRequestBody("audio/m4a".toMediaType()))
+                .build()
+            val request = Request.Builder()
+                .url(ENDPOINT)
+                .header("Authorization", "Bearer $key")
+                .post(body)
+                .build()
             client.newCall(request).execute().use { resp ->
                 val text = resp.body?.string().orEmpty().trim()
                 if (!resp.isSuccessful) {

@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-   Android auto-backup rules. BragBuddy's own Google Drive backup (Phase 6) is the real
-   redundancy path; this covers the OS-level auto-backup. The Room database is included so a
-   device transfer keeps the record. See https://developer.android.com/guide/topics/data/autobackup
+   Android 11-and-below auto-backup rules (there is no device-transfer concept here — this attribute
+   only governs cloud auto-backup). Privacy: nothing is auto-uploaded to the OS cloud backup; the
+   user's record leaves the device only via BragBuddy's own opt-in Google Drive backup / manual export.
+   So every domain is excluded here (matches the Android 12+ <cloud-backup> block). See PROGRESS.md.
 -->
 <full-backup-content>
-    <include domain="database" path="bragbuddy.db" />
-    <include domain="sharedpref" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
 </full-backup-content>

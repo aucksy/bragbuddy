@@ -115,7 +115,9 @@ data class SetAsideNote(
 
 @Serializable
 data class SummaryResult(
-    val summary: SummaryBody,
+    // Defaulted like every other result type: a reply that omits "summary" degrades to an empty body
+    // (a retryable no-op) instead of throwing MissingFieldException.
+    val summary: SummaryBody = SummaryBody(),
     @SerialName("setAside") val setAside: List<SetAsideNote> = emptyList(),
 )
 

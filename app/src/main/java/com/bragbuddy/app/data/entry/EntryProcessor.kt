@@ -1,10 +1,12 @@
 package com.bragbuddy.app.data.entry
 
+import androidx.room.withTransaction
 import com.bragbuddy.app.data.ai.AiProvider
 import com.bragbuddy.app.data.ai.CategorizeRequest
 import com.bragbuddy.app.data.ai.CategorizedEntry
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.PillarKind
+import com.bragbuddy.app.data.local.BragBuddyDatabase
 import com.bragbuddy.app.data.local.EntryDao
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
@@ -43,6 +45,7 @@ class EntryProcessor @Inject constructor(
     private val aiProvider: AiProvider,
     private val settings: SettingsStore,
     private val rollupStore: RollupStore,
+    private val db: BragBuddyDatabase,
 ) {
 
     // Serialize all processing so two callers (capture's kick + a launch-time drain during a config
@@ -151,6 +154,10 @@ class EntryProcessor @Inject constructor(
             val area = goalArea.trim().ifBlank { e.goalCategory?.takeIf { it.isNotBlank() } ?: INBOX_LABEL }
             val updated = e.copy(
                 status = EntryStatus.PROCESSED,
+                // A FAILED / empty-result row has no cleaned bullet; fall back to its raw transcript so
+                // a resolved entry still appears in the generated summary (the rollup skips bullet-less
+                // rows). Rows that already have a bullet keep it.
+                bullet = e.bullet?.takeIf { it.isNotBlank() } ?: e.rawTranscript.trim().ifBlank { null },
                 project = if (isOutside) OUTSIDE_PROJECT else clean,
                 goalCategory = area,
                 // A named project becomes the deterministic anchor (edit re-files here); Outside
@@ -180,6 +187,9 @@ class EntryProcessor @Inject constructor(
             val area = goalArea.trim().ifBlank { e.goalCategory?.takeIf { it.isNotBlank() } ?: INBOX_LABEL }
             val updated = e.copy(
                 status = EntryStatus.PROCESSED,
+                // As in resolve(): a bullet-less row (moved straight from FAILED) falls back to its
+                // transcript so it isn't silently dropped from the summary rollup.
+                bullet = e.bullet?.takeIf { it.isNotBlank() } ?: e.rawTranscript.trim().ifBlank { null },
                 project = if (isOutside) OUTSIDE_PROJECT else clean,
                 goalCategory = area,
                 anchorProject = if (isOutside) e.anchorProject else clean,
@@ -230,6 +240,11 @@ class EntryProcessor @Inject constructor(
     private fun deleteAudioOf(entry: EntryEntity?) {
         entry?.audioPath?.takeIf { it.isNotBlank() }?.let { runCatching { java.io.File(it).delete() } }
     }
+
+    /** Null out a drained voice clip's dangling path reference (offline-recovery cleanup) **under the
+     *  processing mutex**, so it can't race — and be reinstated by — a concurrent full-row re-file of
+     *  the same row. The file itself is deleted by the caller; this only clears the DB reference. */
+    suspend fun clearDrainedClipPath(path: String) = mutex.withLock { entryDao.clearAudioPath(path) }
 
     /**
      * Rebuild the running rollup from the current PROCESSED entries — the launch-time self-heal
@@ -432,13 +447,20 @@ class EntryProcessor @Inject constructor(
                 } else {
                     // First result updates the captured row; extras become sibling rows.
                     val firstRow = entry.applyCategorized(result.entries.first(), p.anchor, p.anchorGoalArea)
-                    entryDao.update(firstRow)
-                    syncRollup(firstRow)
-                    result.entries.drop(1).forEach { extra ->
-                        val sibling = entry.copy(id = 0, bullet = null).applyCategorized(extra, p.anchor, p.anchorGoalArea)
-                        val newId = entryDao.insert(sibling)
-                        syncRollup(sibling.copy(id = newId))
+                    val siblings = result.entries.drop(1).map { extra ->
+                        entry.copy(id = 0, bullet = null).applyCategorized(extra, p.anchor, p.anchorGoalArea)
                     }
+                    // Atomic: the first-row update + every sibling insert commit together. Without this,
+                    // a crash mid-split leaves row 1 PROCESSED (so processPending skips it forever) while
+                    // the extra items the model split out are silently lost.
+                    val siblingIds = db.withTransaction {
+                        entryDao.update(firstRow)
+                        siblings.map { entryDao.insert(it) }
+                    }
+                    // The rollup is a derived DataStore projection (not part of the Room transaction), so
+                    // sync it only after the split is durably committed; a launch reconcile self-heals.
+                    syncRollup(firstRow)
+                    siblings.forEachIndexed { i, sibling -> syncRollup(sibling.copy(id = siblingIds[i])) }
                 }
             },
             onFailure = {

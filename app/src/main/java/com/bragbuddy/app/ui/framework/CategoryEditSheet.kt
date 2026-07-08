@@ -59,6 +59,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.local.ProjectEntity
+import com.bragbuddy.app.ui.common.rememberDiscardGuard
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
 import com.bragbuddy.app.ui.theme.Radii
@@ -189,6 +190,15 @@ fun CategoryEditSheet(
     // Confirm state: the category save (with an adaptive message).
     var confirmCategory by remember { mutableStateOf(false) }
 
+    // Guard the close ✕ + system Back against losing unsaved category or project edits (each item is
+    // saved on its own, so an accidental close/Back would drop anything typed-or-scanned but not yet Saved).
+    val editorDirty = categoryDirty || rows.any { it.dirty }
+    val requestClose = rememberDiscardGuard(
+        dirty = editorDirty,
+        onDismiss = onClose,
+        message = "You have unsaved framework changes that weren't Saved. Discard them?",
+    )
+
     Column(
         Modifier
             .fillMaxSize()
@@ -201,7 +211,7 @@ fun CategoryEditSheet(
             Modifier.fillMaxWidth().padding(horizontal = Spacing.s3, vertical = Spacing.s2),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onClose) {
+            IconButton(onClick = requestClose) {
                 Icon(Icons.Outlined.Close, "Close", tint = palette.text2)
             }
             Text(

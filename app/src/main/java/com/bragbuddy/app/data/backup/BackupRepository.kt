@@ -54,7 +54,11 @@ class BackupRepository @Inject constructor(
                 // A still-untranscribed offline voice note (PENDING_AUDIO) is device-bound — its
                 // clip never leaves the phone, so the row would be an empty shell on any restore.
                 // It's excluded here and re-included automatically once recovery transcribes it.
-                entries = entryDao.getAllOnce().filter { it.status != EntryStatus.PENDING_AUDIO },
+                // audioPath is stripped: it's a transient device-local file path (a drained row can
+                // briefly still carry one before cleanup), and it must never ride into the backup JSON.
+                entries = entryDao.getAllOnce()
+                    .filter { it.status != EntryStatus.PENDING_AUDIO }
+                    .map { it.copy(audioPath = null) },
                 projects = projectDao.getAllOnce(),
                 pillars = frameworkStore.framework.first().pillars,
                 settings = BackupSettings(
@@ -154,8 +158,9 @@ class BackupRepository @Inject constructor(
     ) { entries, folders, fw, s ->
         listOf(
             // Hash the same surface exportJson backs up — PENDING_AUDIO churn (a queued offline
-            // voice note appearing) must not trigger an upload of a byte-identical backup.
-            entries.filter { it.status != EntryStatus.PENDING_AUDIO },
+            // voice note appearing) must not trigger an upload of a byte-identical backup. audioPath is
+            // nulled so a drained row briefly toggling its transient clip path doesn't fire a re-upload.
+            entries.filter { it.status != EntryStatus.PENDING_AUDIO }.map { it.copy(audioPath = null) },
             folders, fw.pillars,
             s.reminderEnabled, s.reminderHour, s.reminderMinute, s.lastCaptureMode,
             s.jobRole, s.rolePromptDismissed, s.reviewYearStartMonth, s.defaultCaptureMethod,

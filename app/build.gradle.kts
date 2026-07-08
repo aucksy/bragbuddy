@@ -40,8 +40,8 @@ android {
         applicationId = "com.bragbuddy.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.20.0"
+        versionCode = 22
+        versionName = "0.20.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

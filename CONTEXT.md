@@ -208,7 +208,12 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
 - **Next: iOS (deferred)** — the **Android v2 batch is COMPLETE**: **Phase A (image scan) v0.16.0**, **Phase B
   ("+" radial capture) v0.17.0**, **Phase B2a (framework editing) v0.18.0**, **Phase B2b (project rename-remap
   + categorizer prompt change + Home inline-edit Save) v0.19.0**, and **Phase C (onboarding + privacy/legal +
-  audio-storage removal) v0.20.0** all shipped & verified green. **B2 was RESHAPED mid-phase (creator,
+  audio-storage removal) v0.20.0** all shipped & verified green. **v0.20.1 = a whole-app end-to-end audit patch**
+  (5 dimensions, adversarially reviewed): OS auto-backup no longer uploads entries to Google cloud (privacy claim
+  made TRUE — cloud-backup excludes all domains, device-transfer kept); a live-capture crash on a malformed Groq
+  key fixed; the offline-queue duplicate-on-crash + non-atomic transcript split + bullet-less-entries-missing-from-
+  summary all fixed; and a **Discard-changes? confirmation on every text editor** (Back/scrim/✕) that also makes
+  system Back close an open overlay instead of exiting the app. **B2 was RESHAPED mid-phase (creator,
   2026-07-07): NO AI reshapes the framework** — the user builds it by hand; `refineFramework` stays unused.
   "3 inputs" = **Type + Scan** on a detail box (the per-field **mic was removed**); **Scan** = OCR a
   job-description/review doc into the field (`AiProvider.readDocumentText`). Two-level model: a **category**

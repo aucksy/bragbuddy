@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.ProjectEntity
+import com.bragbuddy.app.ui.common.rememberDiscardGuard
 import com.bragbuddy.app.ui.home.OUTSIDE_PROJECT_LABEL
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
@@ -84,9 +85,16 @@ fun EntryDetailSheet(
     // Inline edit state — keyed on the entry id so an optimistic ★/Pin recomposition of the SAME entry
     // doesn't reset a mid-edit, but opening a different entry starts fresh.
     var editing by remember(entry.id) { mutableStateOf(false) }
-    var editText by remember(entry.id) {
-        mutableStateOf(entry.bullet?.takeIf { it.isNotBlank() } ?: entry.rawTranscript)
-    }
+    val editBaseline = entry.bullet?.takeIf { it.isNotBlank() } ?: entry.rawTranscript
+    var editText by remember(entry.id) { mutableStateOf(editBaseline) }
+
+    // Guard the scrim tap + system Back against losing an in-progress edit.
+    val editDirty = editing && editText.trim() != editBaseline.trim()
+    val requestDismiss = rememberDiscardGuard(
+        dirty = editDirty,
+        onDismiss = onDismiss,
+        message = "Your edit to this entry hasn't been saved. Discard it?",
+    )
 
     val cleaned = entry.bullet?.takeIf { it.isNotBlank() }
     val date = DateUtils.getRelativeTimeSpanString(
@@ -100,7 +108,7 @@ fun EntryDetailSheet(
             Modifier
                 .fillMaxSize()
                 .background(Color(0xFF0E0F1A).copy(alpha = 0.42f))
-                .clickable(interactionSource = noRipple, indication = null, onClick = onDismiss),
+                .clickable(interactionSource = noRipple, indication = null, onClick = requestDismiss),
         )
         Column(
             Modifier
