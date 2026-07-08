@@ -16,11 +16,13 @@ current code — that is the context, not chat history.
 
 > This is the live "what's next." Vertical-slice phases, **one per chat**, same rhythm as Phases 0–7.
 > iOS is **deferred** (research parked at the end of this section). Start each phase in a fresh chat
-> pointed at `CONTEXT.md`. **Exact next step:** build **Phase C** (onboarding wizard + Privacy/legal —
-> blocked on the pending privacy attachment; reuses B2's framework input). Phase A · image scan **v0.16.0**;
-> Phase B · "+" radial capture **v0.17.0**; **Phase B2a · framework editing (Type+Scan, mic removed,
-> per-item Save, Reset, category rename-remap) shipped v0.18.0**; **Phase B2b · project rename-remap
-> (3-option) + daily-categorizer prompt change + Home inline-edit Save shipped v0.19.0** — all verified green.
+> pointed at `CONTEXT.md`. **Exact next step:** the Android v2 batch is **COMPLETE** — **Phase C
+> (onboarding wizard + Privacy/legal + audio-storage removal) shipped v0.20.0.** The remaining work is
+> **iOS** (deferred; scoping parked at the end of this section) — resume in a fresh chat once the creator
+> green-lights Apple enrollment. Phase A · image scan **v0.16.0**; Phase B · "+" radial capture
+> **v0.17.0**; **Phase B2a · framework editing shipped v0.18.0**; **Phase B2b · project rename-remap +
+> categorizer prompt + Home inline-edit Save shipped v0.19.0**; **Phase C · onboarding + privacy shipped
+> v0.20.0** — all verified green.
 
 **⚠️ SCOPE RESHAPE (creator, 2026-07-07, mid-B2):** the written B2 scope ("3-input add/update via the
 `refineFramework` AI seam") was **corrected by the creator** — they do **NOT** want AI to interpret/rewrite
@@ -133,12 +135,19 @@ match a current pillar surface in the **"Uncategorized"** catch-all (`HomeDoc.kt
   entries + the rollup/summary follow the new name; no-key → the AI-backed Text/Scan paths degrade to the
   existing manual editing.
 
-### Phase C — Onboarding wizard + Privacy/legal (+ remove the audio-storage option)
+### Phase C — Onboarding wizard + Privacy/legal (+ remove the audio-storage option) ✅ SHIPPED v0.20.0
+> **DONE — full detail in the `## Status: v0.20.0` section below.** Reshape-corrected: onboarding step 3
+> reuses the **B2a Type + Scan** framework editor (`FrameworkScreen`), **NOT** `refineFramework` (which
+> stays unused). Decisions locked via AskUserQuestion (2026-07-08, all recommended): **one release**;
+> encryption **phrased honestly** (no SQLCipher); **India / simpleapps108@gmail.com**; onboarding =
+> **Welcome → Privacy → Role → Framework**. The plan text below is kept as the historical spec.
+
 First-run **guided-but-skippable** wizard (branch `BragNavHost` start destination `:20` on a new
 `SettingsStore.onboardingComplete` flag): **(1) Privacy & Terms — hard gate, version-stamped acceptance**
 → **(2) role** → **(3) framework/projects setup via Voice/Text/Image** (reuse the **built-but-unused**
 `refineFramework` seam [`AiProvider.kt:37`] + `FrameworkStore.save`; image = scan a job-description /
-review-criteria doc) → Home. Skip keeps `Framework.DEFAULT`.
+review-criteria doc) → Home. Skip keeps `Framework.DEFAULT`. *(SHIPPED as Type+Scan per the reshape — see
+below.)*
 - **Privacy screen** also in Settings (nav Card like Drive/Reliability, `SettingsScreen.kt:313-328`
   pattern). Research-backed content: local-only storage / no account; **explicit third-party AI — name
   Groq** (entry text + scanned images are sent there); **no audio/image retention** (transcribed/read then
@@ -198,6 +207,99 @@ was made.** When it resumes, this is the pre-done research:
 - **Capture parity:** no iOS overlay (Apple forbids) — the notification opens the app straight into a
   minimal auto-recording screen + App Intents (Siri/Shortcuts/Action Button/Lock-Screen). Blessed in the
   PRD/Brief.
+
+---
+
+## Status: v0.20.0 — Android v2 · Phase C · Onboarding wizard + Privacy/legal + audio-storage removal ✅ DONE (signed · tag-driven CI; compile review = WILL COMPILE, adversarial logic review + fix-diff re-review held → SHIP)
+
+**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.20.0/BragBuddy-v0.20.0.apk` (signed;
+`.aab` alongside). The final Android-v2 slice: a first-run **guided-but-skippable onboarding wizard**, a
+**Privacy & terms** screen (hard gate + Settings), and **removal of the audio-storage remnants**. **No AI
+reshapes the framework** (the reshape holds — step 3 is the real Type+Scan editor). **Room stays v4** (the
+two new flags are DataStore, no schema change). Decisions locked via AskUserQuestion (2026-07-08, all
+"recommended"): **one release**; at-rest encryption **phrased honestly** (no SQLCipher — see below); law +
+contact = **India / simpleapps108@gmail.com**; onboarding flow = **Welcome → Privacy → Role → Framework**.
+
+### v0.20.0 — what was built (`versionCode 21`)
+1. **First-run onboarding wizard** (`ui/onboarding/OnboardingScreen.kt` + `OnboardingViewModel.kt`):
+   **Welcome → Privacy (hard gate) → Role → Framework → Home**, with dot progress + pill CTAs in the Design
+   System §2 tone (warm intro card, the amber "no company name" reassurance). **Privacy is required**; **role
+   & framework are skippable** (framework skip keeps `Framework.DEFAULT`). **Step 3 reuses the real B2a
+   Type + Scan editor** — it *embeds* `FrameworkScreen` (not `refineFramework`, which stays unused), so
+   Add-category / edit-detail / Scan-a-doc all work verbatim; the onboarding **finish bar hides while an
+   editor sheet is open** (so it can't be tapped through the custom-scrim sheet — FrameworkScreen gained a
+   defaulted `reportEditing: (Boolean)->Unit` hook, a no-op for the tab). The role step **seeds from an
+   existing saved role** (for a re-onboard) without clobbering typing.
+2. **Gate + routing** (`ui/navigation/RootGateViewModel.kt`, `BragNavHost.kt`, `Destinations.kt`): a tiny VM
+   resolves the start destination from two new device-local flags before the NavHost is built (null → a
+   brief bg-coloured frame, no flicker). `showOnboarding = !onboardingComplete || acceptedPrivacyVersion <
+   PrivacyPolicy.VERSION`; `reacceptOnly` (already-onboarded + stale version) collapses the wizard to **just
+   the privacy card**. Finish navigates `HOME` with `popUpTo(ONBOARDING){inclusive}`; start destination +
+   reacceptOnly are `remember`-snapshotted so the flag flip can't rebuild the graph.
+3. **Two device-local flags** (`SettingsStore`): `onboardingComplete` (default false) + `acceptedPrivacyVersion`
+   (default 0). **Finish is ONE atomic `store.edit{}`** (`completeOnboarding(privacyVersion)`) and the screen
+   **awaits it before navigating** — the earlier two-write/launch-then-nav approach was cancelled by the nav
+   pop and could loop re-onboarding (HIGH, caught + fixed pre-tag). **Deliberately NOT backed up** (accepting
+   terms is per-install; also avoids a mid-session restore fighting the gate) — verified safe against the
+   v0.14 restore-on-reinstall path.
+4. **Privacy & terms** — one source of truth `data/legal/PrivacyPolicy.kt` (`VERSION = 1`), rendered by the
+   shared `ui/legal/PrivacyContent.kt` (rounded grey cards, bold title + plain body — the creator's "Core
+   Privacy Principles" style) and reused by **both** the onboarding gate and a read-only Settings screen
+   (`ui/legal/PrivacyScreen.kt`, nav Card like Drive/Reliability). The claims are **rewritten TRUE for
+   BragBuddy** (the reference was a server/account/always-listening app): local-only/no-account; **the #1
+   disclosure — text + scanned images + audio all go to Groq using the user's own key**; audio/images not
+   retained (acknowledges the Phase-7 offline temp clip); **encryption phrased honestly** (HTTPS in transit +
+   Android sandbox/device encryption at rest; **no** false app-level at-rest claim — no SQLCipher);
+   no ads/tracking/selling; delete-anytime; AI-can-be-wrong / no-warranty / limitation of liability; 18+; law
+   = India, contact = simpleapps108@gmail.com; and the **emphasised closing: you are solely responsible for
+   what you disclose — never enter company/client/confidential info.** Mirrored to a hosted-ready
+   **`docs/privacy.md`** (sibling-app pattern; owner enables Pages later). *(NOT legal advice — a lawyer
+   should review before any public/Play launch.)*
+5. **Audio-storage removal:** deleted the disabled **"+ Voice notes"** `OptionRow` + its KDoc in
+   `BackupScreen.kt` (+ removed the now-unused `Mic` import); corrected the **inaccurate manifest comment**
+   (`AndroidManifest.xml`) that claimed on-device STT keeps audio on the phone — it now states audio goes to
+   Groq Whisper and isn't retained. **LEFT** the genuine offline-queue temp-clip path
+   (`EntryEntity.audioPath` / `PENDING_AUDIO` / `OfflineRecovery`) untouched — the never-lose-a-take net.
+
+### Adversarial review before tagging (compile + logic + fix-diff re-review; per protocol)
+- **Compile pass (agent, "you are the compiler"):** **WILL COMPILE** across all 11 changed/new files — every
+  import/symbol/signature/theme-token/Compose-scope verified, `FrameworkScreen` new defaulted param leaves
+  the tab call site valid, Hilt VMs inject cleanly, the elvis-`return` gate idiom typechecks. No Room/DAO
+  touched → the `new` Java-keyword class of failure ([[room-java-keyword-params]]) doesn't apply.
+- **Adversarial logic pass (agent):** **1 HIGH + 1 MED + 1 LOW, all fixed pre-tag; firm invariants intact.**
+  - **[HIGH · fixed]** `completeOnboarding()` did two sequential `viewModelScope` writes then navigated →
+    the nav pop cancelled the scope mid-write → `onboardingComplete` could never persist → **re-onboarding
+    loop**. Fixed: one atomic `SettingsStore.completeOnboarding()` edit + **await-before-navigate** via a
+    `finished` StateFlow the screen observes (`LaunchedEffect(finished){ onFinished() }`); reacceptOnly path
+    hardened the same way.
+  - **[MED · fixed]** the onboarding "Start logging" bar sat beside the embedded editor → tappable *under* an
+    open `CategoryEditSheet` → a mistap finished onboarding and dropped unsaved editor text. Fixed: hide the
+    finish bar while a framework sheet is open (`reportEditing` hook).
+  - **[LOW · fixed]** the role step started blank on a forced re-onboard (existing role ignored) → seed from
+    the saved role without clobbering typing.
+  - Verified SAFE: start-destination race/flicker, bail-out durability, reacceptOnly, Home role double-ask,
+    backup/restore vs. the gate, framework-embed leaks/scroll/scan, and **every privacy claim cross-checked
+    against the actual code** (Groq text+image+audio, no analytics SDK, no SQLCipher).
+- **Fix-diff re-review (agent):** **SHIP** — the 4 changed files compile clean, the durable-before-nav and
+  finish-bar fixes are correct, no regressions; one INFO (no try/catch on the finish write — matches every
+  other setter, and it's safer than the old bug: on failure the user simply isn't navigated, no false
+  "complete").
+
+### Flags / on-device test (the creator's step)
+New UI (onboarding wizard, privacy cards, Settings privacy card) is **not in the Design System's exact form**
+— the §2 onboarding predates the reshape (it shows AI voice-refine + no privacy/role step), so I adopted its
+**tone** (warm intro, dot progress, pill CTA, amber reassurance) and reconciled the flow via AskUserQuestion;
+the privacy cards follow the creator's attached "Core Privacy Principles" reference. **To verify on-device:**
+(1) **fresh install** → must accept **Privacy** before reaching Home → Role (type/skip) → Framework (edit via
+Type+Scan / add a category / **Scan a doc** / just "Start logging") → Home; (2) **Skip** works at role &
+framework (framework keeps the default 3); (3) reopen the app → **no onboarding** (flag persisted — the HIGH
+fix; confirm it doesn't loop); (4) Settings → **Privacy & terms** is readable and matches; (5) open the
+category editor **during** onboarding → the "Start logging" bar is **hidden** (no tap-through); (6) Backup
+screen shows **no "Voice notes"** row; (7) existing-user upgrade path (install v0.19.0 then this) → sees the
+wizard once, role pre-filled, framework intact, nothing lost. **Version bump to re-prompt terms:** bump
+`PrivacyPolicy.VERSION` for a material change → already-onboarded users get **only** the privacy re-accept.
+**Owner (optional):** enable GitHub Pages (main `/docs`) to host `docs/privacy.md` before any public launch;
+a lawyer should review the copy. **Next: iOS** (deferred — see the ▶ NEXT ROADMAP). Android v2 is complete.
 
 ---
 

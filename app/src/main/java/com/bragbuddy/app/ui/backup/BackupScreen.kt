@@ -24,7 +24,6 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -54,9 +53,9 @@ import com.bragbuddy.app.ui.theme.Spacing
 
 /**
  * Google Drive backup (Design System §6). Connect Drive, see backup health + size, back up now,
- * restore, and a local export/import fallback. "+ Voice notes" is shown disabled — BragBuddy keeps no
- * audio on-device (transcribed then discarded), so there's nothing to back up there; flagged as a
- * deviation from the mockup.
+ * restore, and a local export/import fallback. BragBuddy keeps no audio to back up — a voice note is
+ * transcribed (by Groq) then discarded — so the mockup's "+ Voice notes" row is intentionally omitted
+ * (deviation from the design, flagged).
  */
 @Composable
 fun BackupScreen(
@@ -119,16 +118,6 @@ fun BackupScreen(
                     trailing = state.sizeLabel ?: "…",
                     selected = true,
                     enabled = true,
-                    palette = palette,
-                )
-                Spacer(Modifier.height(Spacing.s2))
-                OptionRow(
-                    icon = Icons.Outlined.Mic,
-                    title = "+ Voice notes",
-                    subtitle = "Not stored on this device — audio is transcribed then discarded.",
-                    trailing = "n/a",
-                    selected = false,
-                    enabled = false,
                     palette = palette,
                 )
             }

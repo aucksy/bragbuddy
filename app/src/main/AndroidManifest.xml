@@ -3,9 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!--
-      Microphone: the daily capture is voice-first. On-device speech-to-text keeps the audio on
-      the phone; only the resulting transcript text is ever sent to the AI layer.
-      (Wired in Phase 1 — declared here so the capture surface has it from the start.)
+      Microphone: the daily capture is voice-first. Recorded audio is sent to Groq's cloud Whisper for
+      transcription and is NOT retained afterwards — only the resulting transcript is kept. (An offline
+      clip may wait briefly in private storage, then is deleted once transcribed — the Phase 7 queue.)
+      On-device STT was removed in v0.9.0 (too inaccurate). Declared since Phase 1.
     -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 

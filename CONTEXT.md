@@ -205,22 +205,29 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
     (battery-only counts just on aggressive OEMs) with per-risk-signature dismissal. Calm offline copy
     in Inbox/Summary/capture. Pre-tag: 5-dimension adversarially-verified review (15 findings incl. 2
     HIGH data-loss races — all fixed) + a fix-diff re-review (4 edge defects fixed).
-- **Next: Phase C** — **Phase A (image scan) v0.16.0**, **Phase B ("+" radial capture) v0.17.0**, **Phase B2a
-  (framework editing) v0.18.0**, and **Phase B2b (project rename-remap + categorizer prompt change + Home
-  inline-edit Save) v0.19.0** all shipped & verified green. **B2 was RESHAPED mid-phase (creator, 2026-07-07):
-  NO AI reshapes the framework** — the user builds it by hand; `refineFramework` stays unused. "3 inputs" =
-  **Type + Scan** on a detail box (the per-field **mic was removed**); **Scan** = OCR a job-description/review
-  doc into the field (`AiProvider.readDocumentText`). Two-level model: a **category** detail feeds the
-  **summary** ONLY, a **project** detail feeds the **daily categorizer**; **per-item Save** with
-  confirm-before-save; **category & project rename → prompt-first** deterministic relabel. **v0.18.0 shipped:**
-  Type+Scan editing, mic removed, per-item Save, Reset framework (keeps folders + records), category
-  rename-remap. **v0.19.0 shipped:** project rename-remap (3-option carry / reassign-existing / new — category-
-  scoped, deterministic, under the mutex, from BOTH the Framework editor & Settings), the **daily-categorizer
-  prompt change** (category NAMES + project details only; category detail blurbs → summary-only via
-  `FrameworkPrompt.categorizerBlock`; behaviours still tagged), and **Home inline entry-edit with a Save
-  button** (in the detail sheet). **Then Phase C** (onboarding + privacy/legal, reuses B2's input; blocked on
-  the pending privacy attachment). One phase per chat (full **▶ NEXT ROADMAP** at the top of `PROGRESS.md`).
-  **iOS is DEFERRED** (creator's call — Android changes first; the
+- **Next: iOS (deferred)** — the **Android v2 batch is COMPLETE**: **Phase A (image scan) v0.16.0**, **Phase B
+  ("+" radial capture) v0.17.0**, **Phase B2a (framework editing) v0.18.0**, **Phase B2b (project rename-remap
+  + categorizer prompt change + Home inline-edit Save) v0.19.0**, and **Phase C (onboarding + privacy/legal +
+  audio-storage removal) v0.20.0** all shipped & verified green. **B2 was RESHAPED mid-phase (creator,
+  2026-07-07): NO AI reshapes the framework** — the user builds it by hand; `refineFramework` stays unused.
+  "3 inputs" = **Type + Scan** on a detail box (the per-field **mic was removed**); **Scan** = OCR a
+  job-description/review doc into the field (`AiProvider.readDocumentText`). Two-level model: a **category**
+  detail feeds the **summary** ONLY, a **project** detail feeds the **daily categorizer**; **per-item Save**
+  with confirm-before-save; **category & project rename → prompt-first** deterministic relabel. **v0.20.0
+  (Phase C) shipped:** first-run **guided-but-skippable onboarding** (Welcome → Privacy hard-gate → Role →
+  Framework), gated on new device-local `SettingsStore.onboardingComplete` + version-stamped
+  `acceptedPrivacyVersion` (a stale version re-prompts privacy-only) via `RootGateViewModel`/`BragNavHost`;
+  **step 3 reuses the real B2a Type+Scan editor** (embeds `FrameworkScreen` — NOT `refineFramework`); a shared
+  `data/legal/PrivacyPolicy.kt` (VERSION=1) rendered as "Core Privacy Principles" cards
+  (`ui/legal/PrivacyContent`) in **both** onboarding & a read-only Settings screen, claims **rewritten TRUE**
+  for BragBuddy (Groq = #1 disclosure; encryption **phrased honestly**, no SQLCipher; the emphasised
+  never-enter-company-info closing) + hosted-ready `docs/privacy.md`; **audio-storage remnants removed**
+  ("+ Voice notes" backup row + inaccurate manifest comment; the offline-queue temp-clip path LEFT intact).
+  Decisions locked via AskUserQuestion 2026-07-08 (all recommended). Pre-tag: compile=WILL COMPILE, logic
+  review 1 HIGH (finish write cancelled by nav pop → re-onboard loop) + 1 MED (finish bar tappable through the
+  editor sheet) + 1 LOW all fixed, fix-diff re-review=SHIP. **Room stays v4** (flags are DataStore; not
+  backed up — terms acceptance is per-install). One phase per chat (full **▶ NEXT ROADMAP** at the top of
+  `PROGRESS.md`). **iOS is DEFERRED** (creator's call — Android changes first; the
   stack/CI/signing research is parked in `PROGRESS.md`). Android Build-Brief Phases 0–7 are complete;
   everything under "Out of scope" stays parked. (`USE_EXACT_ALARM`/`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` are Play-restricted —
   pre-Play items; BragBuddy ships as a direct signed APK.)

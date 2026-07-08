@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +65,7 @@ import com.bragbuddy.app.ui.theme.pillarColor
 @Composable
 fun FrameworkScreen(
     contentBottomPadding: androidx.compose.ui.unit.Dp,
+    reportEditing: (Boolean) -> Unit = {},
     viewModel: FrameworkViewModel = hiltViewModel(),
 ) {
     val palette = BragBuddyTheme.palette
@@ -76,6 +78,10 @@ fun FrameworkScreen(
     val pendingRemap by viewModel.pendingCategoryRemap.collectAsStateWithLifecycle()
     val pendingProjectRemap by viewModel.pendingProjectRemap.collectAsStateWithLifecycle()
     val expanded = remember { mutableStateListOf<String>() } // expanded category ids; default = none
+
+    // Report when a full-screen editor sheet is open (used by onboarding to hide its finish bar so it
+    // can't be tapped through the sheet). No-op for the Framework tab (default arg).
+    LaunchedEffect(editing, showAdd) { reportEditing(editing != null || showAdd) }
 
     val hueOf: (Pillar) -> PillarColor = { p -> pillarColor(framework.pillars.indexOfFirst { it.id == p.id }) }
     val subsOf: (Pillar) -> List<ProjectEntity> = { p -> folders.filter { it.goalArea.equals(p.name, ignoreCase = true) } }

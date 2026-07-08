@@ -8,6 +8,13 @@ object Routes {
     const val SETTINGS = "settings"
     const val BACKUP = "backup"
 
+    /** The Phase C first-run wizard (privacy hard gate → role → framework). Start destination when
+     *  onboarding is incomplete, or when the accepted privacy version is stale. */
+    const val ONBOARDING = "onboarding"
+
+    /** The Phase C Privacy & terms screen, reached read-only from Settings. */
+    const val PRIVACY = "privacy"
+
     /** The Phase 7 "Reliable reminders" guided screen (OEM battery/alarm wizard). */
     const val RELIABILITY = "reliability"
 

@@ -74,6 +74,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onOpenBackup: () -> Unit = {},
     onOpenReliability: () -> Unit = {},
+    onOpenPrivacy: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val palette = BragBuddyTheme.palette
@@ -358,6 +359,26 @@ fun SettingsScreen(
                         Text("Google Drive backup", style = MaterialTheme.typography.titleMedium, color = palette.text1)
                         Text(
                             "Keep your record safe and restore it on a new phone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.text3,
+                        )
+                    }
+                    Icon(Icons.Outlined.ChevronRight, null, tint = palette.text3, modifier = Modifier.size(20.dp))
+                }
+            }
+
+            Spacer(Modifier.height(Spacing.s4))
+
+            // Privacy & terms — the Phase C legal screen (read-only; accepted once in onboarding).
+            Card(palette) {
+                Row(
+                    Modifier.fillMaxWidth().clickable(onClick = onOpenPrivacy),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Privacy & terms", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                        Text(
+                            "How BragBuddy handles your data — local-first, and what's sent to Groq.",
                             style = MaterialTheme.typography.bodySmall,
                             color = palette.text3,
                         )

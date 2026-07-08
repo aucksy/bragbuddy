@@ -67,6 +67,14 @@ data class AppSettings(
     /** The risk signature (see ReminderHealth.riskSignature) the at-risk Home card was dismissed
      *  for. "" = never dismissed. A DIFFERENT risk appearing later resurfaces the card. */
     val reliabilityDismissedRisks: String = "",
+    // ---- Phase C · onboarding + privacy ----
+    /** Set true once the first-run onboarding wizard has been finished (or skipped through). Gates the
+     *  [BragNavHost] start destination. Device-local; deliberately NOT backed up/restored — accepting
+     *  the privacy terms is treated as per-install. */
+    val onboardingComplete: Boolean = false,
+    /** The privacy/terms version the user has accepted (0 = never). Re-prompted only when the shipped
+     *  [com.bragbuddy.app.data.legal.PrivacyPolicy.VERSION] is bumped for a material change. Device-local. */
+    val acceptedPrivacyVersion: Int = 0,
 ) {
     /** Voice transcription is cloud Whisper (Groq) — the only engine. It runs when a key is set;
      *  without a key, voice prompts the user to add one (on-device STT was removed — too inaccurate). */
@@ -103,6 +111,8 @@ class SettingsStore @Inject constructor(
             previewBannerDismissed = p[KEY_PREVIEW_DISMISSED] ?: false,
             oemAutostartDone = p[KEY_OEM_AUTOSTART_DONE] ?: false,
             reliabilityDismissedRisks = p[KEY_RELIABILITY_DISMISSED_RISKS] ?: "",
+            onboardingComplete = p[KEY_ONBOARDING_COMPLETE] ?: false,
+            acceptedPrivacyVersion = p[KEY_ACCEPTED_PRIVACY_VERSION] ?: 0,
         )
     }
 
@@ -162,6 +172,18 @@ class SettingsStore @Inject constructor(
     suspend fun setReliabilityDismissedRisks(signature: String) =
         store.edit { it[KEY_RELIABILITY_DISMISSED_RISKS] = signature }
 
+    suspend fun setAcceptedPrivacyVersion(version: Int) =
+        store.edit { it[KEY_ACCEPTED_PRIVACY_VERSION] = version }
+
+    /** Finish onboarding in ONE atomic write: mark it complete AND stamp the accepted privacy version
+     *  together, so a caller can await this single edit before navigating away (the nav pop cancels the
+     *  caller's scope — two sequential writes would risk dropping the second). */
+    suspend fun completeOnboarding(privacyVersion: Int) =
+        store.edit {
+            it[KEY_ONBOARDING_COMPLETE] = true
+            it[KEY_ACCEPTED_PRIVACY_VERSION] = privacyVersion
+        }
+
     private companion object {
         val KEY_REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
         val KEY_REMINDER_HOUR = intPreferencesKey("reminder_hour")
@@ -180,5 +202,7 @@ class SettingsStore @Inject constructor(
         val KEY_PREVIEW_DISMISSED = booleanPreferencesKey("preview_banner_dismissed")
         val KEY_OEM_AUTOSTART_DONE = booleanPreferencesKey("oem_autostart_done")
         val KEY_RELIABILITY_DISMISSED_RISKS = stringPreferencesKey("reliability_dismissed_risks")
+        val KEY_ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
+        val KEY_ACCEPTED_PRIVACY_VERSION = intPreferencesKey("accepted_privacy_version")
     }
 }
