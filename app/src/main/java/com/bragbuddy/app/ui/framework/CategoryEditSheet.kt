@@ -394,7 +394,9 @@ fun CategoryEditSheet(
 
 private fun doSaveProject(viewModel: FrameworkViewModel, row: ProjRowState, category: String, context: android.content.Context) {
     val creating = row.id == null
-    viewModel.saveProject(row.id, row.name, row.summary, category) { newId ->
+    // The last-saved name is the "old" name — a change to it is a rename (offers the 3-option remap).
+    val previousName = row.baseName
+    viewModel.saveProject(row.id, row.name, row.summary, category, previousName = previousName) { newId ->
         // A create that hit the (name, goalArea) unique index returns a non-positive id — nothing was
         // saved, so keep the row dirty and say so rather than falsely showing it as saved.
         if (creating && newId <= 0L) {

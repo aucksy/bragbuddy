@@ -12,11 +12,14 @@ import com.bragbuddy.app.data.prefs.DefaultCaptureMethod
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.project.ProjectRepository
 import com.bragbuddy.app.reminder.ReminderScheduler
+import com.bragbuddy.app.ui.common.ProjectRemap
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -93,10 +96,55 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun updateProject(id: Long, name: String, goalArea: String) = viewModelScope.launch {
-        projectRepository.update(id, name, goalArea, description = null)
+        val existing = projectRepository.getById(id)
+        // Preserve the folder's existing detail — the Settings dialog doesn't edit it, and passing null
+        // silently wiped it before. Only the name / goal area change here.
+        projectRepository.update(id, name, goalArea, description = existing?.description)
+        // A rename of an existing folder with filed records → offer the 3-option remap (Phase B2b).
+        // The Settings dialog can change the folder's goal area too, so match on the OLD area
+        // (existing.goalArea) and carry to the NEW area (goalArea).
+        val oldName = existing?.name
+        val oldArea = existing?.goalArea.orEmpty()
+        val rn = name.trim()
+        if (oldName != null && rn.isNotBlank() && !oldName.equals(rn, ignoreCase = true)) {
+            val count = runCatching { entryRepository.countProjectReferences(oldName, oldArea) }.getOrDefault(0)
+            if (count > 0) _pendingProjectRemap.value = ProjectRemap(oldName, rn, oldArea, goalArea.trim(), count)
+        }
     }
 
     fun deleteProject(id: Long) = viewModelScope.launch { projectRepository.delete(id) }
+
+    // ---------------- Project rename-remap (deterministic, no AI · 3-option) ----------------
+
+    private val _pendingProjectRemap = MutableStateFlow<ProjectRemap?>(null)
+    val pendingProjectRemap: StateFlow<ProjectRemap?> = _pendingProjectRemap.asStateFlow()
+
+    /** (a) Carry — move records to the renamed folder's new name (and its new goal area, so they follow
+     *  the folder even if its category changed in the same edit). */
+    fun applyProjectCarry() {
+        val r = _pendingProjectRemap.value ?: return
+        entryRepository.remapProjectEntries(r.oldName, r.oldArea, r.newName, r.newArea)
+        _pendingProjectRemap.value = null
+    }
+
+    /** (b) Reassign — move records to an existing project; its goal area follows. */
+    fun applyProjectReassign(target: ProjectEntity) {
+        val r = _pendingProjectRemap.value ?: return
+        entryRepository.remapProjectEntries(r.oldName, r.oldArea, target.name, target.goalArea)
+        _pendingProjectRemap.value = null
+    }
+
+    /** (c) New project — create one under the folder's goal area, then move records into it (the create
+     *  runs durably in the processor, so it can't be orphaned by navigating away). */
+    fun applyProjectCreateNew(newProjectName: String) {
+        val r = _pendingProjectRemap.value ?: return
+        val nm = newProjectName.trim().ifBlank { return }
+        entryRepository.remapProjectEntries(r.oldName, r.oldArea, nm, r.newArea, createTargetFolder = true)
+        _pendingProjectRemap.value = null
+    }
+
+    /** The user left records as-is — they surface under "Uncategorized" until re-homed. */
+    fun dismissProjectRemap() { _pendingProjectRemap.value = null }
 
     /** Reset the appraisal framework to the shipped default (Phase B2). Projects and filed records are
      *  KEPT — records under changed categories simply surface under "Uncategorized" until re-homed. */

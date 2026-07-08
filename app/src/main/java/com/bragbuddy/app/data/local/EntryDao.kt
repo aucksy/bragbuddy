@@ -51,6 +51,32 @@ interface EntryDao {
     @Query("UPDATE entries SET goalCategory = :newName WHERE LOWER(goalCategory) = LOWER(:old)")
     suspend fun updateGoalCategory(old: String, newName: String)
 
+    /** How many filed records are tagged to a project [name] **under goal area [area]** — decides
+     *  whether to offer the project rename-remap prompt (Phase B2b). Scoped by goal area because a
+     *  folder is unique by (name, goalArea): the same project name can live under two goal areas, and
+     *  only the records of the renamed one should be counted. Case-insensitive. */
+    @Query("SELECT COUNT(*) FROM entries WHERE LOWER(project) = LOWER(:name) AND LOWER(goalCategory) = LOWER(:area)")
+    suspend fun countProjectReferences(name: String, area: String): Int
+
+    /** Re-tag every record of the renamed project ([old] under goal area [oldArea]) to [newName] under
+     *  [newArea] (Phase B2b · rename-remap). Scoped by the OLD goal area so a same-named folder under a
+     *  different goal area is never touched; sets the goal-area label to [newArea] so records follow the
+     *  folder even when its category changed (carry) or when reassigned to another goal area. NB: the
+     *  params are `newName`/`newArea`, NOT `new` — Room generates Java and `new` is a reserved word. */
+    @Query(
+        "UPDATE entries SET project = :newName, goalCategory = :newArea " +
+            "WHERE LOWER(project) = LOWER(:old) AND LOWER(goalCategory) = LOWER(:oldArea)",
+    )
+    suspend fun remapProjectScoped(old: String, oldArea: String, newName: String, newArea: String)
+
+    /** Follow the rename in the deterministic anchor too, scoped to the same (old name, old goal area)
+     *  so a later edit re-files back into the new folder (Phase B2b). Case-insensitive. */
+    @Query(
+        "UPDATE entries SET anchorProject = :newName " +
+            "WHERE LOWER(anchorProject) = LOWER(:old) AND LOWER(goalCategory) = LOWER(:oldArea)",
+    )
+    suspend fun remapAnchorScoped(old: String, oldArea: String, newName: String)
+
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteById(id: Long)
 

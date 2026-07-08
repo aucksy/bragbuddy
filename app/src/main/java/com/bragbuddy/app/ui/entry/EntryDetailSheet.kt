@@ -17,13 +17,17 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,8 +39,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.ui.home.OUTSIDE_PROJECT_LABEL
@@ -47,20 +54,23 @@ import com.bragbuddy.app.ui.theme.Spacing
 
 /**
  * Tap an entry → this detail sheet (Phase 4). Shows the cleaned bullet AND the raw transcript it came
- * from, plus its placement, and gathers every per-entry action in one place: **Edit**, **Move**
- * (reassign to another folder — no AI re-call), **★ Standout** toggle, **Pin** toggle (for the Phase 5
- * summary), and **Delete**. A custom scrim + bottom sheet (matching the capture sheet), not a Material
+ * from, plus its placement, and gathers every per-entry action in one place: **Edit** (inline, with its
+ * own Save — Phase B2b, matching the framework editor's per-item Save), **Move** (reassign to another
+ * folder — no AI re-call), **★ Standout** toggle, **Pin** toggle (for the Phase 5 summary), and
+ * **Delete**. A custom scrim + bottom sheet (matching the capture sheet), not a Material
  * ModalBottomSheet — swipe-dismiss is never vetoed. Not in the design files (built from existing
  * tokens); flagged.
  *
  * [entry] is a snapshot the host updates optimistically on toggle, so ★/Pin flip instantly.
+ * [onSaveEdit] receives the edited text; the host re-files it (no AI-less move — this re-runs the
+ * categorizer) and dismisses the sheet.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EntryDetailSheet(
     entry: EntryEntity,
     folders: List<ProjectEntity>,
-    onEdit: () -> Unit,
+    onSaveEdit: (String) -> Unit,
     onMoveToProject: (String) -> Unit,
     onMoveOutside: () -> Unit,
     onToggleExtra: (Boolean) -> Unit,
@@ -71,6 +81,12 @@ fun EntryDetailSheet(
     val palette = BragBuddyTheme.palette
     val noRipple = remember { MutableInteractionSource() }
     var showMove by remember { mutableStateOf(false) }
+    // Inline edit state — keyed on the entry id so an optimistic ★/Pin recomposition of the SAME entry
+    // doesn't reset a mid-edit, but opening a different entry starts fresh.
+    var editing by remember(entry.id) { mutableStateOf(false) }
+    var editText by remember(entry.id) {
+        mutableStateOf(entry.bullet?.takeIf { it.isNotBlank() } ?: entry.rawTranscript)
+    }
 
     val cleaned = entry.bullet?.takeIf { it.isNotBlank() }
     val date = DateUtils.getRelativeTimeSpanString(
@@ -93,6 +109,7 @@ fun EntryDetailSheet(
                 .clip(RoundedCornerShape(topStart = Radii.xl, topEnd = Radii.xl))
                 .background(palette.surface)
                 .clickable(interactionSource = noRipple, indication = null, onClick = {})
+                .imePadding()
                 .padding(horizontal = 18.dp)
                 .padding(top = 12.dp),
         ) {
@@ -103,12 +120,36 @@ fun EntryDetailSheet(
             Spacer(Modifier.height(16.dp))
 
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                // Cleaned bullet (the headline of the entry).
-                Text(
-                    cleaned ?: "Still filing this one…",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (cleaned != null) palette.text1 else palette.text3,
-                )
+                // Cleaned bullet (the headline of the entry) — editable inline (Phase B2b).
+                if (editing) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(Radii.md))
+                            .border(1.5.dp, palette.primary.copy(alpha = 0.5f), RoundedCornerShape(Radii.md))
+                            .background(palette.surface2)
+                            .padding(12.dp),
+                    ) {
+                        if (editText.isEmpty()) {
+                            Text("Type the entry…", style = MaterialTheme.typography.titleMedium, color = palette.text3)
+                        }
+                        BasicTextField(
+                            value = editText,
+                            onValueChange = { editText = it },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
+                            textStyle = LocalTextStyle.current.merge(
+                                TextStyle(color = palette.text1, fontSize = 16.sp, lineHeight = 22.sp),
+                            ),
+                            cursorBrush = SolidColor(palette.primary),
+                        )
+                    }
+                } else {
+                    Text(
+                        cleaned ?: "Still filing this one…",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (cleaned != null) palette.text1 else palette.text3,
+                    )
+                }
                 Spacer(Modifier.height(Spacing.s3))
 
                 // Placement + meta chips.
@@ -141,8 +182,8 @@ fun EntryDetailSheet(
                     Text(entry.rawTranscript, style = MaterialTheme.typography.bodyMedium, color = palette.text2)
                 }
 
-                // Move picker (revealed on demand).
-                if (showMove) {
+                // Move picker (revealed on demand; hidden while editing the bullet).
+                if (showMove && !editing) {
                     Spacer(Modifier.height(Spacing.s4))
                     Text("MOVE TO", style = MaterialTheme.typography.labelSmall, color = palette.text3, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Spacing.s2))
@@ -156,14 +197,25 @@ fun EntryDetailSheet(
                     }
                 }
 
-                // Actions.
+                // Actions — while editing the bullet, the pills give way to Save / Cancel (per-item Save).
                 Spacer(Modifier.height(Spacing.s4))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ActionPill("Edit", active = false, palette = palette) { onEdit() }
-                    ActionPill(if (showMove) "Cancel move" else "Move", active = showMove, palette = palette) { showMove = !showMove }
-                    ActionPill(if (entry.isExtra) "★ Standout" else "☆ Standout", active = entry.isExtra, palette = palette) { onToggleExtra(!entry.isExtra) }
-                    ActionPill(if (entry.isPinned) "Pinned" else "Pin", active = entry.isPinned, palette = palette) { onTogglePin(!entry.isPinned) }
-                    DangerPill("Delete", palette) { onDelete() }
+                if (editing) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SavePill(enabled = editText.isNotBlank(), palette = palette) { onSaveEdit(editText.trim()) }
+                        Spacer(Modifier.width(8.dp))
+                        ActionPill("Cancel", active = false, palette = palette) {
+                            editText = cleaned ?: entry.rawTranscript
+                            editing = false
+                        }
+                    }
+                } else {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ActionPill("Edit", active = false, palette = palette) { showMove = false; editing = true }
+                        ActionPill(if (showMove) "Cancel move" else "Move", active = showMove, palette = palette) { showMove = !showMove }
+                        ActionPill(if (entry.isExtra) "★ Standout" else "☆ Standout", active = entry.isExtra, palette = palette) { onToggleExtra(!entry.isExtra) }
+                        ActionPill(if (entry.isPinned) "Pinned" else "Pin", active = entry.isPinned, palette = palette) { onTogglePin(!entry.isPinned) }
+                        DangerPill("Delete", palette) { onDelete() }
+                    }
                 }
             }
 
@@ -184,6 +236,21 @@ private fun ActionPill(text: String, active: Boolean, palette: BragPalette, onCl
             .clip(RoundedCornerShape(999.dp))
             .background(if (active) palette.primary else palette.surface2)
             .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    )
+}
+
+@Composable
+private fun SavePill(enabled: Boolean, palette: BragPalette, onClick: () -> Unit) {
+    Text(
+        text = "Save & re-file",
+        style = MaterialTheme.typography.labelLarge,
+        color = Color.White,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (enabled) palette.primary else palette.primary.copy(alpha = 0.4f))
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
     )
 }

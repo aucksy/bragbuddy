@@ -16,12 +16,11 @@ current code — that is the context, not chat history.
 
 > This is the live "what's next." Vertical-slice phases, **one per chat**, same rhythm as Phases 0–7.
 > iOS is **deferred** (research parked at the end of this section). Start each phase in a fresh chat
-> pointed at `CONTEXT.md`. **Exact next step:** build **Phase B2b — v0.19.0** (project rename-remap 3-option
-> flow + the daily-categorizer prompt change + Home daily-record Save buttons; see the subsection below),
-> then **Phase C** (onboarding + Privacy/legal, blocked on the pending privacy attachment, reuses B2's
-> framework input). Phase A · image scan **v0.16.0**; Phase B · "+" radial capture **v0.17.0**; **Phase B2a ·
-> framework editing (Type+Scan, mic removed, per-item Save, Reset, category rename-remap) shipped v0.18.0** —
-> all verified green.
+> pointed at `CONTEXT.md`. **Exact next step:** build **Phase C** (onboarding wizard + Privacy/legal —
+> blocked on the pending privacy attachment; reuses B2's framework input). Phase A · image scan **v0.16.0**;
+> Phase B · "+" radial capture **v0.17.0**; **Phase B2a · framework editing (Type+Scan, mic removed,
+> per-item Save, Reset, category rename-remap) shipped v0.18.0**; **Phase B2b · project rename-remap
+> (3-option) + daily-categorizer prompt change + Home inline-edit Save shipped v0.19.0** — all verified green.
 
 **⚠️ SCOPE RESHAPE (creator, 2026-07-07, mid-B2):** the written B2 scope ("3-input add/update via the
 `refineFramework` AI seam") was **corrected by the creator** — they do **NOT** want AI to interpret/rewrite
@@ -34,10 +33,11 @@ the framework. The framework is exactly what the user builds by hand; the AI nev
   detail feeds the **daily categorizer** (future filing). Editing either shows a **confirm-before-save** that
   names the effect. **Per-item Save** (each item its own Save; replaces the batched top-bar Save).
 - **Category rename → prompt-me-first** deterministic relabel of filed records (creator's pick over auto/AI).
-- **Daily categorizer will use category NAMES + project details only** (drop category detail blurbs; behaviours
-  still tagged) — **deferred to v0.19.0** (touches the core pipeline).
+- **Daily categorizer uses category NAMES + project details only** (category detail blurbs dropped; behaviours
+  still tagged) — **shipped v0.19.0** (pure `FrameworkPrompt.categorizerBlock`; the SUMMARY still gets the
+  blurbs via `Framework.toPromptBlock()`, so editing a category detail affects only future summaries).
 - **SPLIT into two releases** (creator's call): **v0.18.0** = framework/project editing (done); **v0.19.0** =
-  project rename-remap (3-option) + the categorizer prompt change + Home daily-record Save buttons.
+  project rename-remap (3-option) + the categorizer prompt change + Home inline-edit Save — **✅ DONE**.
 
 **Why this batch:** the creator wants five Android changes before any iOS work. Locked via AskUserQuestion
 (2026-07-07, all "recommended"):
@@ -95,7 +95,7 @@ taking a new **`EXTRA_START_MODE`**.
 - **Testable:** each default routes correctly from BOTH the FAB and the notification; "Ask" opens the
   radial; animation is smooth; every old mic-launch surface still works (regression).
 
-### Phase B2 — Framework editing: 3-input add/update + Reset + rename-remap ✅ NEXT (agreed 2026-07-07)
+### Phase B2 — Framework editing: 3-input add/update + Reset + rename-remap ✅ SHIPPED (v0.18.0 + v0.19.0)
 > Requested by the creator right after Phase B (understanding-questions about how the AI uses the framework
 > led here). Build it in a **fresh chat BEFORE Phase C** — it's independently valuable and, unlike Phase C,
 > **NOT blocked** on the pending privacy attachment; **Phase C's onboarding step 3 then reuses this exact
@@ -198,6 +198,78 @@ was made.** When it resumes, this is the pre-done research:
 - **Capture parity:** no iOS overlay (Apple forbids) — the notification opens the app straight into a
   minimal auto-recording screen + App Intents (Siri/Shortcuts/Action Button/Lock-Screen). Blessed in the
   PRD/Brief.
+
+---
+
+## Status: v0.19.0 — Android v2 · Phase B2b · Project rename-remap + categorizer prompt change + Home inline-edit Save ✅ DONE (compile + adversarial logic review clean; awaiting CI)
+
+**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.19.0/BragBuddy-v0.19.0.apk` (signed;
+`.aab` alongside). The deferred half of the reshaped Phase B2 — three pieces (all agreed 2026-07-07). **No
+AI anywhere here** (rename-remap is deterministic; the prompt change only drops text). **Room stays v4** (no
+schema change — the remap edits existing columns; no new pref). Decisions locked via AskUserQuestion: entry
+edit = **inline in the detail sheet**; remap prompt = **custom-scrim bottom sheet**; emptied folder in
+reassign/new = **kept**.
+
+### v0.19.0 — what was built (`versionCode 20`)
+1. **Daily-categorizer prompt change (core pipeline).** The categorizer's `{{APPRAISAL_FRAMEWORK}}` block now
+   lists category **NAMES + each category's sub-folder names but NOT the detail blurbs**. Extracted the pure,
+   unit-tested `data/entry/FrameworkPrompt.categorizerBlock(fw, projects)` (replacing `EntryProcessor`'s
+   private `frameworkBlockWithFolders`). The **summary is untouched** — it still builds its framework block
+   from `Framework.toPromptBlock()` (`SummaryViewModel:139`, blurbs kept), so a **category detail now feeds the
+   summary only**: editing it changes future summaries without disturbing daily filing. Behaviours keep their
+   names (still tagged); full project details still ride in `{{PROJECTS}}`. `FrameworkPromptTest` locks the
+   split (names present, blurbs absent). `AiPromptsTest` unaffected (it passes a framework string in).
+2. **Project rename-remap (3-option, deterministic, no AI)** — the project-level analogue of v0.18.0's category
+   rename-remap. When a project (folder) with filed records is **renamed**, a shared custom-scrim
+   `ui/common/ProjectRemapSheet` offers: **(a) Carry** to the new name · **(b) Reassign** to an existing
+   goal-area project · **(c) New project** created inline. `EntryProcessor.remapProjectEverywhere(old, oldArea,
+   target, targetArea, createTargetFolder)` runs under the processing **mutex**, updates `project` +
+   `goalCategory` + `anchorProject`, then `reconcileLocked()` so the rollup/summary follow. **Category-scoped**
+   (`EntryDao.remapProjectScoped`/`remapAnchorScoped`/`countProjectReferences` all filter by goal area) because
+   a folder is unique by `(name, goalArea)` — a same-named folder under another goal area is never touched.
+   Hooked at **both** rename sites: the Framework editor's project rows (`FrameworkViewModel.saveProject`, via
+   `row.baseName` as the old name) and Settings' folder dialog (`SettingsViewModel.updateProject`). Dismissing
+   leaves records under their goal area's "Outside project" bucket (never lost — verified against `HomeDoc`).
+3. **Home inline-edit Save.** Tap an entry → the detail sheet now edits the bullet **in place** with its own
+   **"Save & re-file"** button (per-item Save model, matching v0.18.0), replacing the pop-up dialog for that
+   path (`EntryDetailSheet` `onEdit` → `onSaveEdit: (String) -> Unit`; edit state keyed on `entry.id`). The row
+   ⋮-menu Edit keeps its existing dialog (already has a Save button). Hosts: Home + pillar deep view.
+4. **Incidental fix:** Settings folder-edit no longer wipes the project **description** (`updateProject` passed
+   `description = null`; now preserves `existing.description`).
+
+### Adversarial review before tagging (compile + logic; per protocol)
+- **Compile pass (agent, "you are the compiler"):** **WILL COMPILE** — clean across all 16 files. Confirmed the
+  Room Java-keyword codegen trap is avoided (DAO params `old`/`oldArea`/`newName`/`newArea`/`name`/`area` — no
+  reserved words), all imports resolve (incl. the new `ProjectRemapSheet`/`EntryDetailSheet` sets), both
+  `EntryDetailSheet` call sites match the new `onSaveEdit` with no stale `onEdit`, and every `FlowRow` carries
+  `@OptIn(ExperimentalLayoutApi::class)`. A focused second compile pass re-verified the category-scoping fix.
+- **Adversarial logic pass (agent):** **0 HIGH** (no firm-invariant break — no record lost/stranded; all
+  mutations under the mutex + reconciled). **3 MED + 3 LOW; the 3 MED + 1 LOW fixed pre-tag:**
+  - **[MED · fixed]** project match was **name-only**, so a same-named folder under another goal area got its
+    records mis-counted/mis-relabeled → **scoped every count/update by goal area**.
+  - **[MED · fixed]** Settings "rename + recategorise in one edit" then Carry left records under the OLD area →
+    **Carry now follows the folder's new area** (`newArea`).
+  - **[MED · fixed]** the reassign picker offered **behaviour/growth folders** (records would drop into
+    Uncategorized) → **filtered to goal-area folders only**.
+  - **[LOW · fixed]** `applyProjectCreateNew` created the folder on `viewModelScope` (could orphan on navigate-
+    away) → **create moved into the processor** (durable app scope, under the mutex, ordered before the remap).
+  - **[LOW · fixed]** remap sheet copy said dismissed records "wait under Uncategorized" → corrected to
+    **"Outside project"** (a project rename leaves `goalCategory` valid, so they stay in their goal area).
+  - **[LOW · accepted, pre-existing]** `reassign`-to-Outside keeps a stale `anchorProject`; non-destructive,
+    unrelated to B2b (a Phase-4 behaviour). Noted for a later cleanup.
+
+### Flags / on-device test (the creator's step)
+New UI (`ProjectRemapSheet` 3-option custom-scrim sheet, the inline edit field + Save in the detail sheet) is
+**not in the Design System** — built from tokens; the look + the 3 behaviour choices were confirmed via
+AskUserQuestion. **To verify on-device:** (1) rename a project that has records → the 3-option sheet → **Carry**
+(records follow to the new name; check Home + a regenerated summary) → **Reassign** to another project (records +
+goal area follow) → **New project** (folder created, records moved) → **Leave** (records sit under "Outside
+project"); rename from BOTH the Framework editor and Settings → Edit folder. (2) Two goal-area folders with the
+**same name** under different goal areas → rename one → only its records move (category-scoping). (3) Tap an
+entry → **Edit inline** → change the text → **Save & re-file** (re-files; the ⋮-menu Edit dialog still works).
+(4) Edit a **category detail** → it changes the next **summary** but NOT where new entries file; a **project
+detail** still steers daily filing. **Next: Phase C** (onboarding wizard + Privacy/legal — blocked on the pending
+privacy attachment). Start in a fresh chat pointed at `CONTEXT.md`.
 
 ---
 

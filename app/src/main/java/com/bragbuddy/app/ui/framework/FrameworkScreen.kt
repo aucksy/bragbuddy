@@ -46,6 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.local.ProjectEntity
+import com.bragbuddy.app.ui.common.ProjectRemapSheet
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
 import com.bragbuddy.app.ui.theme.PillarColor
@@ -73,6 +74,7 @@ fun FrameworkScreen(
     var showAdd by remember { mutableStateOf(false) }
     var removeTarget by remember { mutableStateOf<Pillar?>(null) }
     val pendingRemap by viewModel.pendingCategoryRemap.collectAsStateWithLifecycle()
+    val pendingProjectRemap by viewModel.pendingProjectRemap.collectAsStateWithLifecycle()
     val expanded = remember { mutableStateListOf<String>() } // expanded category ids; default = none
 
     val hueOf: (Pillar) -> PillarColor = { p -> pillarColor(framework.pillars.indexOfFirst { it.id == p.id }) }
@@ -166,6 +168,23 @@ fun FrameworkScreen(
                 )
             },
             containerColor = palette.surface,
+        )
+    }
+
+    // Deterministic project rename-remap offer (Phase B2b): a renamed project still has filed records.
+    pendingProjectRemap?.let { r ->
+        // Reassign targets must be GOAL-AREA folders (the placement universe) — a behaviour/growth
+        // folder isn't a valid destination (records would drop into Uncategorized).
+        val goalAreaNames = framework.goalAreas.map { it.name.trim().lowercase() }.toSet()
+        ProjectRemapSheet(
+            remap = r,
+            otherProjects = folders.filter {
+                !it.name.equals(r.newName, ignoreCase = true) && it.goalArea.trim().lowercase() in goalAreaNames
+            },
+            onCarry = { viewModel.applyProjectCarry() },
+            onReassign = { viewModel.applyProjectReassign(it) },
+            onCreateNew = { viewModel.applyProjectCreateNew(it) },
+            onDismiss = { viewModel.dismissProjectRemap() },
         )
     }
 

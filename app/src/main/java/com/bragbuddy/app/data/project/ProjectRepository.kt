@@ -53,6 +53,9 @@ class ProjectRepository @Inject constructor(
 
     suspend fun delete(id: Long) = dao.deleteById(id)
 
+    /** Read one folder by id (e.g. to recover its old name / description before a rename-remap). */
+    suspend fun getById(id: Long): ProjectEntity? = dao.getById(id)
+
     suspend fun goalAreaOf(name: String): String? = dao.getByName(name)?.goalArea
 
     /** Re-home every sub-folder when its category (pillar) is renamed, so folders don't orphan. */

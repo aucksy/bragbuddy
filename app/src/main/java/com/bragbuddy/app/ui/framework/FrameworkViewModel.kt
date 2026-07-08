@@ -15,6 +15,7 @@ import com.bragbuddy.app.data.image.ImageInput
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.project.ProjectRepository
+import com.bragbuddy.app.ui.common.ProjectRemap
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -117,9 +118,17 @@ class FrameworkViewModel @Inject constructor(
 
     /** Save one project row: create a new folder ([id] null) or update an existing one, under [category].
      *  [onSaved] receives the row's id (the new id after a create) so the sheet can switch a just-created
-     *  row to update-mode and avoid a duplicate on a second save. Renaming a folder here does NOT re-file
-     *  already-tagged records (that 3-option flow ships next). */
-    fun saveProject(id: Long?, name: String, detail: String, category: String, onSaved: (Long) -> Unit = {}) {
+     *  row to update-mode and avoid a duplicate on a second save. When an EXISTING project is **renamed**
+     *  ([previousName] differs) and it still has filed records, the deterministic 3-option remap is
+     *  OFFERED via [pendingProjectRemap] (Phase B2b · project rename-remap). */
+    fun saveProject(
+        id: Long?,
+        name: String,
+        detail: String,
+        category: String,
+        previousName: String? = null,
+        onSaved: (Long) -> Unit = {},
+    ) {
         val rn = name.trim().ifBlank { return }
         val area = category.trim()
         viewModelScope.launch {
@@ -128,6 +137,12 @@ class FrameworkViewModel @Inject constructor(
                 else { projects.update(id, rn, area, detail.trim().takeIf { it.isNotBlank() }); id }
             }.getOrDefault(id ?: 0L)
             onSaved(newId)
+            val prev = previousName?.trim()
+            // A project row's category (`area`) doesn't change here, so old area == new area == area.
+            if (id != null && !prev.isNullOrBlank() && !prev.equals(rn, ignoreCase = true)) {
+                val count = runCatching { entries.countProjectReferences(prev, area) }.getOrDefault(0)
+                if (count > 0) _pendingProjectRemap.value = ProjectRemap(prev, rn, area, area, count)
+            }
         }
     }
 
@@ -149,6 +164,38 @@ class FrameworkViewModel @Inject constructor(
 
     /** The user left records as-is — they'll surface under "Uncategorized" until re-homed. */
     fun dismissCategoryRemap() { _pendingCategoryRemap.value = null }
+
+    // ---------------- Project rename-remap (deterministic, no AI · 3-option) ----------------
+
+    private val _pendingProjectRemap = MutableStateFlow<ProjectRemap?>(null)
+    val pendingProjectRemap: StateFlow<ProjectRemap?> = _pendingProjectRemap.asStateFlow()
+
+    /** (a) Carry — move the records to the renamed folder's new name (and its new goal area, so they
+     *  follow the folder even if its category changed in the same edit). */
+    fun applyProjectCarry() {
+        val r = _pendingProjectRemap.value ?: return
+        entries.remapProjectEntries(r.oldName, r.oldArea, r.newName, r.newArea)
+        _pendingProjectRemap.value = null
+    }
+
+    /** (b) Reassign — move the records to an existing project; its goal area follows. */
+    fun applyProjectReassign(target: ProjectEntity) {
+        val r = _pendingProjectRemap.value ?: return
+        entries.remapProjectEntries(r.oldName, r.oldArea, target.name, target.goalArea)
+        _pendingProjectRemap.value = null
+    }
+
+    /** (c) New project — create one under the folder's goal area, then move the records into it (the
+     *  create runs durably in the processor, so it can't be orphaned by navigating away). */
+    fun applyProjectCreateNew(newProjectName: String) {
+        val r = _pendingProjectRemap.value ?: return
+        val nm = newProjectName.trim().ifBlank { return }
+        entries.remapProjectEntries(r.oldName, r.oldArea, nm, r.newArea, createTargetFolder = true)
+        _pendingProjectRemap.value = null
+    }
+
+    /** The user left the records as-is — they surface under "Uncategorized" until re-homed. */
+    fun dismissProjectRemap() { _pendingProjectRemap.value = null }
 
     // ---------------- Per-field document scan (category sheet) ----------------
 

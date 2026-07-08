@@ -386,7 +386,7 @@ fun PillarDetailScreen(
         EntryDetailSheet(
             entry = target,
             folders = folders,
-            onEdit = { detailEntry = null; editTarget = target },
+            onSaveEdit = { newText -> viewModel.editText(target.id, newText); detailEntry = null },
             onMoveToProject = { viewModel.reassignToProject(target, it) },
             onMoveOutside = { viewModel.reassignOutside(target) },
             onToggleExtra = { v -> viewModel.setExtra(target.id, v); detailEntry = target.copy(isExtra = v) },

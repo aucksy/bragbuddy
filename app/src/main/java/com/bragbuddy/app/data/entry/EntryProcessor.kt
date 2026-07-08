@@ -3,7 +3,6 @@ package com.bragbuddy.app.data.entry
 import com.bragbuddy.app.data.ai.AiProvider
 import com.bragbuddy.app.data.ai.CategorizeRequest
 import com.bragbuddy.app.data.ai.CategorizedEntry
-import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.local.EntryDao
@@ -320,6 +319,58 @@ class EntryProcessor @Inject constructor(
         Unit
     }
 
+    /**
+     * How many filed records are tagged to a project [name] **under goal area [area]** — Phase B2b ·
+     * project rename-remap. Read-only, so no lock is taken; it just decides whether to offer the
+     * 3-option prompt (and shows the count). Scoped by goal area because a folder is unique by
+     * (name, goalArea) — a same-named folder under another goal area must not be counted.
+     */
+    suspend fun countProjectReferences(name: String, area: String): Int {
+        val n = name.trim()
+        if (n.isEmpty()) return 0
+        return entryDao.countProjectReferences(n, area.trim())
+    }
+
+    /**
+     * Deterministically re-tag every record of the renamed project ([old] under [oldArea]) to [target]
+     * under [targetArea] — NO AI, instant (Phase B2b · project rename-remap 3-option flow). Scoped by
+     * the OLD goal area so a same-named folder under a different goal area is never touched. Sets the
+     * goal-area label to [targetArea] so records follow the folder whether the goal area stays the same
+     * (carry — [targetArea] == [oldArea]), the folder was recategorised in the same edit, or the records
+     * were reassigned to a project in another goal area. Also follows the rename in `anchorProject` so a
+     * later edit re-files into the new folder. When [createTargetFolder] is true the destination folder
+     * is created first (option **c** · a brand-new project) — done here, under the [mutex] on the durable
+     * app scope, so it can't be orphaned by the caller navigating away. All under the [mutex] so it can't
+     * race a categorization, then the rollup is rebuilt so the summary follows.
+     */
+    suspend fun remapProjectEverywhere(
+        old: String,
+        oldArea: String,
+        target: String,
+        targetArea: String,
+        createTargetFolder: Boolean = false,
+    ) = mutex.withLock {
+        val o = old.trim()
+        val oa = oldArea.trim()
+        val t = target.trim()
+        val ta = targetArea.trim()
+        if (o.isEmpty() || t.isEmpty()) return@withLock
+        runCatching {
+            // Create the destination folder first (option c) — IGNORE means an existing same-name folder
+            // under this goal area is reused, and the records simply join it.
+            if (createTargetFolder && ta.isNotEmpty()) {
+                projectDao.insert(ProjectEntity(name = t, goalArea = ta, createdAt = System.currentTimeMillis()))
+            }
+            // Skip the row rewrite only when nothing actually changes (same name AND same goal area).
+            if (!(o.equals(t, ignoreCase = true) && oa.equals(ta, ignoreCase = true))) {
+                entryDao.remapProjectScoped(o, oa, t, ta)
+                entryDao.remapAnchorScoped(o, oa, t)
+            }
+            reconcileLocked()
+        }
+        Unit
+    }
+
     /** Drain every entry still awaiting processing (called on launch after an interrupted run). */
     suspend fun processPending() {
         entryDao.listByStatus(EntryStatus.RAW).forEach { process(it.id) }
@@ -347,9 +398,10 @@ class EntryProcessor @Inject constructor(
                 p.description?.takeIf { it.isNotBlank() }?.let { append(" — ").append(it) }
             }
         }
-        // The framework block is enriched with EVERY category's sub-folders (their names give the AI
-        // context to sharpen placement + behaviour judgement — Feature: "folder names feed the AI").
-        val framework = frameworkBlockWithFolders(fw, activeProjects)
+        // The categorizer framework block = category NAMES + each category's sub-folder names, but NOT
+        // the category detail blurbs (Phase B2b: a category detail feeds the SUMMARY only, so editing it
+        // no longer affects daily filing). Full project details ride below in {{PROJECTS}}.
+        val framework = FrameworkPrompt.categorizerBlock(fw, activeProjects)
         // Folder-tap anchor: fixes the project for this whole capture (and its split siblings).
         val anchor = entry.anchorProject?.takeIf { it.isNotBlank() }
         val anchorGoalArea = anchor?.let { name -> activeProjects.firstOrNull { it.name.equals(name, ignoreCase = true) }?.goalArea }
@@ -366,29 +418,6 @@ class EntryProcessor @Inject constructor(
             anchor,
             anchorGoalArea,
         )
-    }
-
-    /** The framework prompt block with each category's sub-folders appended as context. */
-    private fun frameworkBlockWithFolders(fw: Framework, projects: List<ProjectEntity>): String {
-        val byCategory = projects.groupBy { it.goalArea.trim().lowercase() }
-        fun subsOf(name: String): String =
-            byCategory[name.trim().lowercase()].orEmpty().joinToString(", ") { it.name }
-        fun StringBuilder.line(p: com.bragbuddy.app.data.framework.Pillar, label: String) {
-            append("- ").append(p.name).append(": ").append(p.blurb)
-            val s = subsOf(p.name)
-            if (s.isNotBlank()) append("  · ").append(label).append(": ").append(s)
-            appendLine()
-        }
-        return buildString {
-            appendLine("GOAL AREAS (results / projects map here):")
-            fw.goalAreas.forEach { line(it, "projects") }
-            appendLine("BEHAVIOURS / COMPETENCIES (tag work that demonstrates these):")
-            fw.behaviours.forEach { line(it, "focus areas") }
-            if (fw.development.isNotEmpty()) {
-                appendLine("DEVELOPMENT (optional):")
-                fw.development.forEach { line(it, "focus areas") }
-            }
-        }.trim()
     }
 
     /** Capture path: one transcript may describe several things — split into the row + sibling rows. */

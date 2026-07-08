@@ -62,6 +62,7 @@ import com.bragbuddy.app.BuildConfig
 import com.bragbuddy.app.R
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.DefaultCaptureMethod
+import com.bragbuddy.app.ui.common.ProjectRemapSheet
 import com.bragbuddy.app.ui.role.RoleInput
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
@@ -80,6 +81,7 @@ fun SettingsScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val goalAreas by viewModel.goalAreas.collectAsStateWithLifecycle()
+    val pendingProjectRemap by viewModel.pendingProjectRemap.collectAsStateWithLifecycle()
 
     var editFolder by remember { mutableStateOf<ProjectEntity?>(null) }
     var deleteFolder by remember { mutableStateOf<ProjectEntity?>(null) }
@@ -397,6 +399,22 @@ fun SettingsScreen(
             palette = palette,
             onConfirm = { name, area -> viewModel.updateProject(p.id, name, area); editFolder = null },
             onDismiss = { editFolder = null },
+        )
+    }
+
+    // Deterministic project rename-remap offer (Phase B2b): a renamed folder still has filed records.
+    pendingProjectRemap?.let { r ->
+        // Reassign targets must be GOAL-AREA folders (the placement universe) — a behaviour/growth
+        // folder isn't a valid destination (records would drop into Uncategorized).
+        ProjectRemapSheet(
+            remap = r,
+            otherProjects = folders.filter {
+                !it.name.equals(r.newName, ignoreCase = true) && goalAreas.any { g -> g.equals(it.goalArea, ignoreCase = true) }
+            },
+            onCarry = { viewModel.applyProjectCarry() },
+            onReassign = { viewModel.applyProjectReassign(it) },
+            onCreateNew = { viewModel.applyProjectCreateNew(it) },
+            onDismiss = { viewModel.dismissProjectRemap() },
         )
     }
 

@@ -106,6 +106,24 @@ class EntryRepository @Inject constructor(
         appScope.launch { processor.renameCategoryEverywhere(old, new) }
     }
 
+    /** How many filed records are tagged to this project name under [area] — decides whether to offer
+     *  the project rename-remap prompt (Phase B2b). Scoped by goal area (folders are unique by name+area). */
+    suspend fun countProjectReferences(name: String, area: String): Int =
+        processor.countProjectReferences(name, area)
+
+    /** Re-tag every record of a renamed project ([old] under [oldArea]) → [target] under [targetArea]
+     *  (Phase B2b · deterministic, no AI). Set [createTargetFolder] to create the destination folder
+     *  first (option c · a new project). */
+    fun remapProjectEntries(
+        old: String,
+        oldArea: String,
+        target: String,
+        targetArea: String,
+        createTargetFolder: Boolean = false,
+    ) {
+        appScope.launch { processor.remapProjectEverywhere(old, oldArea, target, targetArea, createTargetFolder) }
+    }
+
     /** Retry one failed entry on demand (from the Inbox). */
     fun retry(id: Long) {
         appScope.launch { processor.process(id) }
