@@ -1,5 +1,7 @@
 package com.bragbuddy.app.ui.onboarding
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,10 +19,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -61,7 +66,7 @@ import com.bragbuddy.app.ui.theme.Spacing
  * When [reacceptOnly] is true the flow collapses to just the privacy card (a material privacy-version
  * bump for an already-onboarded user): accept re-stamps the version and finishes.
  */
-private const val TOTAL_STEPS = 4
+private const val TOTAL_STEPS = 5
 
 @Composable
 fun OnboardingScreen(
@@ -80,14 +85,25 @@ fun OnboardingScreen(
     }
 
     val initialRole by viewModel.jobRole.collectAsStateWithLifecycle()
+    val driveState by viewModel.driveState.collectAsStateWithLifecycle()
+    val driveSignIn = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        viewModel.onDriveSignInResult(result.data)
+    }
     var step by rememberSaveable { mutableIntStateOf(0) }
     when (step) {
         0 -> WelcomeStep(onNext = { step = 1 })
         1 -> PrivacyStep(dotIndex = 1, onAccept = { viewModel.acceptPrivacy(); step = 2 })
-        2 -> RoleStep(
+        2 -> RecoverStep(
+            drive = driveState,
+            configured = viewModel.driveConfigured,
+            onConnect = { driveSignIn.launch(viewModel.driveSignInIntent()) },
+            onRestore = { viewModel.restoreFromDriveAndFinish() }, // success → `finished` → Home
+            onSkip = { viewModel.declineRestore(); step = 3 },
+        )
+        3 -> RoleStep(
             initialRole = initialRole,
-            onContinue = { role -> viewModel.saveRole(role); step = 3 },
-            onSkip = { viewModel.skipRole(); step = 3 },
+            onContinue = { role -> viewModel.saveRole(role); step = 4 },
+            onSkip = { viewModel.skipRole(); step = 4 },
         )
         else -> FrameworkStep(onFinish = { viewModel.finish() })
     }
@@ -260,7 +276,7 @@ private fun RoleStep(initialRole: String, onContinue: (String) -> Unit, onSkip: 
             }
         }
 
-        DotProgress(index = 2)
+        DotProgress(index = 3)
         Spacer(Modifier.height(Spacing.s4))
         PrimaryPill(if (draft.isBlank()) "Continue" else "Save & continue", palette, onClick = {
             if (draft.isBlank()) onSkip() else onContinue(draft)
@@ -288,7 +304,7 @@ private fun FrameworkStep(onFinish: () -> Unit) {
             Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
                 Column(Modifier.padding(horizontal = Spacing.screen, vertical = Spacing.s3)) {
-                    DotProgress(index = 3)
+                    DotProgress(index = 4)
                     Spacer(Modifier.height(Spacing.s3))
                     PrimaryPill("Start logging", palette, onClick = onFinish)
                     Spacer(Modifier.height(Spacing.s2))
@@ -302,6 +318,110 @@ private fun FrameworkStep(onFinish: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RecoverStep(
+    drive: OnboardingViewModel.DriveStepState,
+    configured: Boolean,
+    onConnect: () -> Unit,
+    onRestore: () -> Unit,
+    onSkip: () -> Unit,
+) {
+    val palette = BragBuddyTheme.palette
+    val connected = drive.connectedEmail != null
+    val busy = drive.checking || drive.restoring
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(palette.bg)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = Spacing.screen),
+    ) {
+        Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Center) {
+            Box(
+                Modifier.size(60.dp).clip(RoundedCornerShape(999.dp)).background(palette.primarySoft),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Outlined.CloudDownload, null, tint = palette.primary, modifier = Modifier.size(30.dp)) }
+            Spacer(Modifier.height(Spacing.s4))
+            Text("Recover your record", style = MaterialTheme.typography.headlineLarge, color = palette.text1)
+            Spacer(Modifier.height(Spacing.s3))
+            Text(
+                "Reinstalling? If you backed up to Google Drive before, restore everything — your entries, projects, framework and settings — in one tap. New here? Just skip.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = palette.text2,
+            )
+            Spacer(Modifier.height(Spacing.s4))
+            when {
+                !configured -> RecoverInfoCard("Drive backup isn't set up on this build yet — you can skip this step.", palette)
+                busy -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(color = palette.primary, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(Spacing.s3))
+                    Text(
+                        if (drive.restoring) "Restoring your record…" else "Checking your Drive…",
+                        style = MaterialTheme.typography.bodyMedium, color = palette.text2,
+                    )
+                }
+                connected && drive.backupExists -> FoundBackupCard(drive.connectedEmail!!, palette)
+                connected -> RecoverInfoCard("No BragBuddy backup found for ${drive.connectedEmail}. You're all set to start fresh.", palette)
+            }
+            drive.message?.let {
+                Spacer(Modifier.height(Spacing.s3))
+                Text(it, style = MaterialTheme.typography.bodySmall, color = palette.extraInk)
+            }
+        }
+
+        DotProgress(index = 2)
+        Spacer(Modifier.height(Spacing.s4))
+        when {
+            busy -> Unit // no tappable action while a sign-in / restore is in flight
+            !configured -> PrimaryPill("Continue", palette, onClick = onSkip)
+            !connected -> {
+                PrimaryPill("Connect Google Drive", palette, onClick = onConnect)
+                Spacer(Modifier.height(Spacing.s2))
+                SecondaryText("Skip for now", palette, onClick = onSkip)
+            }
+            drive.backupExists -> {
+                PrimaryPill("Restore this backup", palette, onClick = onRestore)
+                Spacer(Modifier.height(Spacing.s2))
+                SecondaryText("Not now — keep it and start fresh", palette, onClick = onSkip)
+            }
+            else -> PrimaryPill("Continue", palette, onClick = onSkip)
+        }
+        Spacer(Modifier.height(Spacing.s4))
+    }
+}
+
+@Composable
+private fun FoundBackupCard(email: String, palette: BragPalette) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(palette.positiveSoft)
+            .padding(Spacing.card),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(RoundedCornerShape(Radii.md)).background(palette.surface),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Outlined.CheckCircle, null, tint = palette.positive, modifier = Modifier.size(22.dp)) }
+        Spacer(Modifier.size(Spacing.s3))
+        Column(Modifier.weight(1f)) {
+            Text("Backup found", style = MaterialTheme.typography.titleSmall, color = palette.positive, fontWeight = FontWeight.Bold)
+            Text(email, style = MaterialTheme.typography.bodySmall, color = palette.text3)
+        }
+    }
+}
+
+@Composable
+private fun RecoverInfoCard(text: String, palette: BragPalette) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.md)).background(palette.surface2).padding(Spacing.s3),
+    ) {
+        Text(text, style = MaterialTheme.typography.bodySmall, color = palette.text2)
     }
 }
 

@@ -130,13 +130,6 @@ class DriveBackupManager @Inject constructor(
         }.getOrDefault(false)
     }
 
-    /** Restore-on-reinstall: if signed in and there's no local data yet, pull the Drive backup. */
-    suspend fun restoreIfEmpty(): Boolean = withContext(Dispatchers.IO) {
-        if (!DriveConfig.isConfigured || currentEmail() == null) return@withContext false
-        if (!backupRepository.isLocalEmpty()) return@withContext false
-        runCatching { if (backupExists()) restoreFromDrive() else false }.getOrDefault(false)
-    }
-
     // --- Drive v3 REST (raw HTTP with the access token) ---
 
     private fun accessToken(): String {

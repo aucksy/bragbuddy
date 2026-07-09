@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +32,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.IconButton
@@ -66,6 +68,25 @@ fun BackupScreen(
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val showRestore by viewModel.showRestorePrompt.collectAsStateWithLifecycle()
+
+    // Connecting on an empty device that has an existing Drive backup → offer to restore (never silently
+    // restore, never back up the empty state — the previous backup is preserved until the user decides).
+    if (showRestore) {
+        AlertDialog(
+            onDismissRequest = { viewModel.declineRestore() },
+            confirmButton = { TextButton(onClick = { viewModel.confirmRestore() }) { Text("Restore") } },
+            dismissButton = { TextButton(onClick = { viewModel.declineRestore() }) { Text("Not now") } },
+            title = { Text("Restore your record?", color = palette.text1) },
+            text = {
+                Text(
+                    "A BragBuddy backup was found${state.connectedEmail?.let { " for $it" } ?: ""}. Restore it to this device? Your previous backup is kept until you choose.",
+                    color = palette.text3,
+                )
+            },
+            containerColor = palette.surface,
+        )
+    }
 
     LaunchedEffect(message) {
         message?.let {

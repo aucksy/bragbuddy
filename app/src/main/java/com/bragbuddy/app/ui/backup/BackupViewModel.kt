@@ -11,6 +11,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -49,6 +50,11 @@ class BackupViewModel @Inject constructor(
     val message: StateFlow<String?> = _message
     fun consumeMessage() { _message.value = null }
 
+    /** When the user connects on an EMPTY device that has an existing Drive backup, the screen shows a
+     *  restore choice instead of silently restoring or backing up the empty state. */
+    private val restorePrompt = MutableStateFlow(false)
+    val showRestorePrompt: StateFlow<Boolean> = restorePrompt.asStateFlow()
+
     val state: StateFlow<UiState> = combine(
         settingsStore.settings, email, size, backupExists, busy,
     ) { s, e, sz, exists, b ->
@@ -81,24 +87,22 @@ class BackupViewModel @Inject constructor(
 
     fun onSignInResult(data: Intent?) = viewModelScope.launch {
         busy.value = Busy.CONNECTING
-        val connected = driveBackupManager.handleSignInResult(data)
+        driveBackupManager.handleSignInResult(data)
         email.value = driveBackupManager.currentEmail()
-        if (connected != null && email.value != null) {
+        if (email.value != null) {
             val exists = runCatching { driveBackupManager.backupExists() }.getOrDefault(false)
             backupExists.value = exists
             val empty = backupRepository.isLocalEmpty()
             when {
-                // Restore-on-reinstall: local is empty and Drive has a backup → pull it back (nothing
-                // to lose, and it closes the window where a first capture would clobber the cloud copy).
-                exists && empty -> {
-                    val ok = runCatching { driveBackupManager.restoreFromDrive() }.getOrElse { _message.value = driveError(it); false }
-                    if (ok) _message.value = "Restored from Drive"
-                }
-                // Seed the first cloud backup from existing local data (never overwrites an existing one).
+                // A backup exists and there's nothing local to lose → OFFER a restore choice. We do NOT
+                // auto-restore and do NOT back up the empty state, so the previous backup is preserved
+                // until the user decides (see confirmRestore / declineRestore).
+                exists && empty -> restorePrompt.value = true
+                // No backup yet + we have local data → seed the first cloud backup (never overwrites one).
                 !exists && !empty -> runCatching { driveBackupManager.backupNow() }
                     .onSuccess { backupExists.value = true }
                     .onFailure { _message.value = driveError(it) }
-                // exists && !empty → leave the choice to the user (Back up now / Restore).
+                // exists && !empty → leave the choice to the user (Back up now / Restore buttons).
                 // !exists && empty → nothing to back up yet.
             }
         } else {
@@ -106,6 +110,24 @@ class BackupViewModel @Inject constructor(
         }
         busy.value = null
         refreshSize()
+    }
+
+    /** Restore choice → Restore: pull the backup and keep auto-backup on so it stays in sync. */
+    fun confirmRestore() = viewModelScope.launch {
+        restorePrompt.value = false
+        busy.value = Busy.RESTORING
+        val ok = runCatching { driveBackupManager.restoreFromDrive() }.getOrElse { _message.value = driveError(it); false }
+        if (ok) { settingsStore.setDriveAutoBackup(true); _message.value = "Restored from Drive" }
+        busy.value = null
+        refreshSize()
+    }
+
+    /** Restore choice → Not now: preserve the existing cloud backup by pausing auto-backup, so a fresh
+     *  capture can't overwrite it. The user can restore later, re-enable auto-backup, or "Back up now". */
+    fun declineRestore() = viewModelScope.launch {
+        restorePrompt.value = false
+        settingsStore.setDriveAutoBackup(false)
+        _message.value = "Kept your previous backup. Turn on auto-backup or “Back up now” to replace it."
     }
 
     fun disconnect() = viewModelScope.launch {

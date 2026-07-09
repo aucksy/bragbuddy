@@ -210,6 +210,65 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
+## Status: v0.21.0 — Google Drive connect + recovery (onboarding recovery step + connect-time restore CHOICE) ✅ DONE (signed · tag-driven CI; compile = WILL COMPILE, logic = invariant HOLDS/0 HIGH-MED)
+
+**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.21.0/BragBuddy-v0.21.0.apk` (signed;
+`.aab` alongside). A recovery flow so reinstalling users get their record back, and connecting Drive is
+always an **explicit restore choice** that **never auto-backs-up an empty state or clobbers an existing
+backup**. **Room stays v4** (no new pref — reuses `driveAutoBackup` as the preserve-the-backup lever).
+Decisions locked via AskUserQuestion (2026-07-08, all recommended): recovery step **after Privacy** and a
+successful restore **jumps to Home**; "Not now" **preserves the old backup** (pauses auto-backup); build now
+/ ship v0.21.0. **⚠️ Owner gate:** Drive sign-in still FAILS at runtime until the `com.bragbuddy.app` Android
+OAuth client + release SHA-1 (`B8:B2:F2:…:A4:D3`) is added to `gmailapi-491903` — the flow degrades
+gracefully (shows the error, lets you Skip), but **can't be end-to-end tested until that gate is done**.
+
+### v0.21.0 — what was built (`versionCode 23`)
+1. **Onboarding recovery step** (`ui/onboarding/OnboardingScreen.kt` `RecoverStep` + `OnboardingViewModel`
+   Drive methods). New flow: **Welcome → Privacy → Recover from Drive → Role → Framework** (`TOTAL_STEPS=5`).
+   "Reinstalling? Recover your record." → **Connect Google Drive** → after connect, if a backup exists →
+   **Restore this backup** / **Not now**; if none → Continue; not connected → Skip. A **successful restore
+   finishes onboarding straight to Home** (entries + role + framework all come back, so Role/Framework are
+   skipped) via the existing `finished` StateFlow (restore → `setDriveAutoBackup(true)` → `completeOnboarding`
+   → navigate — durable-before-nav). Fresh installs are the only ones that reach onboarding (upgraders keep
+   `onboardingComplete=true`), so local is empty here → a restore is always safe. New UI (not in the Design
+   System) — built in the onboarding style + the Backup screen's health-card look; flagged.
+2. **Connect-time restore CHOICE, unified** (`ui/backup/BackupViewModel` + `BackupScreen`). Connecting on an
+   **empty** device with an **existing** backup now shows a **"Restore your record?" dialog** (Restore / Not
+   now) instead of the old **silent auto-restore**. **Restore** → pull + keep auto-backup on. **Not now** →
+   `setDriveAutoBackup(false)` to **preserve the previous backup** (a fresh capture can't overwrite it) + a
+   clear note; the user can restore later, re-enable auto-backup, or "Back up now". (`exists && !empty` is
+   unchanged — local is the truth, buttons remain; `!exists && !empty` still seeds.)
+3. **Never auto-backup an empty state / never clobber** — already guarded (`isLocalEmpty` in the observer +
+   `backupNow`), now reinforced by the decline→pause lever. The **launch-time silent auto-restore**
+   (`DriveBackupManager.restoreIfEmpty` + its `BragBuddyApp` call) was **removed** — recovery is exclusively
+   an explicit choice now (onboarding or Settings), so a "Not now" decision is never silently overridden on
+   the next launch. `BragBuddyApp` now just starts the guarded auto-backup observer.
+
+### Adversarial review before tagging (compile + logic; per protocol)
+- **Compile:** WILL COMPILE — all imports/signatures/nested `DriveStepState` access/launcher/icons verified;
+  no leftover `connected`/`restoreIfEmpty`/`launch` references.
+- **Logic:** the **"never clobber a backup / never lose an entry" invariant HOLDS — 0 HIGH/MED.** Every
+  `restoreFromDrive`/`setDriveAutoBackup(true)` is an explicit user tap; the decline→`setDriveAutoBackup(false)`
+  write is race-free (the onboarding VM scope survives a local step change; the observer reads the flag fresh
+  each run and also guards `isLocalEmpty`); restore-and-finish awaits the durable writes before the nav pop;
+  `importJson` never restores Drive/onboarding prefs (hence the explicit post-restore `setDriveAutoBackup(true)`
+  + `completeOnboarding`); removing the launch auto-restore leaves no lost-recovery path. **1 LOW fixed** —
+  `_driveState` no longer seeds `connectedEmail` from `currentEmail()` (init `null`), so a "connected-but-not-
+  yet-backup-checked" state can never render the "no backup / start fresh" copy by mistake. **1 LOW accepted**
+  (pre-existing, by-design): `exists && !empty` connect → the observer later syncs local→cloud (correct for
+  same-lineage data; only a genuinely divergent second-device backup could be replaced — unchanged by this
+  feature).
+
+### Flags / on-device test (the creator's step — GATED on the owner OAuth step)
+Add the `com.bragbuddy.app` Android OAuth client + release SHA-1 to `gmailapi-491903` first, then: (1) fresh
+install → onboarding → Recover → Connect → (with a prior backup) Restore → lands on Home with your record
+back, Role/Framework skipped; (2) same, but **Not now** → continue → log an entry → confirm the **old backup
+is NOT overwritten** (Settings shows auto-backup off + the previous backup still restorable); (3) skip Drive
+in onboarding, later connect in Settings on an empty device → the **restore dialog** appears (not a silent
+restore); (4) an already-connected user is undisturbed. **Next: iOS (DEFERRED).**
+
+---
+
 ## Status: v0.20.1 — End-to-end audit patch (fixes + hardening from a whole-app deep audit) ✅ DONE (signed · tag-driven CI; compile = WILL COMPILE, adversarial logic = HOLD/no-HIGH, 2 review-fixes applied)
 
 **APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.20.1/BragBuddy-v0.20.1.apk` (signed;

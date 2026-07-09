@@ -213,7 +213,13 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   made TRUE — cloud-backup excludes all domains, device-transfer kept); a live-capture crash on a malformed Groq
   key fixed; the offline-queue duplicate-on-crash + non-atomic transcript split + bullet-less-entries-missing-from-
   summary all fixed; and a **Discard-changes? confirmation on every text editor** (Back/scrim/✕) that also makes
-  system Back close an open overlay instead of exiting the app. **B2 was RESHAPED mid-phase (creator,
+  system Back close an open overlay instead of exiting the app. **v0.21.0 = Google Drive connect + recovery**: a
+  new onboarding **Recover from Drive** step (Welcome → Privacy → **Recover** → Role → Framework; a successful
+  restore jumps straight to Home) + connecting Drive is now an **explicit restore CHOICE** (not silent
+  auto-restore) that **never auto-backs-up an empty state or clobbers an existing backup** — "Not now" pauses
+  auto-backup to preserve the previous backup; the launch-time silent auto-restore was removed. **Owner gate:
+  Drive sign-in still fails until the com.bragbuddy.app Android OAuth client + release SHA-1 is added to
+  gmailapi-491903** (degrades gracefully; untestable e2e until then). **B2 was RESHAPED mid-phase (creator,
   2026-07-07): NO AI reshapes the framework** — the user builds it by hand; `refineFramework` stays unused.
   "3 inputs" = **Type + Scan** on a detail box (the per-field **mic was removed**); **Scan** = OCR a
   job-description/review doc into the field (`AiProvider.readDocumentText`). Two-level model: a **category**
