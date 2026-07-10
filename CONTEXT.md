@@ -244,6 +244,11 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   pre-Play items; BragBuddy ships as a direct signed APK.)
   **Phase 6 owner gate still pending:** add a `com.bragbuddy.app` Android OAuth client + the release
   SHA-1 (`B8:B2:F2:86:05:BF:C8:44:94:98:E9:58:02:EA:55:74:9E:58:A4:D3`) to project `gmailapi-491903`.
+  *(Owner reported 2026-07-10 the OAuth client is now created — Drive flow testable end-to-end.)*
+- **v0.21.2 = text-field growth fix** (UI hotfix): long typed/pasted text grew the capture box without
+  bound, pushing the Save row off-screen. Every multi-line editable field is now capped with `maxLines`
+  so overflow scrolls **inside** the field (bounding the sheet); no logic change, no data loss. Latest
+  shipped. See `PROGRESS.md` top block for detail.
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
   round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
   errors). Fix from the CI log via the **public** GitHub API (unauthenticated is enough for run status
