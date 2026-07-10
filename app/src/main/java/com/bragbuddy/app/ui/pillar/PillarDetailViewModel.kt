@@ -4,11 +4,11 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bragbuddy.app.data.entry.EntryRepository
+import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
-import com.bragbuddy.app.data.local.OUTSIDE_PROJECT
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.project.ProjectRepository
 import com.bragbuddy.app.ui.home.OUTSIDE_PROJECT_LABEL
@@ -23,7 +23,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -139,6 +138,10 @@ class PillarDetailViewModel @Inject constructor(
         fs.filter { it.goalArea.trim().lowercase() in goalNames }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** The active framework — feeds the entry-detail Recategorize picker. */
+    val framework: StateFlow<Framework> = frameworkStore.framework
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Framework.DEFAULT)
+
     fun editText(id: Long, text: String) = repository.replaceText(id, text)
 
     fun delete(id: Long) = repository.delete(id)
@@ -149,24 +152,10 @@ class PillarDetailViewModel @Inject constructor(
 
     fun setPinned(id: Long, value: Boolean) = repository.setPinned(id, value)
 
-    /** Move a filed entry into [projectName] (an existing folder); resolves its goal area. No AI re-call. */
-    fun reassignToProject(entry: EntryEntity, projectName: String) = viewModelScope.launch {
-        val folder = folders.value.firstOrNull { it.name.equals(projectName, ignoreCase = true) }
-        val goalArea = folder?.goalArea ?: bestGoalArea(entry.goalCategory)
-        if (folder == null) projects.create(projectName, goalArea)
-        repository.reassign(entry.id, projectName, goalArea)
-    }
-
-    /** Move a filed entry to "Outside project", kept under its best goal area. */
-    fun reassignOutside(entry: EntryEntity) = viewModelScope.launch {
-        repository.reassign(entry.id, OUTSIDE_PROJECT, bestGoalArea(entry.goalCategory))
-    }
-
-    private suspend fun bestGoalArea(current: String?): String {
-        val areas = frameworkStore.framework.first().pillars.filter { it.kind != PillarKind.BEHAVIOUR }
-        return current?.takeIf { c -> areas.any { it.name.equals(c, ignoreCase = true) } }
-            ?: areas.firstOrNull()?.name ?: "Performance Goals"
-    }
+    /** Recategorize a filed entry: set its placement category + project AND its behaviour evidence,
+     *  no AI re-call (Phase 2 · fix-a-wrong-category). Supersedes the old reassign/"Move". */
+    fun recategorize(entry: EntryEntity, goalArea: String, project: String, demonstrates: List<String>) =
+        repository.recategorize(entry.id, goalArea, project, demonstrates)
 
     /** Add a project folder under this pillar's goal area (goal / growth pillars only). */
     fun createFolder(name: String) {

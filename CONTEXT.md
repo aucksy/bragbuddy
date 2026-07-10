@@ -251,10 +251,14 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
 - **9-FEATURE BATCH (creator 2026-07-10), delivered PHASED — one signed APK per group.** Decisions locked via
   AskUserQuestion: keep BYOK (only de-key the ONBOARDING wording); AI impact loop = an "Add impact" list on
   HOME; summary edit/delete = summary-only + REMEMBERED. Plan: **P1 v0.22.0 Summary** (edit/delete·collapse·
-  restore·de-dup) → **P2 v0.23.0** Inbox-tag-framework + Theme(System/Light/Dark/Auto+scheduled) →
+  restore·de-dup) → **P2 v0.23.0** Recategorize (fix-a-wrong-category) + Theme(System/Light/Dark/Auto+scheduled) →
   **P3 v0.24.0** notification-rationale popup + shorten/de-key onboarding privacy → **P4 v0.25.0** AI
   project-aware "Add impact" on Home. Each phase = build → compile+logic+UI+test adversarial review → unit
-  tests → signed APK → handoff. **v0.22.0 = P1 SHIPPED** (latest). See `PROGRESS.md` top block for detail.
+  tests → signed APK → handoff. **v0.23.0 = P2 SHIPPED** (latest). **P2 NOTE:** the creator dropped the
+  original feature (a) "Inbox → tag a framework category" mid-phase for a broader need — *correct any
+  wrongly-filed entry* → **Recategorize** (entry-detail: pick a placement category + folder AND multi-select
+  behaviour evidence, no AI; replaced the old folder-only "Move"). Theme is **device-local** (not backed up),
+  Auto uses two clock-picker times. See `PROGRESS.md` top block for detail.
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
   round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
   errors). Fix from the CI log via the **public** GitHub API (unauthenticated is enough for run status

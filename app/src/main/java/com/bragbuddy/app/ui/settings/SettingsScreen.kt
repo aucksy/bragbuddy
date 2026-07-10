@@ -62,6 +62,7 @@ import com.bragbuddy.app.BuildConfig
 import com.bragbuddy.app.R
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.DefaultCaptureMethod
+import com.bragbuddy.app.data.prefs.ThemeMode
 import com.bragbuddy.app.ui.common.ProjectRemapSheet
 import com.bragbuddy.app.ui.role.RoleInput
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
@@ -166,6 +167,25 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            Spacer(Modifier.height(Spacing.s4))
+
+            // Appearance (Phase 2) — System / Light / Dark / Auto (device-local; not backed up).
+            AppearanceCard(
+                mode = settings.themeMode,
+                darkHour = settings.autoDarkHour,
+                darkMinute = settings.autoDarkMinute,
+                lightHour = settings.autoLightHour,
+                lightMinute = settings.autoLightMinute,
+                palette = palette,
+                onPickMode = { viewModel.setThemeMode(it) },
+                onPickDarkTime = {
+                    TimePickerDialog(context, { _, h, m -> viewModel.setAutoDarkTime(h, m) }, settings.autoDarkHour, settings.autoDarkMinute, false).show()
+                },
+                onPickLightTime = {
+                    TimePickerDialog(context, { _, h, m -> viewModel.setAutoLightTime(h, m) }, settings.autoLightHour, settings.autoLightMinute, false).show()
+                },
+            )
 
             Spacer(Modifier.height(Spacing.s4))
 
@@ -526,6 +546,83 @@ private fun DefaultCaptureCard(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AppearanceCard(
+    mode: ThemeMode,
+    darkHour: Int,
+    darkMinute: Int,
+    lightHour: Int,
+    lightMinute: Int,
+    palette: BragPalette,
+    onPickMode: (ThemeMode) -> Unit,
+    onPickDarkTime: () -> Unit,
+    onPickLightTime: () -> Unit,
+) {
+    val options = listOf(
+        ThemeMode.SYSTEM to "System",
+        ThemeMode.LIGHT to "Light",
+        ThemeMode.DARK to "Dark",
+        ThemeMode.AUTO to "Auto",
+    )
+    Card(palette) {
+        Text("Appearance", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+        Text(
+            "Light or dark theme. “Auto” switches on a schedule you set.",
+            style = MaterialTheme.typography.bodySmall,
+            color = palette.text3,
+        )
+        Spacer(Modifier.height(Spacing.s3))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(999.dp))
+                .background(palette.surface2)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            options.forEach { (m, label) ->
+                val selected = m == mode
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (selected) palette.primary else palette.text3,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(if (selected) palette.surface else Color.Transparent)
+                        .clickable { onPickMode(m) }
+                        .padding(vertical = 9.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
+        if (mode == ThemeMode.AUTO) {
+            Spacer(Modifier.height(Spacing.s3))
+            AppearanceTimeRow("Switch to dark at", formatTime(darkHour, darkMinute), palette, onPickDarkTime)
+            Spacer(Modifier.height(Spacing.s2))
+            AppearanceTimeRow("Switch to light at", formatTime(lightHour, lightMinute), palette, onPickLightTime)
+        }
+    }
+}
+
+@Composable
+private fun AppearanceTimeRow(label: String, value: String, palette: BragPalette, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.md))
+            .background(palette.surface2)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = palette.text2, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.titleMedium, color = palette.primary)
     }
 }
 

@@ -15,7 +15,7 @@ import com.bragbuddy.app.data.entry.EntryRepository
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.reminder.ReminderScheduler
 import com.bragbuddy.app.ui.navigation.BragNavHost
-import com.bragbuddy.app.ui.theme.BragBuddyTheme
+import com.bragbuddy.app.ui.theme.BragBuddyThemedApp
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -31,10 +31,15 @@ class MainActivity : ComponentActivity() {
     private val requestNotifications =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* scheduling is independent of the result */ }
 
+    /** Flipped true once the theme prefs load ([BragBuddyThemedApp] `onReady`); until then the splash
+     *  stays up so a forced Light/Dark theme never flashes the wrong colours on cold start. */
+    private var themeReady = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        splash.setKeepOnScreenCondition { !themeReady }
 
         // Ask to post the daily reminder (Android 13+); harmless if already granted/denied.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -57,7 +62,7 @@ class MainActivity : ComponentActivity() {
         entryRepository.reconcileRollup()
 
         setContent {
-            BragBuddyTheme {
+            BragBuddyThemedApp(onReady = { themeReady = true }) {
                 BragNavHost()
             }
         }

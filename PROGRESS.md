@@ -210,6 +210,68 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
+## Status: v0.23.0 — P2 · Recategorize (fix-a-wrong-category) + Theme (System/Light/Dark/Auto) ✅ DONE (signed · tag-driven CI; compile+logic+UI+test adversarially reviewed)
+
+> **Phase 2 of the 9-feature batch.** Feature (a) as originally written (Inbox → tag a framework category)
+> was **dropped by the creator mid-phase** (2026-07-10) in favour of a broader need: *"ensure anything filed
+> under the wrong category can be corrected."* Locked via AskUserQuestion → **Option B · Full recategorize**
+> (both the goal-area/Development placement AND Leadership & Behaviours evidence, correctable in one no-AI
+> action). Theme = **device-local** (not backed up), also locked via AskUserQuestion. **Room stays v4** (theme
+> is DataStore; no schema change).
+
+**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.23.0/BragBuddy-v0.23.0.apk` (signed; `.aab` alongside).
+
+### v0.23.0 — what was built (`versionCode 27`)
+1. **Recategorize — fix a wrongly-filed entry (feature (a), reshaped).** The entry-detail sheet's old **Move**
+   (folder-only reassign) is replaced by **Recategorize** (`ui/entry/EntryDetailSheet.kt`): an inline two-axis
+   picker — **FILE UNDER** (single-select a placement **category** = a GOAL_AREA/DEVELOPMENT pillar, then an
+   optional **folder** within it, or "No specific project") + **ALSO EVIDENCE FOR** (multi-select the
+   **BEHAVIOUR** pillars this entry demonstrates) → **Apply**. Deterministic, **no AI**:
+   `EntryProcessor.recategorize(id, goalArea, project, demonstrates)` (replaced `reassign`) sets goalCategory /
+   project / anchorProject / demonstrates / status=PROCESSED / confidence=1.0 under the processing **mutex**,
+   then `syncRollup`; skips RAW + PENDING_AUDIO rows. **Closes the two gaps** that made "correct the category"
+   impossible before: a **folder-less category is now reachable** (you pick the category itself, not just a
+   folder under it), and **behaviour evidence is finally editable** (add a missed tag / drop a wrong one). Pure
+   preselection logic in `data/entry/Recategorize.kt` (placement/behaviour partition, default category —
+   canonicalised, default folder — category-scoped, default behaviours — canonical & stale-dropping), unit-tested
+   (`RecategorizeTest`, 11). **Rollup-safe by design:** `toRollupItem()` drops a blank/"Inbox" goal area, so the
+   picker **always requires a real placement category** (Apply disabled if the framework has none) — an entry's
+   evidence therefore always reaches the generated summary. The old entry-reassign chain
+   (`EntryProcessor.reassign`, `EntryRepository.reassign`, VM `reassignToProject`/`reassignOutside`/`bestGoalArea`,
+   sheet `onMoveToProject`/`onMoveOutside`) was removed (the folder-cascade `ProjectRepository.reassignCategory`
+   is unrelated and stays). Home + PillarDetail VMs gained a `framework` StateFlow feeding the picker.
+2. **Theme — System / Light / Dark / Auto (feature (b)).** New `ThemeMode` in `SettingsStore` + two device-local
+   AUTO switch times (dark-start default 8:00 PM, light-start 7:00 AM). Pure schedule logic in
+   `data/theme/ThemeSchedule.kt` (`resolveDark`, `inDarkWindow` wrapping midnight [inclusive dark-start /
+   exclusive light-start], `minutesUntilNextSwitch` — never 0, nearest upcoming boundary), unit-tested
+   (`ThemeScheduleTest`, 10). Applied via a shared `ui/theme/ThemedApp.kt` (`BragBuddyThemedApp` composable +
+   `ThemeViewModel`) that wraps **both** `MainActivity` and the translucent `CaptureActivity` in
+   `BragBuddyTheme(darkTheme = resolved)`; AUTO **flips live while open** via a boundary-timed
+   `delay`+`tick` recomposition (no alarms — theme only matters while a surface is visible). **No cold-start
+   flash:** MainActivity holds the splash (`setKeepOnScreenCondition` until `onReady`); the translucent
+   CaptureActivity can't use a splash, so `BragBuddyThemedApp(holdUntilLoaded = true)` shows nothing (transparent
+   window) until prefs load. A `SideEffect` syncs system-bar icon contrast to the **resolved** theme (forced Dark
+   on a light device keeps readable icons). Settings → **Appearance** card = a 4-segment System/Light/Dark/Auto
+   control + two standard `TimePickerDialog` rows (only shown for Auto). **Device-local — NOT in `BackupCodec`**
+   (a per-device visual preference; a restored phone keeps its own theme).
+- **Tests:** `RecategorizeTest` (11) + `ThemeScheduleTest` (10) — pure-logic coverage of the preselection helpers
+  and the theme/AUTO-schedule math.
+- **REVIEW (4-dimension adversarial workflow — compile / logic / UI / test, each an independent agent that read
+  the code + grepped symbols; 70 tool-uses total):** compile = 0, logic = 0 (rollup invariant HOLDS; mutex/CAS
+  matches resolve; AUTO tick has no busy-loop/leak), test = 0 (all assertions verified correct). **UI = 2 LOW:**
+  (1) **FIXED** — the translucent CaptureActivity had no splash to mask a forced-theme cold-start flash → added
+  `holdUntilLoaded`; (2) **pre-existing / out-of-scope** — an in-progress inline *edit* is lost on device rotation
+  (a Phase-4 `remember` pattern, already noted as an accepted limitation in the v0.20.1 audit; the recat picker's
+  selections re-derive harmlessly on reopen, so this diff doesn't worsen it).
+- **On-device test (the creator's step):** (a) file an entry, open it → Recategorize → move it to a **folder-less
+  category** and confirm it lands there; (b) tick/untick a behaviour and confirm the "Evidences …" line + the
+  behaviour section update, and that the change survives a Regenerate of the summary; (c) an Uncategorized entry
+  can be re-homed; (d) Settings → Appearance → Dark forces dark everywhere incl. the capture overlay + status
+  bar icons; (e) Auto → set dark-start a minute ahead and watch it flip live; (f) kill+relaunch in a forced
+  theme → no light flash. **NEXT = P3 v0.24.0** (notification-rationale popup + shorten/de-key onboarding privacy).
+
+---
+
 ## Status: v0.22.0 — Summary phase (edit/delete·collapse·restore·de-dup) ✅ DONE (signed · tag-driven CI; compile+logic+UI+test reviewed)
 
 > **Phase 1 of the 9-feature batch** (creator's 2026-07-10 request; delivered PHASED, one signed APK per group;

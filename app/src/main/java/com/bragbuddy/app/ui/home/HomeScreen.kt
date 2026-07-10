@@ -100,6 +100,7 @@ fun HomeScreen(
     val clipboard = LocalClipboardManager.current
     val doc by viewModel.doc.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
+    val framework by viewModel.framework.collectAsStateWithLifecycle()
     val showRolePrompt by viewModel.showRolePrompt.collectAsStateWithLifecycle()
     val showDailyNudge by viewModel.showDailyNudge.collectAsStateWithLifecycle()
     val previewBannerCount by viewModel.previewBannerCount.collectAsStateWithLifecycle()
@@ -313,9 +314,11 @@ fun HomeScreen(
         EntryDetailSheet(
             entry = target,
             folders = folders,
+            framework = framework,
             onSaveEdit = { newText -> viewModel.editText(target.id, newText); detailEntry = null },
-            onMoveToProject = { viewModel.reassignToProject(target, it) },
-            onMoveOutside = { viewModel.reassignOutside(target) },
+            onRecategorize = { goalArea, project, demonstrates ->
+                viewModel.recategorize(target, goalArea, project, demonstrates); detailEntry = null
+            },
             onToggleExtra = { v -> viewModel.setExtra(target.id, v); detailEntry = target.copy(isExtra = v) },
             onTogglePin = { v -> viewModel.setPinned(target.id, v); detailEntry = target.copy(isPinned = v) },
             onDelete = { detailEntry = null; deleteTarget = target },

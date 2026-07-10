@@ -10,6 +10,7 @@ import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.AppSettings
 import com.bragbuddy.app.data.prefs.DefaultCaptureMethod
 import com.bragbuddy.app.data.prefs.SettingsStore
+import com.bragbuddy.app.data.prefs.ThemeMode
 import com.bragbuddy.app.data.project.ProjectRepository
 import com.bragbuddy.app.reminder.ReminderScheduler
 import com.bragbuddy.app.ui.common.ProjectRemap
@@ -87,6 +88,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsStore.setDefaultCaptureMethod(method) }
 
     fun setCatchupEnabled(enabled: Boolean) = viewModelScope.launch { settingsStore.setCatchupEnabled(enabled) }
+
+    // ---------------- Theme (Phase 2 · device-local appearance) ----------------
+
+    fun setThemeMode(mode: ThemeMode) = viewModelScope.launch { settingsStore.setThemeMode(mode) }
+
+    fun setAutoDarkTime(hour: Int, minute: Int) = viewModelScope.launch { settingsStore.setAutoDarkTime(hour, minute) }
+
+    fun setAutoLightTime(hour: Int, minute: Int) = viewModelScope.launch { settingsStore.setAutoLightTime(hour, minute) }
 
     fun setReviewYearStartMonth(month: Int) = viewModelScope.launch { settingsStore.setReviewYearStartMonth(month) }
 

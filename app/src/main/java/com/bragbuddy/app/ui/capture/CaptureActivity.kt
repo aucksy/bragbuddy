@@ -41,6 +41,7 @@ import androidx.core.os.BundleCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.prefs.CaptureMode
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
+import com.bragbuddy.app.ui.theme.BragBuddyThemedApp
 import com.bragbuddy.app.ui.theme.Spacing
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
@@ -95,7 +96,9 @@ class CaptureActivity : ComponentActivity() {
         intent.getStringExtra(EXTRA_PROJECT)?.let { vm.setAnchorProject(it) }
 
         setContent {
-            BragBuddyTheme {
+            // Translucent overlay → hold the surface until the theme resolves (no splash to mask a
+            // forced-theme cold-start flash); the transparent window shows nothing for that brief moment.
+            BragBuddyThemedApp(holdUntilLoaded = true) {
                 val state by vm.state.collectAsStateWithLifecycle()
                 var justSaved by remember { mutableStateOf(false) }
 

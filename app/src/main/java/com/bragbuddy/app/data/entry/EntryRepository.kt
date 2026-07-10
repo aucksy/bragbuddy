@@ -134,9 +134,10 @@ class EntryRepository @Inject constructor(
         appScope.launch { processor.resolve(id, project, goalArea) }
     }
 
-    /** Move a filed entry to another project + goal area (Phase 4 entry detail). No AI re-call. */
-    fun reassign(id: Long, project: String, goalArea: String) {
-        appScope.launch { processor.reassign(id, project, goalArea) }
+    /** Recategorize a filed entry: set its placement category + project AND its behaviour evidence,
+     *  no AI re-call (Phase 2 · fix-a-wrong-category). Supersedes the old reassign/"Move". */
+    fun recategorize(id: Long, goalArea: String, project: String, demonstrates: List<String>) {
+        appScope.launch { processor.recategorize(id, goalArea, project, demonstrates) }
     }
 
     /** Toggle the ★ Standout flag on an entry (Phase 4 entry detail). Serialised in the processor. */

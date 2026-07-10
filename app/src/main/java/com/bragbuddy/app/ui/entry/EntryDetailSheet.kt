@@ -44,7 +44,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bragbuddy.app.data.entry.Recategorize
+import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.local.EntryEntity
+import com.bragbuddy.app.data.local.OUTSIDE_PROJECT
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.ui.common.rememberDiscardGuard
 import com.bragbuddy.app.ui.home.OUTSIDE_PROJECT_LABEL
@@ -56,24 +59,25 @@ import com.bragbuddy.app.ui.theme.Spacing
 /**
  * Tap an entry → this detail sheet (Phase 4). Shows the cleaned bullet AND the raw transcript it came
  * from, plus its placement, and gathers every per-entry action in one place: **Edit** (inline, with its
- * own Save — Phase B2b, matching the framework editor's per-item Save), **Move** (reassign to another
- * folder — no AI re-call), **★ Standout** toggle, **Pin** toggle (for the Phase 5 summary), and
- * **Delete**. A custom scrim + bottom sheet (matching the capture sheet), not a Material
- * ModalBottomSheet — swipe-dismiss is never vetoed. Not in the design files (built from existing
- * tokens); flagged.
+ * own Save — Phase B2b, matching the framework editor's per-item Save), **Recategorize** (Phase 2 ·
+ * fix-a-wrong-category — pick a placement category + project AND fix behaviour evidence, no AI re-call),
+ * **★ Standout** toggle, **Pin** toggle (for the Phase 5 summary), and **Delete**. A custom scrim +
+ * bottom sheet (matching the capture sheet), not a Material ModalBottomSheet — swipe-dismiss is never
+ * vetoed. Not in the design files (built from existing tokens); flagged.
  *
  * [entry] is a snapshot the host updates optimistically on toggle, so ★/Pin flip instantly.
- * [onSaveEdit] receives the edited text; the host re-files it (no AI-less move — this re-runs the
- * categorizer) and dismisses the sheet.
+ * [onSaveEdit] receives the edited text; the host re-files it (this re-runs the categorizer) and
+ * dismisses. [onRecategorize] receives the chosen goal-area category, project (folder name or
+ * [OUTSIDE_PROJECT]), and behaviour-evidence names — the host applies it deterministically (no AI).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EntryDetailSheet(
     entry: EntryEntity,
     folders: List<ProjectEntity>,
+    framework: Framework,
     onSaveEdit: (String) -> Unit,
-    onMoveToProject: (String) -> Unit,
-    onMoveOutside: () -> Unit,
+    onRecategorize: (goalArea: String, project: String, demonstrates: List<String>) -> Unit,
     onToggleExtra: (Boolean) -> Unit,
     onTogglePin: (Boolean) -> Unit,
     onDelete: () -> Unit,
@@ -81,7 +85,24 @@ fun EntryDetailSheet(
 ) {
     val palette = BragBuddyTheme.palette
     val noRipple = remember { MutableInteractionSource() }
-    var showMove by remember { mutableStateOf(false) }
+    var showRecat by remember { mutableStateOf(false) }
+
+    // Recategorize selections — reset when a different entry opens (keyed on id), preserved across an
+    // optimistic ★/Pin recomposition of the SAME entry. Categories = GOAL_AREA + DEVELOPMENT pillars
+    // (behaviours are evidence, not a placement slot); the default preselects the entry's current state.
+    val placementCategories = remember(framework) { Recategorize.placementCategories(framework) }
+    val behaviourCategories = remember(framework) { Recategorize.behaviourCategories(framework) }
+    var selectedCategory by remember(entry.id) { mutableStateOf(Recategorize.defaultCategory(entry, framework)) }
+    var selectedFolder by remember(entry.id) {
+        mutableStateOf(
+            Recategorize.defaultFolder(
+                entry,
+                Recategorize.defaultCategory(entry, framework),
+                folders.map { Recategorize.FolderRef(it.name, it.goalArea) },
+            ),
+        )
+    }
+    var selectedBehaviours by remember(entry.id) { mutableStateOf(Recategorize.defaultBehaviours(entry, framework)) }
     // Inline edit state — keyed on the entry id so an optimistic ★/Pin recomposition of the SAME entry
     // doesn't reset a mid-edit, but opening a different entry starts fresh.
     var editing by remember(entry.id) { mutableStateOf(false) }
@@ -192,18 +213,70 @@ fun EntryDetailSheet(
                     Text(entry.rawTranscript, style = MaterialTheme.typography.bodyMedium, color = palette.text2)
                 }
 
-                // Move picker (revealed on demand; hidden while editing the bullet).
-                if (showMove && !editing) {
+                // Recategorize picker (revealed on demand; hidden while editing the bullet). Two axes:
+                // FILE UNDER (a placement category + an optional project within it) and ALSO EVIDENCE FOR
+                // (the behaviour pillars this entry demonstrates). Deterministic — no AI re-call.
+                if (showRecat && !editing) {
                     Spacer(Modifier.height(Spacing.s4))
-                    Text("MOVE TO", style = MaterialTheme.typography.labelSmall, color = palette.text3, fontWeight = FontWeight.Bold)
+                    Text("FILE UNDER", style = MaterialTheme.typography.labelSmall, color = palette.text3, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Spacing.s2))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        folders.forEach { f ->
-                            ActionChip(f.name, palette.primarySoft, palette.primary) {
-                                onMoveToProject(f.name); onDismiss()
+                    if (placementCategories.isEmpty()) {
+                        Text(
+                            "Add a goal-area category in the Framework tab first.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.text3,
+                        )
+                    }
+                    placementCategories.forEach { cat ->
+                        val isSel = selectedCategory?.equals(cat.name, ignoreCase = true) == true
+                        RadioRow(selected = isSel, label = cat.name, palette = palette) {
+                            if (!isSel) { selectedCategory = cat.name; selectedFolder = null }
+                        }
+                        // Folders within the selected category — pick one, or "No specific project".
+                        if (isSel) {
+                            val catFolders = folders.filter { it.goalArea.equals(cat.name, ignoreCase = true) }
+                            if (catFolders.isNotEmpty()) {
+                                Spacer(Modifier.height(Spacing.s2))
+                                FlowRow(
+                                    Modifier.fillMaxWidth().padding(start = 30.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    SelectChip("No specific project", selected = selectedFolder == null, palette = palette) { selectedFolder = null }
+                                    catFolders.forEach { f ->
+                                        SelectChip(
+                                            f.name,
+                                            selected = selectedFolder?.equals(f.name, ignoreCase = true) == true,
+                                            palette = palette,
+                                        ) { selectedFolder = f.name }
+                                    }
+                                }
                             }
                         }
-                        ActionChip("Outside project", palette.surface2, palette.text2) { onMoveOutside(); onDismiss() }
+                        Spacer(Modifier.height(Spacing.s2))
+                    }
+
+                    if (behaviourCategories.isNotEmpty()) {
+                        Spacer(Modifier.height(Spacing.s2))
+                        Text("ALSO EVIDENCE FOR", style = MaterialTheme.typography.labelSmall, color = palette.text3, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(Spacing.s2))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            behaviourCategories.forEach { b ->
+                                val checked = selectedBehaviours.any { it.equals(b.name, ignoreCase = true) }
+                                SelectChip(b.name, selected = checked, palette = palette) {
+                                    selectedBehaviours =
+                                        if (checked) selectedBehaviours.filterNot { it.equals(b.name, ignoreCase = true) }.toSet()
+                                        else selectedBehaviours + b.name
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(Spacing.s4))
+                    ApplyRecatButton(enabled = selectedCategory != null, palette = palette) {
+                        val cat = selectedCategory ?: return@ApplyRecatButton
+                        onRecategorize(cat, selectedFolder ?: OUTSIDE_PROJECT, selectedBehaviours.toList())
+                        onDismiss()
                     }
                 }
 
@@ -220,8 +293,8 @@ fun EntryDetailSheet(
                     }
                 } else {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ActionPill("Edit", active = false, palette = palette) { showMove = false; editing = true }
-                        ActionPill(if (showMove) "Cancel move" else "Move", active = showMove, palette = palette) { showMove = !showMove }
+                        ActionPill("Edit", active = false, palette = palette) { showRecat = false; editing = true }
+                        ActionPill(if (showRecat) "Cancel" else "Recategorize", active = showRecat, palette = palette) { showRecat = !showRecat }
                         ActionPill(if (entry.isExtra) "★ Standout" else "☆ Standout", active = entry.isExtra, palette = palette) { onToggleExtra(!entry.isExtra) }
                         ActionPill(if (entry.isPinned) "Pinned" else "Pin", active = entry.isPinned, palette = palette) { onTogglePin(!entry.isPinned) }
                         DangerPill("Delete", palette) { onDelete() }
@@ -280,19 +353,59 @@ private fun DangerPill(text: String, palette: BragPalette, onClick: () -> Unit) 
     )
 }
 
+/** A single-select radio row for the "File under" category list (matches ProjectRemapSheet's rows). */
 @Composable
-private fun ActionChip(text: String, fill: Color, ink: Color, onClick: () -> Unit) {
+private fun RadioRow(selected: Boolean, label: String, palette: BragPalette, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.md))
+            .border(1.5.dp, if (selected) palette.primary else palette.border, RoundedCornerShape(Radii.md))
+            .background(if (selected) palette.primarySoft else palette.surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(18.dp).clip(RoundedCornerShape(999.dp))
+                .border(2.dp, if (selected) palette.primary else palette.text3, RoundedCornerShape(999.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) Box(Modifier.size(9.dp).clip(RoundedCornerShape(999.dp)).background(palette.primary))
+        }
+        Spacer(Modifier.width(Spacing.s3))
+        Text(label, style = MaterialTheme.typography.titleSmall, color = palette.text1, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** A toggle chip used for both project selection (single, via caller state) and behaviour evidence
+ *  (multi, via caller state). Filled primary when [selected]. */
+@Composable
+private fun SelectChip(label: String, selected: Boolean, palette: BragPalette, onClick: () -> Unit) {
     Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        color = ink,
+        text = label,
+        style = MaterialTheme.typography.labelMedium,
+        color = if (selected) Color.White else palette.text2,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier
-            .clip(RoundedCornerShape(Radii.sm))
-            .background(fill)
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) palette.primary else palette.surface2)
             .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 5.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
     )
+}
+
+@Composable
+private fun ApplyRecatButton(enabled: Boolean, palette: BragPalette, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (enabled) palette.primary else palette.primary.copy(alpha = 0.4f))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 13.dp),
+        contentAlignment = Alignment.Center,
+    ) { Text("Apply", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall) }
 }
 
 @Composable

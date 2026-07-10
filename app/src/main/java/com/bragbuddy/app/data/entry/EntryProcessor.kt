@@ -172,27 +172,43 @@ class EntryProcessor @Inject constructor(
     }
 
     /**
-     * Move a FILED entry to a different project + goal area (Phase 4 entry detail → "Move"). Like
-     * [resolve] but works on an already-PROCESSED row too (not just INBOX/FAILED). No AI re-call — the
-     * cleaned bullet, behaviours and impact are kept; only the placement changes and it stays
-     * PROCESSED. Skips a still-processing RAW row (let the categorizer finish first). A named project
-     * becomes the [anchorProject] so a later edit re-files back into the same folder.
+     * **Recategorize** a filed entry with NO AI (Phase 2 · fix-a-wrong-category) — the entry-detail
+     * "Recategorize" action, which supersedes the old "Move" (that changed only the placement). Sets, in
+     * one atomic update under the [mutex]:
+     *  - its **placement category** ([goalArea] — a GOAL_AREA / DEVELOPMENT pillar) and its **project**
+     *    within that category ([project]: a folder name, or blank / [OUTSIDE_PROJECT] = "no project"), and
+     *  - its **behaviour evidence** ([demonstrates] — the checked behaviour pillars; *replaces* the old
+     *    tags with these canonical names).
+     *
+     * No AI re-call: the cleaned bullet / impact / metric the model produced are kept; only the placement
+     * + evidence change and the row stays PROCESSED. Works on a PROCESSED / INBOX / FAILED row; skips a
+     * still-processing RAW row and an offline PENDING_AUDIO row (let those finish first). A named project
+     * becomes the [anchorProject] so a later edit re-files here. A blank [goalArea] falls back to the
+     * entry's current one (then "Inbox") — the sheet always sends a real category, so that's a defensive
+     * floor only; keeping a real goal area is what lets the entry's evidence reach the summary rollup.
      */
-    suspend fun reassign(id: Long, project: String, goalArea: String) {
+    suspend fun recategorize(
+        id: Long,
+        goalArea: String,
+        project: String,
+        demonstrates: List<String>,
+    ) {
         mutex.withLock {
             val e = entryDao.getById(id) ?: return@withLock
-            if (e.status == EntryStatus.RAW) return@withLock
+            if (e.status == EntryStatus.RAW || e.status == EntryStatus.PENDING_AUDIO) return@withLock
             val clean = project.trim()
             val isOutside = clean.isBlank() || clean.equals(OUTSIDE_PROJECT, ignoreCase = true)
             val area = goalArea.trim().ifBlank { e.goalCategory?.takeIf { it.isNotBlank() } ?: INBOX_LABEL }
+            val cleanDemos = demonstrates.map { it.trim() }.filter { it.isNotBlank() }.distinct()
             val updated = e.copy(
                 status = EntryStatus.PROCESSED,
-                // As in resolve(): a bullet-less row (moved straight from FAILED) falls back to its
-                // transcript so it isn't silently dropped from the summary rollup.
+                // A bullet-less row (recategorized straight from FAILED) falls back to its transcript so
+                // it isn't silently dropped from the summary rollup.
                 bullet = e.bullet?.takeIf { it.isNotBlank() } ?: e.rawTranscript.trim().ifBlank { null },
                 project = if (isOutside) OUTSIDE_PROJECT else clean,
                 goalCategory = area,
                 anchorProject = if (isOutside) e.anchorProject else clean,
+                demonstrates = cleanDemos,
                 confidence = 1.0,
                 suggestedProjects = emptyList(),
             )

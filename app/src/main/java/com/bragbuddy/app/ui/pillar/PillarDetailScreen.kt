@@ -91,6 +91,7 @@ fun PillarDetailScreen(
     val clipboard = LocalClipboardManager.current
     val detail by viewModel.detail.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
+    val framework by viewModel.framework.collectAsStateWithLifecycle()
     val hue = pillarColor(detail.colorIndex)
 
     var editTarget by remember { mutableStateOf<EntryEntity?>(null) }
@@ -386,9 +387,11 @@ fun PillarDetailScreen(
         EntryDetailSheet(
             entry = target,
             folders = folders,
+            framework = framework,
             onSaveEdit = { newText -> viewModel.editText(target.id, newText); detailEntry = null },
-            onMoveToProject = { viewModel.reassignToProject(target, it) },
-            onMoveOutside = { viewModel.reassignOutside(target) },
+            onRecategorize = { goalArea, project, demonstrates ->
+                viewModel.recategorize(target, goalArea, project, demonstrates); detailEntry = null
+            },
             onToggleExtra = { v -> viewModel.setExtra(target.id, v); detailEntry = target.copy(isExtra = v) },
             onTogglePin = { v -> viewModel.setPinned(target.id, v); detailEntry = target.copy(isPinned = v) },
             onDelete = { detailEntry = null; deleteTarget = target },

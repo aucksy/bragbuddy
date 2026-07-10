@@ -27,6 +27,15 @@ enum class CaptureMode { SPEAK, TYPE, IMAGE }
  */
 enum class DefaultCaptureMethod { ASK, SPEAK, TYPE, IMAGE }
 
+/**
+ * How the app resolves light vs. dark (Phase 2 · theme).
+ *  - [SYSTEM]: follow the device's light/dark setting (the previous, only, behaviour).
+ *  - [LIGHT] / [DARK]: force it, regardless of the system.
+ *  - [AUTO]: switch on a device-local schedule — dark from [AppSettings.autoDarkHour]:[autoDarkMinute]
+ *    to [AppSettings.autoLightHour]:[autoLightMinute] (wrapping midnight). Device-local, not backed up.
+ */
+enum class ThemeMode { SYSTEM, LIGHT, DARK, AUTO }
+
 /** User settings for the daily reminder + capture preferences. Device-local. */
 data class AppSettings(
     val reminderEnabled: Boolean = true,
@@ -75,6 +84,15 @@ data class AppSettings(
     /** The privacy/terms version the user has accepted (0 = never). Re-prompted only when the shipped
      *  [com.bragbuddy.app.data.legal.PrivacyPolicy.VERSION] is bumped for a material change. Device-local. */
     val acceptedPrivacyVersion: Int = 0,
+    // ---- Phase 2 · theme (device-local; deliberately NOT backed up — a per-device visual preference) ----
+    /** Light / dark selection. Default [ThemeMode.SYSTEM] preserves the pre-existing follow-the-system behaviour. */
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    /** [ThemeMode.AUTO] · when to switch TO dark (24h, device-local). Default 8:00 PM. */
+    val autoDarkHour: Int = 20,
+    val autoDarkMinute: Int = 0,
+    /** [ThemeMode.AUTO] · when to switch TO light (24h, device-local). Default 7:00 AM. */
+    val autoLightHour: Int = 7,
+    val autoLightMinute: Int = 0,
 ) {
     /** Voice transcription is cloud Whisper (Groq) — the only engine. It runs when a key is set;
      *  without a key, voice prompts the user to add one (on-device STT was removed — too inaccurate). */
@@ -113,6 +131,12 @@ class SettingsStore @Inject constructor(
             reliabilityDismissedRisks = p[KEY_RELIABILITY_DISMISSED_RISKS] ?: "",
             onboardingComplete = p[KEY_ONBOARDING_COMPLETE] ?: false,
             acceptedPrivacyVersion = p[KEY_ACCEPTED_PRIVACY_VERSION] ?: 0,
+            themeMode = runCatching { ThemeMode.valueOf(p[KEY_THEME_MODE] ?: "SYSTEM") }
+                .getOrDefault(ThemeMode.SYSTEM),
+            autoDarkHour = (p[KEY_THEME_DARK_HOUR] ?: 20).coerceIn(0, 23),
+            autoDarkMinute = (p[KEY_THEME_DARK_MINUTE] ?: 0).coerceIn(0, 59),
+            autoLightHour = (p[KEY_THEME_LIGHT_HOUR] ?: 7).coerceIn(0, 23),
+            autoLightMinute = (p[KEY_THEME_LIGHT_MINUTE] ?: 0).coerceIn(0, 59),
         )
     }
 
@@ -175,6 +199,23 @@ class SettingsStore @Inject constructor(
     suspend fun setAcceptedPrivacyVersion(version: Int) =
         store.edit { it[KEY_ACCEPTED_PRIVACY_VERSION] = version }
 
+    suspend fun setThemeMode(mode: ThemeMode) =
+        store.edit { it[KEY_THEME_MODE] = mode.name }
+
+    suspend fun setAutoDarkTime(hour: Int, minute: Int) {
+        store.edit {
+            it[KEY_THEME_DARK_HOUR] = hour.coerceIn(0, 23)
+            it[KEY_THEME_DARK_MINUTE] = minute.coerceIn(0, 59)
+        }
+    }
+
+    suspend fun setAutoLightTime(hour: Int, minute: Int) {
+        store.edit {
+            it[KEY_THEME_LIGHT_HOUR] = hour.coerceIn(0, 23)
+            it[KEY_THEME_LIGHT_MINUTE] = minute.coerceIn(0, 59)
+        }
+    }
+
     /** Finish onboarding in ONE atomic write: mark it complete AND stamp the accepted privacy version
      *  together, so a caller can await this single edit before navigating away (the nav pop cancels the
      *  caller's scope — two sequential writes would risk dropping the second). */
@@ -204,5 +245,10 @@ class SettingsStore @Inject constructor(
         val KEY_RELIABILITY_DISMISSED_RISKS = stringPreferencesKey("reliability_dismissed_risks")
         val KEY_ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
         val KEY_ACCEPTED_PRIVACY_VERSION = intPreferencesKey("accepted_privacy_version")
+        val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+        val KEY_THEME_DARK_HOUR = intPreferencesKey("theme_auto_dark_hour")
+        val KEY_THEME_DARK_MINUTE = intPreferencesKey("theme_auto_dark_minute")
+        val KEY_THEME_LIGHT_HOUR = intPreferencesKey("theme_auto_light_hour")
+        val KEY_THEME_LIGHT_MINUTE = intPreferencesKey("theme_auto_light_minute")
     }
 }
