@@ -210,6 +210,48 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
+## Status: v0.22.0 — Summary phase (edit/delete·collapse·restore·de-dup) ✅ DONE (signed · tag-driven CI; compile+logic+UI+test reviewed)
+
+> **Phase 1 of the 9-feature batch** (creator's 2026-07-10 request; delivered PHASED, one signed APK per group;
+> decisions locked via AskUserQuestion). Four summary-screen features, all summary-cache-only — **the record
+> is never touched** (invariant holds). **Room stays v4** (no schema change; everything is DataStore JSON).
+
+**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.22.0/BragBuddy-v0.22.0.apk` (signed; `.aab` alongside).
+
+### v0.22.0 — what was built (`versionCode 26`)
+1. **Edit / delete a summary pointer, REMEMBERED (feature #1).** Long-press any pointer → a custom-scrim
+   `PointerActionSheet` (Edit line / Delete line; "your record on Home isn't affected"). Edit opens
+   `EditPointerDialog` (bounded AlertDialog). Persistence is a new **`SummaryOverrides`** layer on
+   `CachedSummary` (`data/summary/SummaryOverrides.kt`: `deleted`/`edits`/`restored` + `summaryKey()` normalizer
+   + pure **`applyOverrides()`**), re-applied over EVERY fresh generation in `SummaryViewModel.generate()` — so
+   **deletes stay gone and edits stay, across a Regenerate** (edits are best-effort if the model rephrases;
+   deletes/restores are reliable). Text-keyed (no fragile summary-line→entry id), covers achievements + rolled-up
+   + behaviour evidence + development. Chained edits (A→B→C) resolve to a fixpoint; a final per-area
+   `distinctBy(summaryKey)` safety net.
+2. **Collapsible framework categories (feature #3).** Chevron on each `SectionHeader` (the toggle is a SEPARATE
+   clickable from "Copy" so the Copy tap is never swallowed); **expanded by default** (read-and-copy screen);
+   mirrors the Home/Pillar `mutableStateListOf` idiom + `AnimatedVisibility(expandVertically)` accordion.
+3. **Restore from Set-aside (feature #5).** A "Restore" action per note → `RestorePickerSheet` (pick which goal
+   area) → re-injected as an achievement and dropped from Set-aside; sticky across a Regenerate via `restored`.
+4. **De-dup repeats (feature #9).** Deterministic pre-merge in `RollupAggregator.mergeNotable()` collapses
+   exact/normalized-identical non-routine bullets in the same project into ONE highlight with a **count**, run
+   BEFORE the highlight cap (accurate `×N` even past the cap); progressive **arcs are NOT merged**; the model
+   sees `(logged N×)` and a new SUMMARY prompt rule ("never list the same accomplishment twice; keep arcs as one
+   bullet; prefer the fewest pointers"); an emphasized `×N` chip on the achievement row. `SummaryAchievement`
+   gained `count:Int=1`, `AggHighlight` `count:Int=1`, `SummaryRolledUp.count` now defaults `=0` (decode
+   hardening). Serialize change flips existing cached summaries `isStale` ONCE → a one-time optional Regenerate.
+- **Tests:** `SummaryOverridesTest` (13) + `RollupDedupTest` (7) — pure-logic coverage of overrides + de-dup.
+- **REVIEW (4-dimension adversarial + a re-run real logic pass):** compile = WILL COMPILE; tests = all pass;
+  UI = 1 MED (collapse animation used the non-ColumnScope AnimatedVisibility overload → diagonal; fixed to
+  vertical accordion) + 1 LOW (×N chip corner matched to the Pinned chip) fixed; logic = invariants HOLD, 2 MED
+  (rolled-up **Edit** was a dead button — applyOverrides now edits rolled-up lines; generate() onSuccess `put`
+  raced a concurrent `mutateCached` — now under `editMutex` + fresh overrides read; overlay also blocks touch
+  during "Curating…") + 3 LOW (restored-list `distinct()`, `SummaryRolledUp.count` default, KDoc honesty) fixed.
+  **GOTCHA (recorded):** a workflow review-agent returned a schema-satisfying JUNK stub for the logic dimension
+  → always sanity-check each agent's result; re-ran logic as a single synchronous agent.
+
+---
+
 ## Status: v0.21.2 — text-field growth fix (long note no longer pushes the Save row off-screen) ✅ DONE (signed · tag-driven CI)
 
 > **UI hotfix.** A long typed/pasted note grew the capture text box without bound, inflating the

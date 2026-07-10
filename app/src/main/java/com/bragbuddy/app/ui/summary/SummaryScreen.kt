@@ -2,6 +2,10 @@ package com.bragbuddy.app.ui.summary
 
 import android.text.format.DateUtils
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -23,10 +27,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FilterList
@@ -59,6 +71,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.ai.SummaryBehaviour
 import com.bragbuddy.app.data.ai.SummaryGoalArea
 import com.bragbuddy.app.data.framework.Framework
+import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.rollup.SummaryLength
 import com.bragbuddy.app.data.rollup.SummaryPeriod
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
@@ -91,6 +104,12 @@ fun SummaryScreen(
     val message by viewModel.message.collectAsStateWithLifecycle()
 
     var showGenerate by remember { mutableStateOf(false) }
+    // Long-press edit/delete (feature #1) + restore-from-set-aside (feature #5) overlays. Hoisted here
+    // so their custom-scrim sheets/dialogs cover the WHOLE screen (like GenerateSheet), not the padded
+    // content Column.
+    var pointerAction by remember { mutableStateOf<String?>(null) }
+    var pointerEdit by remember { mutableStateOf<String?>(null) }
+    var restoreNote by remember { mutableStateOf<String?>(null) }
 
     // Home's early-preview banner lands here with autoGenerate set: the tap was the consent for
     // one metered generation. Waits for the state to load, consumes the flag exactly once, and
@@ -167,6 +186,8 @@ fun SummaryScreen(
                         },
                         onPromote = { area, i -> viewModel.promote(area, i) },
                         onDemote = { area, i -> viewModel.demote(area, i) },
+                        onLongPressPointer = { raw -> pointerAction = raw },
+                        onRestoreRequest = { note -> restoreNote = note },
                     )
                 }
             }
@@ -180,6 +201,33 @@ fun SummaryScreen(
                 onSelectLength = viewModel::selectLength,
                 onGenerate = { viewModel.generate(); showGenerate = false },
                 onDismiss = { showGenerate = false },
+            )
+        }
+
+        pointerAction?.let { raw ->
+            PointerActionSheet(
+                palette = palette,
+                text = raw,
+                onEdit = { pointerEdit = raw; pointerAction = null },
+                onDelete = { viewModel.deletePointer(raw); pointerAction = null },
+                onDismiss = { pointerAction = null },
+            )
+        }
+        pointerEdit?.let { raw ->
+            EditPointerDialog(
+                palette = palette,
+                initial = raw,
+                onSave = { newText -> viewModel.editPointer(raw, newText); pointerEdit = null },
+                onDismiss = { pointerEdit = null },
+            )
+        }
+        if (restoreNote != null && s != null) {
+            RestorePickerSheet(
+                palette = palette,
+                note = restoreNote!!,
+                framework = s.framework,
+                onPick = { area -> restoreNote?.let { viewModel.restoreSetAside(it, area) }; restoreNote = null },
+                onDismiss = { restoreNote = null },
             )
         }
 
@@ -265,10 +313,16 @@ private fun ReadyBlock(
     onRegenerate: () -> Unit,
     onPromote: (String, Int) -> Unit,
     onDemote: (String, Int) -> Unit,
+    onLongPressPointer: (String) -> Unit,
+    onRestoreRequest: (String) -> Unit,
 ) {
     val cached = state.cached ?: return
     val result = cached.result
     var setAsideOpen by remember { mutableStateOf(false) }
+    // Collapsible categories (feature #3). Ephemeral, mirroring Home / Pillar-detail; empty set =
+    // everything EXPANDED (this is a read-and-copy screen, so content is visible by default).
+    val collapsed = remember { mutableStateListOf<String>() }
+    fun toggle(key: String) { if (collapsed.contains(key)) collapsed.remove(key) else collapsed.add(key) }
     val generatedAt = DateUtils.getRelativeTimeSpanString(
         cached.generatedAtMillis, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
     ).toString()
@@ -297,18 +351,45 @@ private fun ReadyBlock(
         ) {
             result.summary.goalAreas.forEach { area ->
                 if (area.achievements.isNotEmpty() || area.rolledUp.isNotEmpty()) {
-                    GoalAreaSection(area, state, palette, { onCopyText(exportGoalArea(area), "Copied section") }, onPromote, onDemote)
+                    val key = "goal-${area.name}"
+                    GoalAreaSection(
+                        area = area,
+                        state = state,
+                        palette = palette,
+                        expanded = !collapsed.contains(key),
+                        onToggle = { toggle(key) },
+                        onCopy = { onCopyText(exportGoalArea(area), "Copied section") },
+                        onPromote = onPromote,
+                        onDemote = onDemote,
+                        onLongPress = onLongPressPointer,
+                    )
                     Spacer(Modifier.height(Spacing.s4))
                 }
             }
             result.summary.behaviours.forEach { b ->
                 if (b.evidence.isNotEmpty()) {
-                    BehaviourSection(b, state.framework, palette) { onCopyText(exportBehaviour(b), "Copied section") }
+                    val key = "beh-${b.name}"
+                    BehaviourSection(
+                        b = b,
+                        framework = state.framework,
+                        palette = palette,
+                        expanded = !collapsed.contains(key),
+                        onToggle = { toggle(key) },
+                        onCopy = { onCopyText(exportBehaviour(b), "Copied section") },
+                        onLongPress = onLongPressPointer,
+                    )
                     Spacer(Modifier.height(Spacing.s4))
                 }
             }
             if (result.summary.development.isNotEmpty()) {
-                DevelopmentSection(result.summary.development, state.framework, palette)
+                DevelopmentSection(
+                    items = result.summary.development,
+                    framework = state.framework,
+                    palette = palette,
+                    expanded = !collapsed.contains("dev"),
+                    onToggle = { toggle("dev") },
+                    onLongPress = onLongPressPointer,
+                )
                 Spacer(Modifier.height(Spacing.s4))
             }
             if (result.setAside.isNotEmpty()) {
@@ -318,6 +399,7 @@ private fun ReadyBlock(
                     notes = result.setAside,
                     palette = palette,
                     onToggle = { setAsideOpen = !setAsideOpen },
+                    onRestore = onRestoreRequest,
                 )
             }
             Spacer(Modifier.height(contentBottomPadding + 12.dp))
@@ -337,34 +419,48 @@ private fun GoalAreaSection(
     area: SummaryGoalArea,
     state: SummaryViewModel.ScreenState,
     palette: BragPalette,
+    expanded: Boolean,
+    onToggle: () -> Unit,
     onCopy: () -> Unit,
     onPromote: (String, Int) -> Unit,
     onDemote: (String, Int) -> Unit,
+    onLongPress: (String) -> Unit,
 ) {
     val hue = goalHue(state.framework, area.name)
-    SectionHeader(area.name, hue, palette, onCopy)
-    Spacer(Modifier.height(Spacing.s3))
-    val many = area.achievements.size > 1
-    area.achievements.forEachIndexed { i, ach ->
-        val pinned = state.pinnedBullets.any {
-            it.equals(ach.bullet, ignoreCase = true) || ach.bullet.contains(it, ignoreCase = true) || it.contains(ach.bullet, ignoreCase = true)
+    SectionHeader(area.name, hue, palette, expanded, onToggle, onCopy)
+    AnimatedVisibility(
+        visible = expanded,
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut(),
+    ) {
+        Column {
+            Spacer(Modifier.height(Spacing.s3))
+            val many = area.achievements.size > 1
+            area.achievements.forEachIndexed { i, ach ->
+                val pinned = state.pinnedBullets.any {
+                    it.equals(ach.bullet, ignoreCase = true) || ach.bullet.contains(it, ignoreCase = true) || it.contains(ach.bullet, ignoreCase = true)
+                }
+                AchievementRow(
+                    text = achievementDisplay(ach.bullet, ach.metric, ach.project),
+                    hue = hue,
+                    palette = palette,
+                    pinned = pinned,
+                    count = ach.count,
+                    showControls = many,
+                    canUp = i > 0,
+                    canDown = i < area.achievements.lastIndex,
+                    onUp = { onPromote(area.name, i) },
+                    onDown = { onDemote(area.name, i) },
+                    onLongPress = { onLongPress(ach.bullet) },
+                )
+                Spacer(Modifier.height(Spacing.s2))
+            }
+            area.rolledUp.forEach { r ->
+                val raw = r.bullet.ifBlank { r.routineType }
+                RolledUpRow(raw, r.count, hue, palette, onLongPress = { onLongPress(raw) })
+                Spacer(Modifier.height(Spacing.s2))
+            }
         }
-        AchievementRow(
-            text = achievementDisplay(ach.bullet, ach.metric, ach.project),
-            hue = hue,
-            palette = palette,
-            pinned = pinned,
-            showControls = many,
-            canUp = i > 0,
-            canDown = i < area.achievements.lastIndex,
-            onUp = { onPromote(area.name, i) },
-            onDown = { onDemote(area.name, i) },
-        )
-        Spacer(Modifier.height(Spacing.s2))
-    }
-    area.rolledUp.forEach { r ->
-        RolledUpRow(r.bullet.ifBlank { r.routineType }, r.count, hue, palette)
-        Spacer(Modifier.height(Spacing.s2))
     }
 }
 
@@ -373,38 +469,96 @@ private fun BehaviourSection(
     b: SummaryBehaviour,
     framework: Framework,
     palette: BragPalette,
+    expanded: Boolean,
+    onToggle: () -> Unit,
     onCopy: () -> Unit,
+    onLongPress: (String) -> Unit,
 ) {
     val hue = goalHue(framework, b.name)
-    SectionHeader(b.name, hue, palette, onCopy)
-    Spacer(Modifier.height(Spacing.s3))
-    b.evidence.forEach { ev ->
-        AchievementRow(ev, hue, palette, pinned = false, showControls = false, canUp = false, canDown = false, onUp = {}, onDown = {})
-        Spacer(Modifier.height(Spacing.s2))
+    SectionHeader(b.name, hue, palette, expanded, onToggle, onCopy)
+    AnimatedVisibility(
+        visible = expanded,
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut(),
+    ) {
+        Column {
+            Spacer(Modifier.height(Spacing.s3))
+            b.evidence.forEach { ev ->
+                AchievementRow(ev, hue, palette, pinned = false, count = 1, showControls = false, canUp = false, canDown = false, onUp = {}, onDown = {}, onLongPress = { onLongPress(ev) })
+                Spacer(Modifier.height(Spacing.s2))
+            }
+        }
     }
 }
 
 @Composable
-private fun DevelopmentSection(items: List<String>, framework: Framework, palette: BragPalette) {
+private fun DevelopmentSection(
+    items: List<String>,
+    framework: Framework,
+    palette: BragPalette,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onLongPress: (String) -> Unit,
+) {
     val hue = pillarColor(framework.pillars.size + 1)
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.sm)).clickable(onClick = onToggle),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Box(Modifier.size(9.dp).clip(RoundedCornerShape(3.dp)).background(hue.solid))
         Spacer(Modifier.width(Spacing.s2))
-        Text("LEARNING & GROWTH", style = MaterialTheme.typography.labelMedium, color = hue.ink, fontWeight = FontWeight.ExtraBold)
+        Text(
+            "LEARNING & GROWTH",
+            style = MaterialTheme.typography.labelMedium,
+            color = hue.ink,
+            fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+            null, tint = palette.text3, modifier = Modifier.size(18.dp),
+        )
     }
-    Spacer(Modifier.height(Spacing.s3))
-    items.forEach { d ->
-        AchievementRow(d, hue, palette, pinned = false, showControls = false, canUp = false, canDown = false, onUp = {}, onDown = {})
-        Spacer(Modifier.height(Spacing.s2))
+    AnimatedVisibility(
+        visible = expanded,
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut(),
+    ) {
+        Column {
+            Spacer(Modifier.height(Spacing.s3))
+            items.forEach { d ->
+                AchievementRow(d, hue, palette, pinned = false, count = 1, showControls = false, canUp = false, canDown = false, onUp = {}, onDown = {}, onLongPress = { onLongPress(d) })
+                Spacer(Modifier.height(Spacing.s2))
+            }
+        }
     }
 }
 
 @Composable
-private fun SectionHeader(name: String, hue: PillarColor, palette: BragPalette, onCopy: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(9.dp).clip(RoundedCornerShape(3.dp)).background(hue.solid))
+private fun SectionHeader(
+    name: String,
+    hue: PillarColor,
+    palette: BragPalette,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onCopy: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // Toggle target = dot + name + chevron (a SEPARATE clickable from Copy, so a Copy tap is never
+        // swallowed by the collapse toggle).
+        Row(
+            Modifier.weight(1f).clip(RoundedCornerShape(Radii.sm)).clickable(onClick = onToggle),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(9.dp).clip(RoundedCornerShape(3.dp)).background(hue.solid))
+            Spacer(Modifier.width(Spacing.s2))
+            Text(name.uppercase(), style = MaterialTheme.typography.labelMedium, color = hue.ink, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+            Icon(
+                if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                null, tint = palette.text3, modifier = Modifier.size(18.dp),
+            )
+        }
         Spacer(Modifier.width(Spacing.s2))
-        Text(name.uppercase(), style = MaterialTheme.typography.labelMedium, color = hue.ink, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
         Text(
             "Copy",
             style = MaterialTheme.typography.labelSmall,
@@ -421,16 +575,35 @@ private fun AchievementRow(
     hue: PillarColor,
     palette: BragPalette,
     pinned: Boolean,
+    count: Int,
     showControls: Boolean,
     canUp: Boolean,
     canDown: Boolean,
     onUp: () -> Unit,
     onDown: () -> Unit,
+    onLongPress: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth()) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            // Long-press → edit/delete this line (feature #1). detectTapGestures yields to a scroll
+            // drag, so the surrounding verticalScroll still works; child arrow taps keep their own.
+            .pointerInput(text) { detectTapGestures(onLongPress = { onLongPress() }) },
+    ) {
         Box(Modifier.padding(top = 6.dp).size(5.dp).clip(RoundedCornerShape(2.dp)).background(hue.solid))
         Spacer(Modifier.width(Spacing.s3))
         Text(text, style = MaterialTheme.typography.bodyMedium, color = palette.text1, modifier = Modifier.weight(1f))
+        if (count > 1) {
+            // A repeated notable win — emphasized "×N" chip (distinct from the muted routine roll-up).
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "×$count",
+                style = MaterialTheme.typography.labelSmall,
+                color = hue.ink,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clip(RoundedCornerShape(Radii.sm)).background(hue.soft).padding(horizontal = 7.dp, vertical = 3.dp),
+            )
+        }
         if (pinned) {
             Spacer(Modifier.width(6.dp))
             Row(
@@ -465,9 +638,11 @@ private fun ControlIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, e
 }
 
 @Composable
-private fun RolledUpRow(text: String, count: Int, hue: PillarColor, palette: BragPalette) {
+private fun RolledUpRow(text: String, count: Int, hue: PillarColor, palette: BragPalette, onLongPress: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.md)).background(palette.surface2).padding(horizontal = 11.dp, vertical = 9.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.md)).background(palette.surface2)
+            .pointerInput(text) { detectTapGestures(onLongPress = { onLongPress() }) }
+            .padding(horizontal = 11.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Outlined.Layers, null, tint = palette.text3, modifier = Modifier.size(15.dp))
@@ -493,6 +668,7 @@ private fun SetAsidePanel(
     notes: List<com.bragbuddy.app.data.ai.SetAsideNote>,
     palette: BragPalette,
     onToggle: () -> Unit,
+    onRestore: (String) -> Unit,
 ) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.md)).background(palette.surface).padding(2.dp),
@@ -515,13 +691,22 @@ private fun SetAsidePanel(
                 )
                 Spacer(Modifier.height(Spacing.s2))
                 notes.forEach { n ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
                         Box(Modifier.padding(top = 6.dp).size(4.dp).clip(RoundedCornerShape(2.dp)).background(palette.text3))
                         Spacer(Modifier.width(Spacing.s2))
                         Column(Modifier.weight(1f)) {
                             Text(n.what, style = MaterialTheme.typography.bodySmall, color = palette.text2, fontWeight = FontWeight.SemiBold)
                             if (n.why.isNotBlank()) Text(n.why, style = MaterialTheme.typography.bodySmall, color = palette.text3)
                         }
+                        Spacer(Modifier.width(Spacing.s2))
+                        // Restore this note back into the summary (feature #5).
+                        Text(
+                            "Restore",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = palette.primary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clip(RoundedCornerShape(Radii.sm)).clickable { onRestore(n.what) }.padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
                     }
                 }
             }
@@ -694,14 +879,150 @@ private fun SparkTile(palette: BragPalette) {
 
 @Composable
 private fun GeneratingOverlay(palette: BragPalette) {
+    val noRipple = remember { MutableInteractionSource() }
     Box(
-        Modifier.fillMaxSize().background(palette.bg.copy(alpha = 0.7f)),
+        Modifier.fillMaxSize()
+            .background(palette.bg.copy(alpha = 0.7f))
+            // Consume touches so the summary underneath can't be edited while it's being replaced.
+            .clickable(interactionSource = noRipple, indication = null, onClick = {}),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = palette.primary, strokeWidth = 2.5.dp)
             Spacer(Modifier.height(Spacing.s3))
             Text("Curating your summary…", style = MaterialTheme.typography.bodyMedium, color = palette.text2)
+        }
+    }
+}
+
+// ---------------- pointer edit / delete / restore (Phase 1) ----------------
+
+/** Long-press on a summary pointer → Edit / Delete. Custom-scrim sheet (never a Material sheet). */
+@Composable
+private fun PointerActionSheet(
+    palette: BragPalette,
+    text: String,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val noRipple = remember { MutableInteractionSource() }
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier.fillMaxSize().background(Color(0xFF0E0F1A).copy(alpha = 0.42f))
+                .clickable(interactionSource = noRipple, indication = null, onClick = onDismiss),
+        )
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = Radii.xl, topEnd = Radii.xl))
+                .background(palette.surface)
+                .clickable(interactionSource = noRipple, indication = null, onClick = {})
+                .padding(horizontal = 18.dp).padding(top = 12.dp),
+        ) {
+            Box(Modifier.align(Alignment.CenterHorizontally).width(42.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(palette.text3.copy(alpha = 0.35f)))
+            Spacer(Modifier.height(16.dp))
+            Text("THIS LINE", style = MaterialTheme.typography.labelSmall, color = palette.text3, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(Spacing.s2))
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = palette.text1, maxLines = 3)
+            Spacer(Modifier.height(Spacing.s4))
+            PointerActionButton(Icons.Outlined.Edit, "Edit line", palette.text1, palette, onEdit)
+            Spacer(Modifier.height(Spacing.s2))
+            PointerActionButton(Icons.Outlined.DeleteOutline, "Delete line", MaterialTheme.colorScheme.error, palette, onDelete)
+            Spacer(Modifier.height(Spacing.s3))
+            Text(
+                "Only changes this summary — your saved record on Home isn't affected.",
+                style = MaterialTheme.typography.labelSmall,
+                color = palette.text3,
+            )
+            val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            Spacer(Modifier.height(18.dp + bottomInset))
+        }
+    }
+}
+
+@Composable
+private fun PointerActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    ink: Color,
+    palette: BragPalette,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.md)).background(palette.surface2).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = ink, modifier = Modifier.size(19.dp))
+        Spacer(Modifier.width(Spacing.s3))
+        Text(label, style = MaterialTheme.typography.titleSmall, color = ink, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** Edit a pointer's wording. Reuses the app's AlertDialog editor pattern (bounded, scrolls internally). */
+@Composable
+private fun EditPointerDialog(
+    palette: BragPalette,
+    initial: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = { onSave(text) }, enabled = text.isNotBlank()) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text("Edit line", color = palette.text1) },
+        text = {
+            OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 8)
+        },
+        containerColor = palette.surface,
+    )
+}
+
+/** Pick which goal area a restored set-aside note lands in (feature #5). */
+@Composable
+private fun RestorePickerSheet(
+    palette: BragPalette,
+    note: String,
+    framework: Framework,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val noRipple = remember { MutableInteractionSource() }
+    val areas = framework.pillars.filter { it.kind != PillarKind.BEHAVIOUR }.map { it.name }
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier.fillMaxSize().background(Color(0xFF0E0F1A).copy(alpha = 0.42f))
+                .clickable(interactionSource = noRipple, indication = null, onClick = onDismiss),
+        )
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = Radii.xl, topEnd = Radii.xl))
+                .background(palette.surface)
+                .clickable(interactionSource = noRipple, indication = null, onClick = {})
+                .padding(horizontal = 18.dp).padding(top = 12.dp),
+        ) {
+            Box(Modifier.align(Alignment.CenterHorizontally).width(42.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(palette.text3.copy(alpha = 0.35f)))
+            Spacer(Modifier.height(16.dp))
+            Text("Restore to which section?", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+            Spacer(Modifier.height(Spacing.s2))
+            Text(note, style = MaterialTheme.typography.bodySmall, color = palette.text3, maxLines = 2)
+            Spacer(Modifier.height(Spacing.s4))
+            if (areas.isEmpty()) {
+                Text("No goal areas in your framework yet.", style = MaterialTheme.typography.bodySmall, color = palette.text3)
+            } else {
+                areas.forEach { area ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.md)).background(palette.surface2).clickable { onPick(area) }.padding(horizontal = 14.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(area, style = MaterialTheme.typography.titleSmall, color = palette.text1, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(Spacing.s2))
+                }
+            }
+            val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            Spacer(Modifier.height(18.dp + bottomInset))
         }
     }
 }

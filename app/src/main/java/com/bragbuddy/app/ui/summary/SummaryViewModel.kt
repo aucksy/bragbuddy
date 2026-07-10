@@ -17,8 +17,13 @@ import com.bragbuddy.app.data.rollup.RollupAggregator
 import com.bragbuddy.app.data.rollup.RollupStore
 import com.bragbuddy.app.data.rollup.SummaryLength
 import com.bragbuddy.app.data.rollup.SummaryPeriod
+import com.bragbuddy.app.data.summary.BulletEdit
 import com.bragbuddy.app.data.summary.CachedSummary
+import com.bragbuddy.app.data.summary.RestoredNote
+import com.bragbuddy.app.data.summary.SummaryOverrides
 import com.bragbuddy.app.data.summary.SummaryStore
+import com.bragbuddy.app.data.summary.applyOverrides
+import com.bragbuddy.app.data.summary.summaryKey
 import com.bragbuddy.app.data.usage.UsageMeter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +33,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 
 /**
@@ -211,17 +218,25 @@ class SummaryViewModel @Inject constructor(
                     onSuccess = { result ->
                         // Meter only a FRESH generation (viewing a cached summary is free).
                         runCatching { usageMeter.recordSummaryGeneration() }
-                        summaryStore.put(
-                            s.gen.key,
-                            CachedSummary(
-                                period = s.period.name,
-                                length = s.length.name,
-                                inputSignature = s.gen.signature,
-                                result = result,
-                                periodRangeText = s.window.rangeText,
-                                generatedAtMillis = System.currentTimeMillis(),
-                            ),
-                        )
+                        // Persist under editMutex + re-read the FRESHEST overrides so a local edit made
+                        // WHILE the model was running isn't lost, and this write can't interleave with a
+                        // concurrent mutateCached. Carry the user's edits/deletes/restores onto the fresh
+                        // generation (deletes stay gone, restores stay in) so they survive the Regenerate.
+                        editMutex.withLock {
+                            val overrides = summaryStore.cache.first()[s.gen.key]?.overrides ?: SummaryOverrides()
+                            summaryStore.put(
+                                s.gen.key,
+                                CachedSummary(
+                                    period = s.period.name,
+                                    length = s.length.name,
+                                    inputSignature = s.gen.signature,
+                                    result = applyOverrides(result, overrides),
+                                    periodRangeText = s.window.rangeText,
+                                    generatedAtMillis = System.currentTimeMillis(),
+                                    overrides = overrides,
+                                ),
+                            )
+                        }
                         maybeWarnSoftCap()
                     },
                     onFailure = {
@@ -240,24 +255,76 @@ class SummaryViewModel @Inject constructor(
     /** Reorder an achievement down within its goal area. */
     fun demote(areaName: String, index: Int) = reorder(areaName, index, +1)
 
-    private fun reorder(areaName: String, index: Int, delta: Int) {
+    private fun reorder(areaName: String, index: Int, delta: Int) = mutateCached { cached ->
+        val areas = cached.result.summary.goalAreas.toMutableList()
+        val ai = areas.indexOfFirst { it.name == areaName }
+        if (ai < 0) return@mutateCached null
+        val achievements = areas[ai].achievements.toMutableList()
+        val target = index + delta
+        if (index !in achievements.indices || target !in achievements.indices) return@mutateCached null
+        val moved = achievements.removeAt(index)
+        achievements.add(target, moved)
+        areas[ai] = areas[ai].copy(achievements = achievements)
+        // Keep the SAME inputSignature — this changes the output, not the input, so it stays fresh.
+        cached.copy(result = cached.result.copy(summary = cached.result.summary.copy(goalAreas = areas)))
+    }
+
+    /**
+     * Delete a summary pointer (feature #1). Suppressed via the persistent overrides so a Regenerate
+     * can't bring it back; the user's saved RECORD on Home is never touched. Same inputSignature (a
+     * local output edit, so the summary stays "Up to date").
+     */
+    fun deletePointer(text: String) = mutateCached { cached ->
+        if (text.isBlank()) return@mutateCached null
+        val overrides = cached.overrides.copy(
+            deleted = (cached.overrides.deleted + summaryKey(text)).distinct(),
+        )
+        cached.copy(result = applyOverrides(cached.result, overrides), overrides = overrides)
+    }
+
+    /** Edit a pointer's wording (feature #1). A blank new text clears the line (= delete). */
+    fun editPointer(oldText: String, newText: String) = mutateCached { cached ->
+        if (oldText.isBlank()) return@mutateCached null
+        val trimmed = newText.trim()
+        val key = summaryKey(oldText)
+        val overrides = if (trimmed.isBlank()) {
+            cached.overrides.copy(deleted = (cached.overrides.deleted + key).distinct())
+        } else {
+            val edits = cached.overrides.edits.filterNot { summaryKey(it.from) == key } + BulletEdit(oldText, trimmed)
+            cached.overrides.copy(edits = edits)
+        }
+        cached.copy(result = applyOverrides(cached.result, overrides), overrides = overrides)
+    }
+
+    /**
+     * Restore a set-aside note into a chosen goal area (feature #5). Sticky across a Regenerate (the
+     * note is re-injected and kept out of the Set-aside panel).
+     */
+    fun restoreSetAside(noteWhat: String, areaName: String) = mutateCached { cached ->
+        if (noteWhat.isBlank() || areaName.isBlank()) return@mutateCached null
+        val overrides = cached.overrides.copy(
+            restored = (cached.overrides.restored + RestoredNote(noteWhat, areaName)).distinct(),
+        )
+        cached.copy(result = applyOverrides(cached.result, overrides), overrides = overrides)
+    }
+
+    /**
+     * Shared local-edit helper. Serializes edits (so rapid taps can't clobber each other) and always
+     * reads the FRESHEST persisted cached summary before transforming, then re-persists it under the
+     * SAME inputSignature. Return null from [transform] to make it a no-op.
+     */
+    private fun mutateCached(transform: (CachedSummary) -> CachedSummary?) {
         val s = state.value ?: return
-        val cached = s.cached ?: return
         viewModelScope.launch {
-            val areas = cached.result.summary.goalAreas.toMutableList()
-            val ai = areas.indexOfFirst { it.name == areaName }
-            if (ai < 0) return@launch
-            val achievements = areas[ai].achievements.toMutableList()
-            val target = index + delta
-            if (index !in achievements.indices || target !in achievements.indices) return@launch
-            val moved = achievements.removeAt(index)
-            achievements.add(target, moved)
-            areas[ai] = areas[ai].copy(achievements = achievements)
-            val newResult = cached.result.copy(summary = cached.result.summary.copy(goalAreas = areas))
-            // Keep the SAME inputSignature — this changes the output, not the input, so it stays fresh.
-            summaryStore.put(s.gen.key, cached.copy(result = newResult))
+            editMutex.withLock {
+                val current = summaryStore.cache.first()[s.gen.key] ?: return@withLock
+                val next = transform(current) ?: return@withLock
+                summaryStore.put(s.gen.key, next)
+            }
         }
     }
+
+    private val editMutex = Mutex()
 
     private suspend fun maybeWarnSoftCap() {
         val count = runCatching { usageMeter.counts.first().summaryGenerationsThisMonth }.getOrDefault(0)

@@ -78,13 +78,21 @@ data class SummaryAchievement(
     val bullet: String,
     val project: String? = null,
     val metric: String? = null,
+    /**
+     * How many times this same accomplishment was logged in the period (de-dup, Phase 1). 1 = a normal
+     * single win; >1 = repeats merged into one pointer. Defaulted so older cached summaries (written
+     * before this field existed) still decode.
+     */
+    val count: Int = 1,
 )
 
 @Serializable
 data class SummaryRolledUp(
     val bullet: String,
     val routineType: String,
-    val count: Int,
+    // Defaulted so a model reply that omits count on a rolled-up line still decodes (→ no ×N chip)
+    // instead of failing the whole summary parse.
+    val count: Int = 0,
 )
 
 @Serializable

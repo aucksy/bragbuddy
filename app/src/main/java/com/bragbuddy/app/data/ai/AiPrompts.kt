@@ -196,6 +196,12 @@ CONTEXT
 WHAT TO DO
 1. For each GOAL AREA, select the few strongest achievements (default at most 5),
    ranked by impact, outcome/metrics, scale, difficulty, visibility, goal alignment.
+   Never list the same accomplishment twice: if several highlights describe the SAME
+   work (they may read near-identically or be marked "(logged N×)"), output ONE bullet
+   with the strongest phrasing and set its "count". A sequence of PROGRESS updates on
+   one deliverable ("started the X redesign" then "shipped X, cut drop-off 18%") is a
+   single arc — combine into one outcome-led bullet, not repeated lines. Prefer the
+   fewest pointers that fully represent the work.
 2. Roll up routine work into single cumulative lines with counts and any metric.
 3. Always include every pinned item, in the right goal area.
 4. For each BEHAVIOUR/COMPETENCY, give 1-3 concrete evidence bullets; omit ones with
@@ -210,7 +216,7 @@ OUTPUT (JSON only — no prose, no markdown, no code fences)
   "summary": {
     "goalAreas": [
       { "name": "string",
-        "achievements": [ { "bullet": "string", "project": "string or null", "metric": "string or null" } ],
+        "achievements": [ { "bullet": "string", "project": "string or null", "metric": "string or null", "count": 1 } ],
         "rolledUp": [ { "bullet": "string", "routineType": "string", "count": 0 } ] }
     ],
     "behaviours": [ { "name": "string", "evidence": ["string"] } ],

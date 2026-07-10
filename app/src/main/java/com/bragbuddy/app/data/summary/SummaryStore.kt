@@ -39,6 +39,11 @@ data class CachedSummary(
     val result: SummaryResult,
     val periodRangeText: String,
     val generatedAtMillis: Long,
+    /**
+     * User edits (delete / edit / restore) that must survive a Regenerate (Phase 1). Carried onto each
+     * fresh generation and re-applied via [applyOverrides]. Defaulted so older cached blobs decode.
+     */
+    val overrides: SummaryOverrides = SummaryOverrides(),
 )
 
 @Singleton

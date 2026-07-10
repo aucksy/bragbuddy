@@ -55,6 +55,8 @@ data class AggHighlight(
     val impact: Double,
     val isExtra: Boolean,
     val demonstrates: List<String>,
+    /** How many exact/normalized-identical entries were merged into this highlight (de-dup, Phase 1). */
+    val count: Int = 1,
 )
 
 /** A routine-work tally within a goal area (type → count, with any cumulative metrics). */
