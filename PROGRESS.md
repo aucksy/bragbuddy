@@ -210,6 +210,26 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
+## Status: v0.21.2 — text-field growth fix (long note no longer pushes the Save row off-screen) ✅ DONE (signed · tag-driven CI)
+
+> **UI hotfix.** A long typed/pasted note grew the capture text box without bound, inflating the
+> bottom-anchored sheet until the **Save/Add row scrolled off the bottom** (owner-reported on the Type
+> screen). Root cause: the editable `Box`es used `heightIn(min = …)` with **no max**, and the fields had
+> **no internal scroll** — so content grew the field, the field grew the sheet, and the actions below it
+> left the viewport.
+
+**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.21.2/BragBuddy-v0.21.2.apk` (signed;
+`.aab` alongside). **Fix (`versionCode 25`):** cap every **multi-line** editable field with `maxLines` so
+long text scrolls **inside** the field (bounding the field → bounding the sheet), keeping the action row on
+screen. Uniform, no new imports, no logic change, no data loss (`maxLines` bounds only what's visible; the
+full value is still submitted). Applied to all 6 growing fields — **Type capture** & **voice/image Review**
+(`ui/capture/CaptureScreen.kt`, maxLines 6), **framework detail** (`ui/framework/CategoryEditSheet.kt`
+`ScanField`, 5), **inline entry edit** (`ui/entry/EntryDetailSheet.kt`, 6), and the **Home/Pillar "Edit
+entry" dialogs** (`OutlinedTextField` minLines 3 → maxLines 8). Single-line fields (Groq key, folder/role/
+number/remap names) were already bounded — untouched. **Room stays v4.** No behaviour change; pure layout bound.
+
+---
+
 ## Status: v0.21.1 — Google Drive connect + recovery (onboarding recovery step + connect-time restore CHOICE) ✅ DONE (signed · tag-driven CI; compile = WILL COMPILE, logic = invariant HOLDS/0 HIGH-MED)
 
 > **Shipped as `v0.21.1`** — the identical `v0.21.0` tag build was **cancelled by GitHub's runner queue

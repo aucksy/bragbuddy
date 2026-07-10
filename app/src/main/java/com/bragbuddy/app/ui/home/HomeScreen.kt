@@ -510,7 +510,7 @@ private fun EditEntryDialog(initial: String, palette: BragPalette, onSave: (Stri
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
         title = { Text("Edit entry", color = palette.text1) },
         text = {
-            OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+            OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 8)
         },
         containerColor = palette.surface,
     )

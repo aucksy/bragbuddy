@@ -479,6 +479,8 @@ private fun ScanField(
             if (value.isEmpty()) Text(placeholder, style = MaterialTheme.typography.bodyMedium, color = palette.text3)
             BasicTextField(
                 value = value, onValueChange = onValueChange,
+                // Cap growth so a long detail scrolls inside the field instead of ballooning the row.
+                maxLines = 5,
                 modifier = Modifier.fillMaxWidth(),
                 textStyle = LocalTextStyle.current.merge(TextStyle(color = palette.text1, fontSize = 14.sp, lineHeight = 20.sp)),
                 cursorBrush = SolidColor(palette.primary),

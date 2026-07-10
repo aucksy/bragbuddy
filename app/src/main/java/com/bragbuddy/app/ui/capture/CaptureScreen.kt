@@ -666,6 +666,8 @@ private fun ReviewContent(
             BasicTextField(
                 value = state.reviewText,
                 onValueChange = onReviewChange,
+                // Cap growth so a long transcript scrolls inside the field, keeping Add visible.
+                maxLines = 6,
                 modifier = Modifier.fillMaxWidth(),
                 textStyle = LocalTextStyle.current.merge(
                     TextStyle(color = palette.text1, fontSize = 14.sp, lineHeight = 21.sp),
@@ -953,6 +955,9 @@ private fun TypeContent(
             BasicTextField(
                 value = state.typed,
                 onValueChange = onTypedChange,
+                // Cap growth so a long note scrolls INSIDE the field instead of inflating the
+                // bottom-anchored sheet and pushing the Save row off-screen.
+                maxLines = 6,
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 textStyle = LocalTextStyle.current.merge(
                     TextStyle(color = palette.text1, fontSize = 14.sp, lineHeight = 21.sp),

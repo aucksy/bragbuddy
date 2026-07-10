@@ -144,6 +144,8 @@ fun EntryDetailSheet(
                         BasicTextField(
                             value = editText,
                             onValueChange = { editText = it },
+                            // Cap growth so a long edit scrolls inside the field, keeping Save reachable.
+                            maxLines = 6,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
                             textStyle = LocalTextStyle.current.merge(
                                 TextStyle(color = palette.text1, fontSize = 16.sp, lineHeight = 22.sp),
