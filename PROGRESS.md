@@ -210,9 +210,14 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
-## Status: v0.21.0 — Google Drive connect + recovery (onboarding recovery step + connect-time restore CHOICE) ✅ DONE (signed · tag-driven CI; compile = WILL COMPILE, logic = invariant HOLDS/0 HIGH-MED)
+## Status: v0.21.1 — Google Drive connect + recovery (onboarding recovery step + connect-time restore CHOICE) ✅ DONE (signed · tag-driven CI; compile = WILL COMPILE, logic = invariant HOLDS/0 HIGH-MED)
 
-**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.21.0/BragBuddy-v0.21.0.apk` (signed;
+> **Shipped as `v0.21.1`** — the identical `v0.21.0` tag build was **cancelled by GitHub's runner queue
+> before any step ran** (infrastructure backlog, NOT a code failure; the job had zero executed steps).
+> Re-tagged v0.21.1 (versionCode 24) at the same code to re-trigger; `v0.21.0` tag stays but never
+> published a release.
+
+**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.21.1/BragBuddy-v0.21.1.apk` (signed;
 `.aab` alongside). A recovery flow so reinstalling users get their record back, and connecting Drive is
 always an **explicit restore choice** that **never auto-backs-up an empty state or clobbers an existing
 backup**. **Room stays v4** (no new pref — reuses `driveAutoBackup` as the preserve-the-backup lever).
@@ -222,7 +227,7 @@ successful restore **jumps to Home**; "Not now" **preserves the old backup** (pa
 OAuth client + release SHA-1 (`B8:B2:F2:…:A4:D3`) is added to `gmailapi-491903` — the flow degrades
 gracefully (shows the error, lets you Skip), but **can't be end-to-end tested until that gate is done**.
 
-### v0.21.0 — what was built (`versionCode 23`)
+### v0.21.1 — what was built (`versionCode 24`; feature was v0.21.0, re-tagged after the cancelled run)
 1. **Onboarding recovery step** (`ui/onboarding/OnboardingScreen.kt` `RecoverStep` + `OnboardingViewModel`
    Drive methods). New flow: **Welcome → Privacy → Recover from Drive → Role → Framework** (`TOTAL_STEPS=5`).
    "Reinstalling? Recover your record." → **Connect Google Drive** → after connect, if a backup exists →
