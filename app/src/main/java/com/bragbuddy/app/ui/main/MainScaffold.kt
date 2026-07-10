@@ -1,5 +1,11 @@
 package com.bragbuddy.app.ui.main
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -57,6 +63,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.prefs.CaptureMode
+import com.bragbuddy.app.notification.NotificationPrimer
 import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.framework.FrameworkScreen
 import com.bragbuddy.app.ui.home.HomeScreen
@@ -97,6 +104,30 @@ fun MainScaffold(
     // One evaluation per shell composition = one per app open (Design §7: the weekly catch-up
     // shows on open in its window, max once a week — never re-prompts while the app sits open).
     LaunchedEffect(Unit) { viewModel.maybeShowCatchup() }
+
+    // Phase 3 · first-run notification-rationale popup. Replaces the old naked OS dialog that raced
+    // Welcome: we explain WHY on first Home, then the popup's "Allow" launches the real request.
+    val notifPrimerHandled by viewModel.notifPrimerHandled.collectAsStateWithLifecycle()
+    var primerVisible by remember { mutableStateOf(false) }
+    val notifAlreadyGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    // Result of the real OS request (launched from the popup's "Allow"). Either way just mark it
+    // handled — NOT declined: if the OS denied (incl. a permanently-denied upgrader, where launch()
+    // returns denied without a dialog), we deliberately leave the risk UN-acknowledged so the Home
+    // reliability card can still surface and deep-link them to notification settings. Only the explicit
+    // "Maybe later" / scrim acknowledges the risk (fully suppressing the card) — intent-based asymmetry.
+    val requestNotif = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
+        viewModel.markNotifPrimerHandled()
+        primerVisible = false
+    }
+    LaunchedEffect(notifPrimerHandled) {
+        val handled = notifPrimerHandled ?: return@LaunchedEffect // still loading — don't decide yet
+        when (NotificationPrimer.decide(Build.VERSION.SDK_INT, notifAlreadyGranted, handled)) {
+            NotificationPrimer.Decision.SHOW -> primerVisible = true
+            NotificationPrimer.Decision.MARK_HANDLED -> viewModel.markNotifPrimerHandled()
+            NotificationPrimer.Decision.NONE -> primerVisible = false
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(palette.bg)) {
         when (tab) {
@@ -143,13 +174,23 @@ fun MainScaffold(
             onClick = { radialOpen = !radialOpen },
         )
 
-        if (showCatchup) {
+        // The first-run notification primer takes precedence over the weekly catch-up so the two
+        // custom scrims can never stack (the primer is rare and one-time).
+        if (showCatchup && !primerVisible) {
             CatchupSheet(
                 onAdd = {
                     viewModel.catchupHandled()
                     CaptureLauncher.openDefault(context)
                 },
                 onSkip = { viewModel.catchupHandled() },
+            )
+        }
+
+        // Rendered last = topmost: a modal first-run ask that covers the bar + FAB until resolved.
+        if (primerVisible) {
+            NotificationPrimerSheet(
+                onAllow = { requestNotif.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                onMaybeLater = { viewModel.markNotifPrimerDeclined(); primerVisible = false },
             )
         }
     }

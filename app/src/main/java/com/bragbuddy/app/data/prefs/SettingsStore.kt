@@ -84,6 +84,11 @@ data class AppSettings(
     /** The privacy/terms version the user has accepted (0 = never). Re-prompted only when the shipped
      *  [com.bragbuddy.app.data.legal.PrivacyPolicy.VERSION] is bumped for a material change. Device-local. */
     val acceptedPrivacyVersion: Int = 0,
+    /** Set true once the first-run notification-rationale popup (Phase 3) has been shown and acted upon
+     *  — allowed, "maybe later", or auto-satisfied (below Android 13 / already granted). Gates that
+     *  one-time popup AND the Home reliability card (the card stays quiet until the primer is handled,
+     *  so the two never nag about notifications at once). Device-local; not backed up (per-install). */
+    val notifPrimerHandled: Boolean = false,
     // ---- Phase 2 · theme (device-local; deliberately NOT backed up — a per-device visual preference) ----
     /** Light / dark selection. Default [ThemeMode.SYSTEM] preserves the pre-existing follow-the-system behaviour. */
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -131,6 +136,7 @@ class SettingsStore @Inject constructor(
             reliabilityDismissedRisks = p[KEY_RELIABILITY_DISMISSED_RISKS] ?: "",
             onboardingComplete = p[KEY_ONBOARDING_COMPLETE] ?: false,
             acceptedPrivacyVersion = p[KEY_ACCEPTED_PRIVACY_VERSION] ?: 0,
+            notifPrimerHandled = p[KEY_NOTIF_PRIMER_HANDLED] ?: false,
             themeMode = runCatching { ThemeMode.valueOf(p[KEY_THEME_MODE] ?: "SYSTEM") }
                 .getOrDefault(ThemeMode.SYSTEM),
             autoDarkHour = (p[KEY_THEME_DARK_HOUR] ?: 20).coerceIn(0, 23),
@@ -199,6 +205,18 @@ class SettingsStore @Inject constructor(
     suspend fun setAcceptedPrivacyVersion(version: Int) =
         store.edit { it[KEY_ACCEPTED_PRIVACY_VERSION] = version }
 
+    suspend fun setNotifPrimerHandled(handled: Boolean) =
+        store.edit { it[KEY_NOTIF_PRIMER_HANDLED] = handled }
+
+    /** The primer was declined: mark it handled AND acknowledge the current reminder-risk signature in
+     *  ONE atomic write, so the Home reliability-card gate can't observe an intermediate state (handled
+     *  but risks not yet acknowledged) and flash the card for a frame. */
+    suspend fun setNotifPrimerDeclined(acknowledgedRisks: String) =
+        store.edit {
+            it[KEY_NOTIF_PRIMER_HANDLED] = true
+            it[KEY_RELIABILITY_DISMISSED_RISKS] = acknowledgedRisks
+        }
+
     suspend fun setThemeMode(mode: ThemeMode) =
         store.edit { it[KEY_THEME_MODE] = mode.name }
 
@@ -245,6 +263,7 @@ class SettingsStore @Inject constructor(
         val KEY_RELIABILITY_DISMISSED_RISKS = stringPreferencesKey("reliability_dismissed_risks")
         val KEY_ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
         val KEY_ACCEPTED_PRIVACY_VERSION = intPreferencesKey("accepted_privacy_version")
+        val KEY_NOTIF_PRIMER_HANDLED = booleanPreferencesKey("notif_primer_handled")
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         val KEY_THEME_DARK_HOUR = intPreferencesKey("theme_auto_dark_hour")
         val KEY_THEME_DARK_MINUTE = intPreferencesKey("theme_auto_dark_minute")

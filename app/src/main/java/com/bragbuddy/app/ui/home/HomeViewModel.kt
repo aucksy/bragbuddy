@@ -117,12 +117,18 @@ class HomeViewModel @Inject constructor(
     /** The quiet "your phone may silence the reminder" card — only when a real risk is detected
      *  (notifications/channel blocked, exact alarms revoked, or battery optimization on an
      *  aggressive OEM) AND its risk set differs from the one the user already dismissed — so
-     *  dismissing today's warning still lets a NEW risk resurface it later. */
+     *  dismissing today's warning still lets a NEW risk resurface it later.
+     *
+     *  Gated on `notifPrimerHandled` (Phase 3): the card stays quiet until the first-run notification
+     *  primer has been shown/acted upon, so the primer popup and this card never nag about notifications
+     *  at the same time. Declining the primer records the current risk as acknowledged (see
+     *  `MainViewModel.markNotifPrimerDeclined`), so it also doesn't turn around and re-nag. */
     val showReliabilityCard: StateFlow<Boolean> = combine(
         settings.settings, refreshTick,
     ) { s, _ ->
         val health = ReliabilityCheck.check(appContext)
-        s.reminderEnabled && health.atRisk && health.riskSignature != s.reliabilityDismissedRisks
+        s.reminderEnabled && s.notifPrimerHandled && health.atRisk &&
+            health.riskSignature != s.reliabilityDismissedRisks
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     fun dismissReliabilityCard() = viewModelScope.launch {

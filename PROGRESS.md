@@ -210,6 +210,70 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
+## Status: v0.24.0 — P3 · Notification-rationale popup + shorter/de-keyed onboarding privacy ✅ DONE (signed · tag-driven CI; compile+logic+UI+test adversarially reviewed)
+
+> **Phase 3 of the 9-feature batch** (creator's 2026-07-10 request; one signed APK per group). Two changes,
+> both device-local, no schema change (**Room stays v4**; the new flag is DataStore). No `PrivacyPolicy.VERSION`
+> bump (the concise onboarding copy is a *summary*, not a material terms change — so no re-accept for existing
+> users; acceptance still binds the full policy in Settings → Privacy).
+
+**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.24.0/BragBuddy-v0.24.0.apk` (signed; `.aab` alongside).
+
+### v0.24.0 — what was built (`versionCode 28`)
+1. **First-run notification-rationale popup (feature (a)).** The **naked OS `POST_NOTIFICATIONS` dialog** that
+   `MainActivity.onCreate` fired on every cold start — which raced the **Welcome** onboarding screen on a fresh
+   install — is **removed**. Instead, a **custom-scrim popup** (`ui/main/NotificationPrimerSheet.kt`, built in the
+   `CatchupSheet` style — never a Material `ModalBottomSheet`) is shown **once on first Home**, explaining WHY
+   BragBuddy wants to notify ("one quiet reminder a day … change or turn it off anytime") **before** the OS
+   dialog; its **"Allow notifications"** button is what launches the real `RequestPermission`. Gated by a new
+   device-local `SettingsStore.notifPrimerHandled` flag. Pure decision helper `notification/NotificationPrimer.kt`
+   (`decide(sdkInt, alreadyGranted, handled)` → **SHOW / MARK_HANDLED / NONE**): pre-Android-13 or already-granted
+   (an upgrader who granted under the old dialog) → **auto-satisfied silently, no popup**; only a fresh 13+/not-granted
+   state SHOWs. Hosted in `MainScaffold` (a `StateFlow<Boolean?>` null-loading gate avoids a flash; catch-up is
+   gated `!primerVisible` so two scrims never stack; the primer renders last so it covers the bar + FAB).
+2. **Suppress the reliability-card double-nag.** The Home "keep your reminder alive" card
+   (`HomeViewModel.showReliabilityCard`) now **also requires `notifPrimerHandled`** — so the primer and the card can
+   **never nag about notifications at the same time** (structural mutual-exclusion on one flag). **Intent-based
+   asymmetry on how the primer resolves:** **"Maybe later" / scrim** → `markNotifPrimerDeclined` **atomically** marks
+   handled AND records the current `ReminderHealth.riskSignature` as acknowledged (one `store.edit{}`, no flash
+   frame) → the card stays quiet; **"Allow" → OS-granted** → just `markNotifPrimerHandled` (a battery risk on an
+   aggressive OEM can still surface the card — different concern, not a re-nag); **"Allow" → OS-denied** (incl. a
+   permanently-denied upgrader where `launch()` returns denied with no dialog) → also just `markNotifPrimerHandled`,
+   deliberately leaving the risk **un-acknowledged** so the card **can** surface and deep-link them to notification
+   settings — **no dead-end** (this was a review finding, fixed). A genuinely NEW/changed risk later still resurfaces
+   the card (existing `reliabilityDismissedRisks` semantics).
+3. **Shorter, de-keyed onboarding privacy (feature (b)).** The onboarding hard-gate now renders a **concise
+   summary** (`PrivacyContent(concise = true)` → new `PrivacyPolicy.onboardingPrinciples` — **6 short cards** vs. the
+   full **9** — + `ONBOARDING_INTRO` + a "Read the full privacy policy anytime in Settings → Privacy" pointer). It
+   **de-keys** the wording: the BYOK **key-instruction verbiage** ("AI runs on Groq — *with your own key* … *using the
+   Groq API key you add yourself*") is dropped from onboarding (premature there), retitled **"AI runs on Groq"** —
+   while KEEPING the material Groq disclosure, the no-audio/image-retention, control, no-warranty cards, and the
+   emphasised **"You decide what you write"** closing + Groq link (rendered unconditionally). **BYOK itself is
+   unchanged**; **Settings → Privacy keeps the FULL, authoritative policy** (`concise = false`, the default) that
+   acceptance binds. `docs/privacy.md` (mirrors the full policy) is untouched.
+- **Tests:** `NotificationPrimerTest` (11 assertions) — the full SDK × granted × handled matrix incl. the 32↔33
+  boundary and both auto-satisfy paths. `PrivacyPolicy`/`SettingsStore` changes are purely additive (no existing
+  test references them; all defaults preserved).
+- **REVIEW (4-dimension adversarial — compile / logic / UI / test, independent agents, ~94 tool-uses):** compile =
+  **CLEAN** (all symbols/imports/`when`-exhaustiveness/icon-in-extended verified); tests = **CORRECT** (all 11
+  assertions hand-evaluated true, no existing test broken); UI = solid, **no HIGH/MED** (faithful `CatchupSheet`
+  clone, correct z-order/insets/theme, concise privacy renders + Accept bar stays pinned); logic = **HOLD (ship)**,
+  all 10 behavioural claims verified, **1 LOW dead-end FIXED** (the permanently-denied-upgrader recovery path above),
+  2 LOW documented (composite-signature acknowledgment is by-design & resurfaces on change; a sub-frame DataStore-load
+  race is cosmetic/unreachable). Also fixed pre-tag: added `verticalScroll` to the primer sheet (no clip at large
+  font scale), tightened the body copy ("once a day"), and corrected a now-stale comment in `Notifications.kt`.
+- **On-device test (the creator's step):** (a) **fresh install** → onboarding (Welcome no longer has an OS dialog
+  racing it) → land on Home → the rationale popup appears **once** → **Allow** → OS dialog → grant → reminder works
+  (Settings → Reliable reminders → "Send a test reminder"); (b) fresh install → **Maybe later** → **no** reliability
+  card nag on Home; (c) tap **Allow** then **Don't allow** in the OS dialog → the Home "keep your reminder alive" card
+  appears offering **Review settings** (recovery path, not a dead-end); (d) kill+relaunch → the popup does **not**
+  re-appear (handled); (e) an **upgrader** who already granted → **no** popup; (f) onboarding **Privacy** step now
+  shows the **shorter** cards with **no "add your Groq key" instructions**, and Settings → **Privacy** still shows the
+  **full** policy; existing users are **not** re-prompted to re-accept. **NEXT = P4 v0.25.0** (AI project-aware
+  "Add impact" list on Home — the last item in the 9-feature batch).
+
+---
+
 ## Status: v0.23.0 — P2 · Recategorize (fix-a-wrong-category) + Theme (System/Light/Dark/Auto) ✅ DONE (signed · tag-driven CI; compile+logic+UI+test adversarially reviewed)
 
 > **Phase 2 of the 9-feature batch.** Feature (a) as originally written (Inbox → tag a framework category)

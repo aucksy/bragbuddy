@@ -254,11 +254,19 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   restore·de-dup) → **P2 v0.23.0** Recategorize (fix-a-wrong-category) + Theme(System/Light/Dark/Auto+scheduled) →
   **P3 v0.24.0** notification-rationale popup + shorten/de-key onboarding privacy → **P4 v0.25.0** AI
   project-aware "Add impact" on Home. Each phase = build → compile+logic+UI+test adversarial review → unit
-  tests → signed APK → handoff. **v0.23.0 = P2 SHIPPED** (latest). **P2 NOTE:** the creator dropped the
-  original feature (a) "Inbox → tag a framework category" mid-phase for a broader need — *correct any
-  wrongly-filed entry* → **Recategorize** (entry-detail: pick a placement category + folder AND multi-select
-  behaviour evidence, no AI; replaced the old folder-only "Move"). Theme is **device-local** (not backed up),
-  Auto uses two clock-picker times. See `PROGRESS.md` top block for detail.
+  tests → signed APK → handoff. **v0.24.0 = P3 SHIPPED** (latest); **NEXT = P4 v0.25.0** (the LAST batch item —
+  AI project-aware "Add impact" list on Home). **P3 (v0.24.0):** killed the naked OS notification dialog that
+  raced Welcome → a **first-run rationale popup** on Home (custom-scrim `NotificationPrimerSheet`, gated by new
+  device-local `notifPrimerHandled`; pure `NotificationPrimer.decide`; auto-satisfied silently pre-13/already-
+  granted) whose "Allow" launches the real request; the Home reliability card is now **gated on the primer being
+  handled** so the two never double-nag (decline acknowledges the risk atomically; an Allow→OS-denied leaves the
+  risk un-acknowledged so the card still offers a recovery deep-link — no dead-end). Onboarding Privacy = a
+  **concise 6-card, de-keyed** summary (drops the "add your Groq key" instructions, keeps the Groq disclosure +
+  closing; **BYOK unchanged; Settings keeps the FULL policy**; no `PrivacyPolicy.VERSION` bump → no re-accept).
+  **P2 NOTE:** the creator dropped the original P2 feature (a) "Inbox → tag a framework category" mid-phase for a
+  broader need — *correct any wrongly-filed entry* → **Recategorize** (entry-detail: pick a placement category +
+  folder AND multi-select behaviour evidence, no AI; replaced the old folder-only "Move"). Theme is
+  **device-local** (not backed up), Auto uses two clock-picker times. See `PROGRESS.md` top block for detail.
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
   round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
   errors). Fix from the CI log via the **public** GitHub API (unauthenticated is enough for run status

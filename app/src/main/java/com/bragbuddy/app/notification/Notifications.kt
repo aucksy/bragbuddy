@@ -43,7 +43,8 @@ object Notifications {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pending)
             .build()
-        // On Android 13+ this is a no-op without POST_NOTIFICATIONS; we request that permission at launch.
+        // On Android 13+ this is a no-op without POST_NOTIFICATIONS; that permission is requested once
+        // via the first-run rationale popup on Home (see NotificationPrimer / NotificationPrimerSheet).
         runCatching { NotificationManagerCompat.from(context).notify(REMINDER_ID, notification) }
     }
 }

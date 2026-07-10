@@ -33,11 +33,16 @@ import com.bragbuddy.app.ui.theme.Spacing
  * Content comes verbatim from [PrivacyPolicy]. [modifier] is where the host places it — the
  * onboarding step passes `Modifier.weight(1f)` so the Accept bar stays pinned below; Settings passes
  * `Modifier.fillMaxSize()`.
+ *
+ * [concise] (Phase 3) renders the SHORTER, de-keyed onboarding summary ([PrivacyPolicy.onboardingPrinciples]
+ * + a shorter intro, no key-setup wording, and a "full policy in Settings" pointer). Settings keeps the
+ * full, authoritative version (`concise = false`). Acceptance always binds the full terms.
  */
 @Composable
-fun PrivacyContent(modifier: Modifier = Modifier) {
+fun PrivacyContent(modifier: Modifier = Modifier, concise: Boolean = false) {
     val palette = BragBuddyTheme.palette
     val uriHandler = LocalUriHandler.current
+    val principles = if (concise) PrivacyPolicy.onboardingPrinciples else PrivacyPolicy.principles
     Column(
         modifier
             .fillMaxWidth()
@@ -47,7 +52,11 @@ fun PrivacyContent(modifier: Modifier = Modifier) {
         Spacer(Modifier.height(Spacing.s4))
         Text(PrivacyPolicy.TITLE, style = MaterialTheme.typography.headlineLarge, color = palette.text1)
         Spacer(Modifier.height(Spacing.s2))
-        Text(PrivacyPolicy.INTRO, style = MaterialTheme.typography.bodyMedium, color = palette.text2)
+        Text(
+            if (concise) PrivacyPolicy.ONBOARDING_INTRO else PrivacyPolicy.INTRO,
+            style = MaterialTheme.typography.bodyMedium,
+            color = palette.text2,
+        )
         Spacer(Modifier.height(Spacing.s2))
         Text(
             "Last updated ${PrivacyPolicy.LAST_UPDATED} · v${PrivacyPolicy.VERSION}",
@@ -56,7 +65,7 @@ fun PrivacyContent(modifier: Modifier = Modifier) {
         )
         Spacer(Modifier.height(Spacing.s4))
 
-        PrivacyPolicy.principles.forEach { principle ->
+        principles.forEach { principle ->
             PrincipleCard(principle.title, principle.body, palette)
             Spacer(Modifier.height(Spacing.s3))
         }
@@ -92,6 +101,15 @@ fun PrivacyContent(modifier: Modifier = Modifier) {
                 .clickable { uriHandler.openUri(PrivacyPolicy.GROQ_URL) }
                 .padding(vertical = Spacing.s2),
         )
+        // Concise onboarding summary → point to the full, authoritative policy in Settings.
+        if (concise) {
+            Spacer(Modifier.height(Spacing.s2))
+            Text(
+                PrivacyPolicy.ONBOARDING_FULL_POLICY_NOTE,
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.text3,
+            )
+        }
         Spacer(Modifier.height(Spacing.s6))
     }
 }

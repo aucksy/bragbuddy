@@ -1,14 +1,9 @@
 package com.bragbuddy.app
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.bragbuddy.app.data.entry.EntryRepository
@@ -28,9 +23,6 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var reminderScheduler: ReminderScheduler
     @Inject lateinit var entryRepository: EntryRepository
 
-    private val requestNotifications =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* scheduling is independent of the result */ }
-
     /** Flipped true once the theme prefs load ([BragBuddyThemedApp] `onReady`); until then the splash
      *  stays up so a forced Light/Dark theme never flashes the wrong colours on cold start. */
     private var themeReady = false
@@ -41,12 +33,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         splash.setKeepOnScreenCondition { !themeReady }
 
-        // Ask to post the daily reminder (Android 13+); harmless if already granted/denied.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
+        // Notification permission (Android 13+) is NO LONGER requested here — the naked OS dialog used
+        // to pop over the Welcome screen on a fresh install. It's now asked once via a rationale popup
+        // on first Home (Phase 3 · NotificationPrimer / NotificationPrimerSheet in the main shell).
 
         // Keep the reminder in sync with the saved settings on every launch.
         lifecycleScope.launch {

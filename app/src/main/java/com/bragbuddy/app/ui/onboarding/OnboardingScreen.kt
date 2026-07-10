@@ -198,8 +198,9 @@ private fun PrivacyStep(dotIndex: Int, onAccept: () -> Unit) {
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
-        // Shared, scrollable Core Privacy Principles body.
-        PrivacyContent(Modifier.weight(1f))
+        // Shared body — the concise, de-keyed onboarding summary (Phase 3). The full policy stays in
+        // Settings → Privacy; acceptance still binds the full terms.
+        PrivacyContent(Modifier.weight(1f), concise = true)
 
         // Pinned accept bar — the hard gate.
         Column(Modifier.fillMaxWidth()) {

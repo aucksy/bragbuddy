@@ -16,8 +16,9 @@ import androidx.compose.ui.Modifier
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 
 /**
- * Privacy & terms, reached from Settings (read-only — acceptance happens once in onboarding). The body
- * is the shared [PrivacyContent], so it's the exact same words the user accepted.
+ * Privacy & terms, reached from Settings (read-only — acceptance happens once in onboarding). Shows the
+ * FULL [PrivacyContent] (`concise = false`) — the authoritative policy the onboarding summary points to
+ * and that acceptance binds.
  */
 @Composable
 fun PrivacyScreen(onBack: () -> Unit) {

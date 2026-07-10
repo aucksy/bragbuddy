@@ -96,6 +96,58 @@ object PrivacyPolicy {
         ),
     )
 
+    // -------- Concise onboarding variant (Phase 3) --------
+    // The first-run privacy gate shows a SHORTER, de-keyed summary so it's actually read; the full
+    // [principles] above stay the authoritative version in Settings → Privacy. Acceptance still binds
+    // the full terms (the onboarding footer points there). This is a summary, NOT a material change —
+    // do NOT bump [VERSION] for it. Crucially it drops the BYOK **key-instruction** wording ("using the
+    // Groq API key you add yourself") — telling a first-run user to add a key is premature — while
+    // keeping the material Groq disclosure. BYOK itself is unchanged; only the onboarding verbiage is.
+
+    /** One short line for the onboarding gate (the full policy lives in Settings → Privacy). */
+    const val ONBOARDING_INTRO =
+        "The short version of how BragBuddy treats your data. The full policy is always in " +
+            "Settings → Privacy."
+
+    /** Shown when the concise gate is used, under the Groq link — points to the authoritative copy. */
+    const val ONBOARDING_FULL_POLICY_NOTE = "Read the full privacy policy anytime in Settings → Privacy."
+
+    /** The condensed, de-keyed principle set for first-run onboarding. Fewer cards, plain language,
+     *  and no key-setup instructions — while still surfacing every material disclosure (Groq, no
+     *  audio/image retention, control, no-warranty). */
+    val onboardingPrinciples: List<Principle> = listOf(
+        Principle(
+            "Local-first — no account",
+            "BragBuddy lives on your phone. No sign-up and no BragBuddy servers holding your entries. " +
+                "The only copy that ever leaves your device is a backup you choose to make.",
+        ),
+        Principle(
+            "AI runs on Groq",
+            "To clean, categorise and summarise your notes, BragBuddy sends the necessary text — and " +
+                "any image you scan — to Groq, a third-party AI provider. That's the one place your " +
+                "content leaves your device, so only share what you're comfortable sending to an AI.",
+        ),
+        Principle(
+            "Audio and images aren't kept",
+            "A voice note is transcribed and the recording is discarded; a scanned image is read and " +
+                "then dropped. Only the text stays.",
+        ),
+        Principle(
+            "No ads, no tracking, no selling",
+            "No ads, no analytics, no trackers — and your data is never sold or shared.",
+        ),
+        Principle(
+            "You're in control",
+            "Delete any entry or project, reset your framework, or clear the app's data anytime — and " +
+                "it's gone from your device.",
+        ),
+        Principle(
+            "The AI can be wrong",
+            "AI can misread or misfile, so always review its output. BragBuddy is a helpful assistant, " +
+                "provided “as is” — not an official record for HR or legal decisions.",
+        ),
+    )
+
     /** The emphasised closing — deliberately the strongest statement on the page. */
     const val CLOSING_TITLE = "You decide what you write"
     const val CLOSING_BODY =
