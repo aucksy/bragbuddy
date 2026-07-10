@@ -213,7 +213,7 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   made TRUE — cloud-backup excludes all domains, device-transfer kept); a live-capture crash on a malformed Groq
   key fixed; the offline-queue duplicate-on-crash + non-atomic transcript split + bullet-less-entries-missing-from-
   summary all fixed; and a **Discard-changes? confirmation on every text editor** (Back/scrim/✕) that also makes
-  system Back close an open overlay instead of exiting the app. **v0.21.0 = Google Drive connect + recovery**: a
+  system Back close an open overlay instead of exiting the app. **v0.21.1 = Google Drive connect + recovery** (shipped v0.21.1; the v0.21.0 tag build was cancelled in GitHub's runner queue): a
   new onboarding **Recover from Drive** step (Welcome → Privacy → **Recover** → Role → Framework; a successful
   restore jumps straight to Home) + connecting Drive is now an **explicit restore CHOICE** (not silent
   auto-restore) that **never auto-backs-up an empty state or clobbers an existing backup** — "Not now" pauses
