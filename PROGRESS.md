@@ -35,15 +35,15 @@ current code — that is the context, not chat history.
 > cycles → **M8** iOS. One phase per chat, fresh chat per phase, same ritual as ever — **plus a new
 > standing rule: any prompt/model change ships EVAL-GATED** (thresholds met and ≥ committed baseline).
 >
-> **Phase AI-0 is BUILT (2026-07-11)** — the `eval/` harness, golden seed set, PromptSyncTest and
-> the AI-Eval workflow are all in the repo (full detail in `## Status: Phase AI-0` below; usage in
-> `eval/README.md`). Remaining owner-gated steps, in this order: **(1)** add the `GROQ_API_KEY`
-> repo secret (Settings → Secrets and variables → Actions); **(2)** export the device backup
-> (Settings → Backup → Export to device) and grow the golden set from the real record
-> (`node eval/tools/from-backup.mjs <backup.json>`, then hand-verify the pending cases in chat);
-> **(3)** run **Actions → AI Eval → Run workflow** with `commit_baseline` ticked — that commits
-> `eval/report-baseline.{md,json}`, the "before" AI-1 must beat.
-> **Exact next step: those 3 owner steps, then Phase AI-1 (v0.26.0) in a fresh chat.**
+> **Phase AI-0 is COMPLETE (2026-07-11)** — harness built AND the **baseline is committed on main**
+> (`eval/report-baseline.{md,json}`, commit `3a07872`). All three owner gates are done: `GROQ_API_KEY`
+> secret added; the real record imported + hand-verified (golden set **36 → 47 cases**, commit
+> `b1eff14`); baseline run green. **The eval is now tag-driven like every build** (commit `f6e2d94`):
+> push `eval-baseline-*` → run + commit baseline; push `eval-run-*` → gate check. No manual button.
+> **Baseline gate results (the "before" AI-1 must beat): 3 gates RED — routineReuse 57.1%,
+> coachPass 75.0%, summaryChecks 88.2%; plus metricPreserved 20.0% (ungated, dire).** Full numbers +
+> the AI-1 target list are in `## Status: Phase AI-0` below. **Exact next step: Phase AI-1 (v0.26.0)
+> in a fresh chat** — see the handoff prompt the assistant provides.
 
 ---
 
@@ -245,7 +245,7 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
-## Status: Phase AI-0 — Eval harness + golden set ✅ BUILT (repo-only · NO app change · NO release tag; harness mock-tested end-to-end + adversarially reviewed)
+## Status: Phase AI-0 — Eval harness + golden set ✅ COMPLETE (repo-only · NO app change · NO release tag; harness mock-tested end-to-end + adversarially reviewed; BASELINE COMMITTED on main `3a07872`)
 
 > **The first phase of the subscription-launch roadmap** (`docs/IMPLEMENTATION-PLAN.md` · Phase AI-0).
 > From now on **any prompt/model change ships eval-gated** the way code ships compile-gated. No app
@@ -325,15 +325,78 @@ was made.** When it resumes, this is the pre-done research:
   Bonus: `android-debug.yml` now surfaces test/compile failures as **public ::error:: annotations**
   (this machine can't read auth-gated run logs — annotations made this failure diagnosable).
 
-### Owner steps (in order) → then Phase AI-1
-1. Add repo secret **`GROQ_API_KEY`** (repo Settings → Secrets and variables → Actions).
-2. Phone: Settings → Backup → **Export to device** → get `bragbuddy-backup.json` to the PC → in a
-   chat: `node eval/tools/from-backup.mjs <path>` → hand-verify the pending cases together (the
-   Recategorize corrections are the gold) → merged into `categorizer.jsonl` (real-transcript
-   majority, 60–80 total).
-3. **Actions → AI Eval → Run workflow**, suite `all`, tick **commit_baseline** → commits
-   `eval/report-baseline.{md,json}` — the "before" that AI-1/AI-2 must meet or beat on every metric.
-4. Fresh chat pointed at `CONTEXT.md` → **Phase AI-1 (v0.26.0)**.
+### Owner gates — ✅ ALL DONE (2026-07-11)
+1. ✅ Repo secret **`GROQ_API_KEY`** added (verified by the baseline run getting past the "Check
+   secret" step).
+2. ✅ Real record imported. The backup was pulled from the owner's **Google Drive**
+   (`BragBuddy/bragbuddy-backup.json`, auto-backup dated 2026-07-10 — incidental proof the Drive
+   OAuth gate now works) into the session scratchpad (never committed), run through
+   `eval/tools/from-backup.mjs` → **11 skeleton cases**, hand-verified case-by-case with the owner
+   via AskUserQuestion, and merged into `categorizer.jsonl` (**36 → 47**, commit `b1eff14`).
+   Owner's redaction call: **no scrub** (the codenames are meaningless without the employer anchor).
+   - The record is small (11 captures), so the merged set is **47, not the 60–80 target** — that
+     target assumed a bigger record. Grow it as the record grows (before AI-2); 47 is a solid AI-1
+     baseline.
+3. ✅ Baseline committed. **The eval was made tag-driven** (`f6e2d94`; `.github/workflows/eval.yml`
+   now also fires on `eval-baseline-*` / `eval-run-*` tags — no manual button, matching every other
+   build here). Pushed `eval-baseline-ai0-*` → run `29152288074` green → the job committed
+   `eval/report-baseline.{md,json}` to main (`3a07872`).
+
+### Baseline results (the "before" — `eval/report-baseline.md`, prompts categorizer `16a4f8cc2817` · summary `dbaa716aae8e` · coach `59ae3e19bc59`)
+
+| Gate | Threshold | Baseline | |
+|---|---|---|---|
+| placementAccuracy | ≥ 85% | **88.9%** | ✅ |
+| inboxRecall | ≥ 80% | 80.0% | ✅ |
+| inboxPrecision | ≥ 90% | 92.3% | ✅ |
+| jsonValidity | 100% | 100% | ✅ |
+| routineReuse | 100% | **57.1%** | ❌ |
+| impactBand | ≥ 80% | 92.3% | ✅ |
+| coachPass | ≥ 90% | **75.0%** | ❌ |
+| coachNoInventedNumbers | 100% | 100% | ✅ |
+| summaryChecks | 100% | **88.2%** | ❌ |
+
+Ungated: entryCountAccuracy 88.9% · demonstratesAccuracy 71.4% · **metricPreserved 20.0%** · dateMentioned 100% · routineFalsePositiveFree 100%.
+
+### AI-1 target list (what the red metrics say — all in `docs/IMPLEMENTATION-PLAN.md` · Phase AI-1)
+- **routineReuse 57.1% (RED, gate 100%)** — the model invents label variants instead of reusing the
+  provided one: `"access requests"` → `"access approvals"` / `"SharePoint access requests"` /
+  `"servicing requests"`. AI-1's routine-label-reuse rule + the output validator (snap a near-match
+  routine label to the existing one) is aimed exactly here.
+- **metricPreserved 20.0% (ungated but dire)** — stated numbers vanish from the `metric` field:
+  "30%", "20 days", "76 stories" all dropped (real-003/005, po-metric-30-percent, po-combine-number-
+  followup). Biggest single AI-1 win; the metric-preservation prompt rule + validator target it.
+- **coachPass 75.0% (RED, gate 90%)** — 3 coach cases fail **grounded** (the nudge shares no content
+  word with the project detail/bullet → generic questions). AI-1/AI-2 coach grounding.
+- **summaryChecks 88.2% (RED, gate 100%)** — `dense-year` misses **pinnedOnce** (PCI-DSS not pinned)
+  and **rolledUpCounts** (label singular/plural drift: `"code review"` vs `"code reviews"`). Summary
+  prompt + the same routine-label normalization.
+- **demonstrates 71.4%** — behaviour-tag granularity: the model returns sub-behaviours
+  (`"set the agenda"…`) where the case wants the parent pillar `"Leadership & Behaviours"`
+  (real-007), or a wrong tag (eng-collab-docs). AI-1 rubric + validator.
+- **development placement (advisory until AI-2)** — `eng-development-cert` + the real
+  `real-009/010/011` development-goals docs land in Inbox / Learning & Growth. The CURRENT prompt
+  can't emit a development pillar, so these are UNSCORED-on-placement by design; **AI-1 must decide
+  the development-placement policy** (prompt or validator), then strengthen these cases.
+
+### ⚠️ Harness finding for AI-1 (surfaced by the real anchored cases — a genuine APP-MIRROR gap)
+The placement scorer **`snapProject` (`eval/run.mjs:369`) does NOT apply the deterministic anchor
+override** that the app's `EntryProcessor` (and the harness's own `isParked`, `run.mjs:386`) both
+honor. So an **anchored** capture whose model output says "Inbox"/a development pillar is scored as a
+placement MISS — even though the real app force-files it to the anchor project. This is why
+**real-009 / real-011** (both anchored to a real project, development-flavoured content) failed
+placement: the expectations are **correct for the app**, but the harness under-credits them. The
+synthetic anchored cases didn't catch it (there the model happened to output the anchor project
+itself). **AI-1 fix (validator scope):** when `ctx.anchor` is set, snap every entry's project to the
+anchor before matching placements — mirroring `isParked`'s anchor-awareness — then these cases score
+truthfully. Left as-is in the baseline on purpose (the scorer's own comment defers snapping policy to
+"the AI-1 validator's planned rules"; don't rewrite a committed "before").
+
+### Fresh chat → Phase AI-1
+Fresh chat pointed at `CONTEXT.md` → **Phase AI-1 (v0.26.0)**. Baseline discipline (`eval/README.md`):
+change the prompt (Kotlin **and** the `eval/prompts/*.txt` together — `PromptSyncTest` enforces it),
+then **push an `eval-run-*` tag** to gate the change (must pass every threshold AND be ≥ this
+baseline on every metric) before tagging the release. Commit a fresh baseline after shipping.
 
 ---
 
