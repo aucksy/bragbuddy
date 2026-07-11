@@ -38,7 +38,27 @@ jobs:
           chmod +x gradlew
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace 2>&1 | tee /tmp/gradle-test.log
+
+      # This dev machine can read the public API (annotations) but NOT run logs (auth-gated) —
+      # surface compile errors / failing tests as ::error:: annotations so failures are diagnosable.
+      - name: Surface test failures as annotations
+        if: failure()
+        run: |
+          {
+            grep -E "^e: " /tmp/gradle-test.log | head -10
+            grep -E "> Task .* FAILED" /tmp/gradle-test.log | head -5
+            grep -B1 -A6 "FAILURE: Build failed" /tmp/gradle-test.log | head -15
+            find app/build/test-results -name "*.xml" 2>/dev/null | while read -r f; do
+              if grep -q "<failure" "$f"; then
+                echo "TEST FAILED: $(basename "$f")"
+                grep -o '<failure message="[^"]*"' "$f" | cut -c1-400 | head -3
+              fi
+            done
+          } | head -30 | while IFS= read -r line; do echo "::error::${line}"; done
+          true
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
