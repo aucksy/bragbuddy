@@ -889,6 +889,23 @@ async function main() {
 
   const gatesPassed = gates.every((g) => g.pass) && baselineRows.every((r) => r.pass);
 
+  // ---- CI diagnostics: emit the gate outcome as ::error::/::notice:: annotations (public-readable
+  // via the check-runs annotations API) so a failing gate is diagnosable WITHOUT auth'd log/artifact
+  // access. Critically, flag when failures are dominated by transport/rate-limit errors — a throttled
+  // free-tier key fails jsonValidity (all calls must parse) regardless of prompt quality, and that is
+  // NOT a prompt regression. ----
+  if (process.env.GITHUB_ACTIONS) {
+    const failedCalls = calls.filter((r) => r.parsed == null);
+    const rateLimited = failedCalls.filter((r) => /429|rate|quota|too many/i.test(r.error || '')).length;
+    if (!gatesPassed) {
+      for (const g of gates.filter((x) => !x.pass)) console.log(`::error::gate FAILED ${g.name}: ${pct(g.value)} (need ≥ ${pct(g.threshold)})`);
+      for (const r of baselineRows.filter((x) => !x.pass)) console.log(`::error::below baseline ${r.name}: now ${pct(r.value)} vs baseline ${pct(r.prev)}`);
+      if (failedCalls.length) console.log(`::error::${failedCalls.length}/${calls.length} calls did not parse (${rateLimited} look rate-limited). A throttled key fails jsonValidity/placement regardless of prompt quality — re-run when Groq quota resets.`);
+    } else {
+      console.log(`::notice::eval gates PASS — ${calls.length} calls, ${failedCalls.length} failed.`);
+    }
+  }
+
   // ---- report ----
   const failures = [];
   for (const r of [...catResults, ...coachResults, ...summaryResults]) {

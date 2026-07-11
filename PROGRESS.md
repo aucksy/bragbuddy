@@ -305,11 +305,27 @@ was made.** When it resumes, this is the pre-done research:
   Eval = **no HIGH**; **1 MED FIXED** (project-description cap wasn't mirrored in `projectLines` → added
   `capDescription`, so the harness measures exactly what the app sends; currently inert but keeps the
   APP-MIRROR honest); 3 LOW documented non-issues.
-- **NEXT:** push `eval-run-ai1-*` → CI runs the eval on main with `--baseline` (must pass every threshold
-  AND be ≥ the committed baseline everywhere). On green: re-verify Groq slugs live → tag **v0.26.0** →
-  on-device test → commit a **fresh baseline** (`eval-baseline-ai1-*`) → suggest a fresh chat for **AI-2
-  (v0.27.0)** (summary fixes + impact-coach-at-capture). On a red gate: read the report, change the
-  minimum, re-run — record the delta here.
+- **⚠️ SHIP GATE BLOCKED ON GROQ FREE-TIER QUOTA (2026-07-11→12) — NOT a prompt regression.** Two gate
+  runs attempted: `eval-run-ai1-v0.26.0` **hung 6h and was cancelled** (the harness obeyed Groq's
+  multi-hour `Retry-After` when the DAILY free-tier quota was exhausted); `eval-run-ai1-v0.26.0-r2`
+  (after the retry-after cap fix, commit `78bab59`) **completed but the gate FAILED** — the "Run eval"
+  step took **86 min for 63 calls** (≈1/min, i.e. mostly sleeping on rate-limit backoffs), so most calls
+  never returned and `jsonValidity` (which requires 100% of calls to parse) collapses. **A throttled key
+  fails the gate regardless of prompt quality.** The report is auth-gated (artifact download = 401; no
+  metric annotations were emitted), so the harness was upgraded to **emit `::error::` / `::notice::`
+  annotations** (gate outcome + rate-limit count, public-readable) so the next run is diagnosable without
+  auth. **Root cause: the eval's ~63 live calls (~2.2K-token system prompt each) don't fit the shared
+  Groq FREE-tier daily token budget** — this is an infra/quota constraint, not AI-1.
+- **What's proven regardless:** AI-1 code is **compile-green** (the Android CI `testDebugUnitTest` + APK
+  build passed — Kotlin compiles, ALL unit tests incl. `PromptSyncTest` pass) and **review-clean** (2
+  adversarial passes). The prompt is verbatim from the plan; the harness dry-run is green and mirror-
+  correct. Only the *live* quality gate is unsatisfied, and only because of the throttled key.
+- **NEXT (owner decision):** get a genuine green gate by EITHER (a) re-running `eval-run-ai1-*` in a real
+  Groq daily-quota window (a quieter time / after a confirmed reset — the hardened harness now fails fast
+  if still throttled, ~15-90 min not 6h), OR (b) using a **higher-limit Groq key** (paid/dev tier) for
+  the `GROQ_API_KEY` CI secret so 63 calls fit the daily token budget. On green: re-verify Groq slugs →
+  tag **v0.26.0** (signed APK) → on-device test → commit a **fresh baseline** (`eval-baseline-ai1-*`) →
+  fresh chat for **AI-2 (v0.27.0)**. **Do NOT tag v0.26.0 until the eval gates green (standing rule).**
 
 ---
 
