@@ -318,8 +318,12 @@ was made.** When it resumes, this is the pre-done research:
   clean: prompt dumps byte-match the Kotlin constants (LF, no BOM), `PromptSyncTest` compiles
   (JUnit 4.13.2) + every sentinel rides the builders unchanged, eval.yml expressions correct, a
   crashed run can't commit an empty baseline. Plus COMBINE-mode golden coverage added (was zero) +
-  a stray NUL byte found and scrubbed. **The CI unit-test run on this push is the compile gate for
-  the test file — verify it goes green.**
+  a stray NUL byte found and scrubbed. **CI VERIFIED GREEN** (`testDebugUnitTest` + debug APK,
+  run 29142570423) after one compile fix — **GOTCHA: Kotlin block comments NEST**, so the literal
+  glob `eval/prompts/` + `*.txt` written together inside a KDoc opened a nested comment that
+  swallowed the file ("Unclosed comment"); never put a `/`-`*` sequence in a Kotlin comment.
+  Bonus: `android-debug.yml` now surfaces test/compile failures as **public ::error:: annotations**
+  (this machine can't read auth-gated run logs — annotations made this failure diagnosable).
 
 ### Owner steps (in order) → then Phase AI-1
 1. Add repo secret **`GROQ_API_KEY`** (repo Settings → Secrets and variables → Actions).
