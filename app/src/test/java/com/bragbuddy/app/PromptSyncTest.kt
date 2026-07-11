@@ -10,7 +10,8 @@ import java.nio.file.Paths
 
 /**
  * Phase AI-0 — the prompt-drift gate. The eval harness (`eval/run.mjs`) measures the canonical
- * prompt texts in `eval/prompts/*.txt`; the app ships the texts baked into [AiPrompts]. This test
+ * prompt texts (the `.txt` files under `eval/prompts/`); the app ships them baked into
+ * [AiPrompts]. This test
  * asserts they are the SAME words, so the eval and the app provably test identical prompts.
  * Editing one without the other = red CI (this runs in both Android workflows' unit-test step).
  *
