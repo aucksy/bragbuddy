@@ -253,6 +253,12 @@ function buildSummaryMessages(templates, c) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// A 429's Retry-After rides out per-MINUTE bursts, but Groq sends a HUGE value (hours) when the
+// DAILY free-tier quota is exhausted — obeying it verbatim made the whole job sleep until GitHub's
+// 6h timeout instead of failing fast. Cap the honoured wait so a quota-out run FAILS quickly (the
+// gate then reads "rate-limited, re-run when quota resets") rather than hanging.
+const MAX_RETRY_AFTER_MS = 60000;
+
 async function callChat(baseUrl, apiKey, model, messages) {
   const body = JSON.stringify({
     model,
@@ -274,7 +280,7 @@ async function callChat(baseUrl, apiKey, model, messages) {
       if (resp.status === 429 || resp.status >= 500) {
         lastError = `HTTP ${resp.status}: ${raw.slice(0, 160)}`;
         if (attempt < backoffs.length) {
-          const retryAfter = Number(resp.headers.get('retry-after')) * 1000 || 0;
+          const retryAfter = Math.min((Number(resp.headers.get('retry-after')) || 0) * 1000, MAX_RETRY_AFTER_MS);
           await sleep(Math.max(retryAfter, backoffs[attempt]));
           continue;
         }
