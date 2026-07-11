@@ -49,10 +49,16 @@ node eval/run.mjs --baseline eval/report-baseline.json   # AI-1+: also gate on �
 node eval/run.mjs --no-gate                       # write the report, always exit 0
 ```
 
-In CI: **Actions → AI Eval → Run workflow** (needs the `GROQ_API_KEY` repo secret — owner gate).
-Tick **commit_baseline** to commit the run as `eval/report-baseline.{md,json}` — do that once per
-prompt generation; baseline runs never fail the job (they are the "before" measurement), normal
-runs fail on any red gate.
+In CI (needs the `GROQ_API_KEY` repo secret — owner gate). Two ways, same as every build here it is
+tag-driven; a manual fallback also exists:
+
+- **Push a tag `eval-baseline-*`** → runs suite `all` and commits the result as
+  `eval/report-baseline.{md,json}` (do that once per prompt generation — the "before").
+- **Push a tag `eval-run-*`** → runs suite `all` as a **gate check** (must meet/beat the baseline;
+  fails the job on any red gate). This is the pre-tag ship gate for AI-1/AI-2.
+- **Manual:** Actions → AI Eval → Run workflow → pick the suite + `commit_baseline` checkbox.
+
+Baseline runs never fail the job (they are the measurement); gate runs fail on any red gate.
 
 ## Ship thresholds (gates)
 
