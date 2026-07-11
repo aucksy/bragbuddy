@@ -35,8 +35,15 @@ current code — that is the context, not chat history.
 > cycles → **M8** iOS. One phase per chat, fresh chat per phase, same ritual as ever — **plus a new
 > standing rule: any prompt/model change ships EVAL-GATED** (thresholds met and ≥ committed baseline).
 >
-> **Exact next step: Phase AI-0** (build `eval/` harness + golden set from the creator's real record,
-> commit a baseline report; no app change, no release tag). Then AI-1 in a fresh chat.
+> **Phase AI-0 is BUILT (2026-07-11)** — the `eval/` harness, golden seed set, PromptSyncTest and
+> the AI-Eval workflow are all in the repo (full detail in `## Status: Phase AI-0` below; usage in
+> `eval/README.md`). Remaining owner-gated steps, in this order: **(1)** add the `GROQ_API_KEY`
+> repo secret (Settings → Secrets and variables → Actions); **(2)** export the device backup
+> (Settings → Backup → Export to device) and grow the golden set from the real record
+> (`node eval/tools/from-backup.mjs <backup.json>`, then hand-verify the pending cases in chat);
+> **(3)** run **Actions → AI Eval → Run workflow** with `commit_baseline` ticked — that commits
+> `eval/report-baseline.{md,json}`, the "before" AI-1 must beat.
+> **Exact next step: those 3 owner steps, then Phase AI-1 (v0.26.0) in a fresh chat.**
 
 ---
 
@@ -235,6 +242,94 @@ was made.** When it resumes, this is the pre-done research:
 - **Capture parity:** no iOS overlay (Apple forbids) — the notification opens the app straight into a
   minimal auto-recording screen + App Intents (Siri/Shortcuts/Action Button/Lock-Screen). Blessed in the
   PRD/Brief.
+
+---
+
+## Status: Phase AI-0 — Eval harness + golden set ✅ BUILT (repo-only · NO app change · NO release tag; harness mock-tested end-to-end + adversarially reviewed)
+
+> **The first phase of the subscription-launch roadmap** (`docs/IMPLEMENTATION-PLAN.md` · Phase AI-0).
+> From now on **any prompt/model change ships eval-gated** the way code ships compile-gated. No app
+> code changed (the only app-module addition is a unit test); versionCode untouched; no tag.
+
+### What was built
+1. **`eval/prompts/*.txt`** — the CURRENT `AiPrompts` templates dumped verbatim (categorizer +
+   combine-mode appendix + summary + impact-coach), extracted mechanically from the Kotlin source so
+   they are byte-accurate. These are what the eval measures — the AI-1 baseline is the *before*.
+2. **`PromptSyncTest`** (`app/src/test/…/PromptSyncTest.kt`) — asserts each `AiPrompts` builder output
+   equals the corresponding txt file (sentinel-placeholder trick maps each template onto itself;
+   CRLF/trailing-newline normalized). Runs in BOTH Android workflows' `testDebugUnitTest` step →
+   **prompt drift = red CI**. Change a prompt → change the Kotlin AND the txt in one commit.
+3. **`eval/run.mjs`** — Node 20, zero-dep runner. Mirrors the app exactly (marked `APP-MIRROR`):
+   models + endpoint parsed live out of `AiConfig.kt`; context blocks rebuilt the way
+   `FrameworkPrompt.categorizerBlock` / `EntryProcessor.prepare` / `Framework.toPromptBlock` build
+   them; `temperature 0.2`, JSON mode, system+user message shape, primary→fallback on transport OR
+   parse failure (`completeAndParse`), first-`{`-to-last-`}` extraction (`AiJson`), Inbox parking =
+   `project/goalCategory=="Inbox" || confidence<0.6`, never when anchored (`statusFor`). Eval-only
+   deviation (documented): 429/5xx retries with backoff on the same model first, so a rate-limited
+   run measures the model, not the limiter. Scores every IMPLEMENTATION-PLAN metric, applies the
+   AI-1 validator's snapping rules scorer-side, writes `eval/report.md` + `report.json` (machine-
+   comparable), supports `--baseline` (AI-1+ must be ≥ baseline everywhere), `--dry-run`, `--only`,
+   `--limit`, `--no-gate`; non-zero exit on gate failure. `GROQ_BASE_URL` override doubles as the
+   M1-proxy test hook.
+4. **Golden seed set** — `eval/golden/categorizer.jsonl` (**36 synthetic-edge cases** across 3
+   personas: exact/loose/shorthand mentions, multi-item splits, routine bursts + label stability,
+   Hinglish, no-work, Inbox-discipline incl. near-duplicate project names, anchored captures,
+   praise-screenshot text, relative dates with fixed `today`, metric preservation, isExtra/behaviour
+   tags, COMBINE-mode merges, and a development-cert case whose placement is deliberately unscored —
+   the CURRENT prompt restricts `goalCategory` to goal areas, so AI-1 must decide the
+   development-placement policy first), `coach.jsonl` (12 rubric cases), `summary/*.json` (the 4
+   spec'd rollups: dense-year w/ arc+dupe+pinned, sparse-8, routine-heavy w/ exact tallies,
+   development-heavy w/ ADVISORY placement check until AI-2). Target remains 60–80 with the
+   creator's REAL transcripts as the majority — that import is owner-gated (below).
+5. **`eval/tools/from-backup.mjs`** — turns a device backup export into skeleton cases: split
+   siblings grouped by shared transcript (placements + entryCount together), Inbox/FAILED rows →
+   `inboxExpected`, routine labels + demonstrates + anchor + capture-day `today` carried; every line
+   flagged `"_verify": true` (run.mjs REFUSES unverified cases) and written to a gitignored pending
+   file. The backup itself and the pending file are gitignored (raw record — never committed).
+6. **`.github/workflows/eval.yml`** — manual-only (`workflow_dispatch`; it spends tokens). Needs the
+   **`GROQ_API_KEY` repo secret (OWNER GATE)**. Uploads the report artifact + prints it into the job
+   summary; `commit_baseline` input commits `eval/report-baseline.{md,json}` (baseline runs never
+   fail the job — they are the "before"; normal runs fail on any red gate = the ship gate).
+7. `eval/README.md` — layout, thresholds table, case schema, real-record import steps, baseline
+   discipline. `.gitignore` grew the eval/privacy entries.
+
+### How it was tested (no local Android toolchain, no Groq key on this machine)
+- `node eval/run.mjs --dry-run` — golden validation + prompt build green (34/12/4 cases).
+- **Full pipeline against a local mock Groq server** (`GROQ_BASE_URL` override): all 3 suites ran
+  end-to-end — transport→parse→every scorer→aggregation→report+json+gates. Verified scorer
+  behaviours: anchored case never parks, coach rubric sub-checks fire (incl. grounded-in-detail),
+  summary checks catch a missing metric / pinned / tally, generic parked entry fails placements but
+  passes Inbox-expected cases.
+- **Deterministic golden-set validator**: every expected placement/goalCategory/routine-label/
+  band/anchor/demonstrates cross-checked against its own case context; summary expectations
+  cross-checked against the rollup text — ALL CONSISTENT.
+- `from-backup.mjs` round-tripped against a synthetic backup (split-sibling grouping, INBOX→
+  `inboxExpected`, PENDING_AUDIO skipped — verified output).
+- **Adversarial review** (independent agent over run.mjs/PromptSyncTest/goldens/workflow/tool) —
+  **2 HIGH + 4 MED + 5 LOW, ALL FIXED pre-commit:** (H) a zero-case run / typo'd `--only` / moved
+  golden file exited 0 with "gates PASS" → fails closed now; (H) a named-but-missing `--baseline`
+  silently dropped the ≥-baseline gate → exit 1; (M) invented-number check used substring
+  containment ("FY26" excused an invented "2") → number-token set membership; (M) the workflow
+  never actually passed `--baseline` → non-baseline runs now gate on the committed baseline when it
+  exists; (M) one golden case expected development-pillar placement the current prompt forbids →
+  unscored + flagged for AI-1; (M) from-backup pre-filled contradictory `inboxExpected` on
+  mixed-status captures → unanimous-signal only, FAILED rows carry no label signal, grouping keys
+  on createdAt so repeat captures never merge, `today` uses local date not UTC. Also verified
+  clean: prompt dumps byte-match the Kotlin constants (LF, no BOM), `PromptSyncTest` compiles
+  (JUnit 4.13.2) + every sentinel rides the builders unchanged, eval.yml expressions correct, a
+  crashed run can't commit an empty baseline. Plus COMBINE-mode golden coverage added (was zero) +
+  a stray NUL byte found and scrubbed. **The CI unit-test run on this push is the compile gate for
+  the test file — verify it goes green.**
+
+### Owner steps (in order) → then Phase AI-1
+1. Add repo secret **`GROQ_API_KEY`** (repo Settings → Secrets and variables → Actions).
+2. Phone: Settings → Backup → **Export to device** → get `bragbuddy-backup.json` to the PC → in a
+   chat: `node eval/tools/from-backup.mjs <path>` → hand-verify the pending cases together (the
+   Recategorize corrections are the gold) → merged into `categorizer.jsonl` (real-transcript
+   majority, 60–80 total).
+3. **Actions → AI Eval → Run workflow**, suite `all`, tick **commit_baseline** → commits
+   `eval/report-baseline.{md,json}` — the "before" that AI-1/AI-2 must meet or beat on every metric.
+4. Fresh chat pointed at `CONTEXT.md` → **Phase AI-1 (v0.26.0)**.
 
 ---
 

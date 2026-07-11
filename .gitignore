@@ -30,3 +30,10 @@ secrets.properties
 
 # Stray Windows 'Copy' duplicates
 *- Copy.md
+
+# Eval harness (Phase AI-0) — commit only the BASELINE reports; never the raw record
+eval/report.md
+eval/report.json
+eval/golden/from-backup.pending.jsonl
+bragbuddy-backup.json
+*bragbuddy-backup*.json

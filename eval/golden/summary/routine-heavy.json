@@ -1,0 +1,18 @@
+{
+  "id": "routine-heavy",
+  "note": "Routine-heavy year: the record is mostly bulk work. Rolled-up lines with EXACT counts and the cumulative metric must survive; the two genuine highlights must not be drowned or duplicated.",
+  "period": "full-year review",
+  "lengthCap": "about one page — at most 5 achievements per goal area",
+  "role": "Product Owner",
+  "frameworkBlock": "GOAL AREAS (results / projects map here):\n- Performance Goals: What you delivered — business and delivery objectives; projects nest here.\nBEHAVIOURS / COMPETENCIES (tag work that demonstrates these):\n- Leadership & Behaviours: How you worked — ownership, decisions, collaboration, communication.\nDEVELOPMENT (optional):\n- Learning & Growth: Skills and development.",
+  "pinned": [],
+  "rollup": "GOAL AREA: Performance Goals\n  Highlights (ranked by impact):\n  - [impact 0.7] Completed Raven Migration sign-off for the first five markets (project: Raven Migration)\n  - [impact 0.5] Rebuilt the access-request approval flow (project: SharePoint Request System)\n  Routine tallies:\n  - access requests: 62× (metrics: average turnaround under 1 day)\n  - servicing requests: 38×\n  Cumulative metrics: average turnaround under 1 day",
+  "expect": {
+    "noDuplicates": true,
+    "metrics": ["under 1 day"],
+    "rolledUp": [
+      { "routineType": "access requests", "count": 62 },
+      { "routineType": "servicing requests", "count": 38 }
+    ]
+  }
+}

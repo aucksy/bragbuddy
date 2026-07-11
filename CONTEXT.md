@@ -279,7 +279,10 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   lives in `PROGRESS.md` (top block); the deep phase spec incl. FINAL verbatim prompt texts is
   `docs/IMPLEMENTATION-PLAN.md`** (authored by Fable 5 for Opus 4.8 — paste, don't re-write), with
   rationale in `docs/PRODUCT-ASSESSMENT.md` + `docs/AI-SYSTEM-ASSESSMENT.md`. New standing rule: **any
-  prompt/model change ships eval-gated** (Phase AI-0 harness). Exact next step: **Phase AI-0**.
+  prompt/model change ships eval-gated** (Phase AI-0 harness). **Phase AI-0 BUILT 2026-07-11**
+  (`eval/` harness + PromptSyncTest + AI-Eval workflow + 34-case synthetic golden seed; repo-only, no
+  tag). Exact next step: **3 owner gates** (add `GROQ_API_KEY` secret · import the real record via
+  `eval/tools/from-backup.mjs` · run AI Eval with `commit_baseline`) → **Phase AI-1 (v0.26.0)**.
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
   round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
   errors). Fix from the CI log via the **public** GitHub API (unauthenticated is enough for run status

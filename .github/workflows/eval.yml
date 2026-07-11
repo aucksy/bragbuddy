@@ -1,0 +1,108 @@
+name: AI Eval
+
+# Runs the BragBuddy AI eval harness (eval/run.mjs) against the live Groq API and uploads the
+# report. Manual-only (workflow_dispatch) — it spends real API tokens.
+#
+# OWNER GATE: add the repository secret GROQ_API_KEY (Settings → Secrets and variables → Actions)
+# — the same Groq key the app uses. Without it the run fails fast with a clear message.
+#
+# "Commit as baseline" (checkbox): commits the report to the repo as eval/report-baseline.md +
+# eval/report-baseline.json. Do this ONCE per prompt generation — the committed baseline is what
+# every AI-prompt phase (AI-1, AI-2, …) must meet or beat (docs/IMPLEMENTATION-PLAN.md). A baseline
+# run is allowed to miss thresholds (it is the "before" measurement), so it never fails the job;
+# a NON-baseline run fails the job when a gate fails — that is the eval acting as the ship gate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_baseline:
+        description: 'Commit the report as eval/report-baseline.{md,json} (the "before" for the next AI phase)'
+        type: boolean
+        default: false
+      suite:
+        description: 'Which golden suite to run'
+        type: choice
+        options: [all, categorizer, coach, summary]
+        default: all
+
+permissions:
+  contents: write   # required only when commit_baseline is used
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check secret
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          if [ -z "$GROQ_API_KEY" ]; then
+            echo "::error::Repository secret GROQ_API_KEY is not set — add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Run eval
+        id: run
+        continue-on-error: true   # the report + artifact must land even on a red gate
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          ONLY=""
+          if [ "${{ inputs.suite }}" != "all" ] && [ -n "${{ inputs.suite }}" ]; then
+            ONLY="--only ${{ inputs.suite }}"
+          fi
+          # Normal runs also gate on ≥ the committed baseline (the ship rule). Baseline-commit runs
+          # skip the comparison — they ARE the new baseline.
+          BASELINE=""
+          if [ "${{ inputs.commit_baseline }}" != "true" ] && [ -f eval/report-baseline.json ]; then
+            BASELINE="--baseline eval/report-baseline.json"
+          fi
+          node eval/run.mjs $ONLY $BASELINE
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: |
+            eval/report.md
+            eval/report.json
+          if-no-files-found: error
+
+      - name: Print report to the job summary
+        if: always()
+        run: cat eval/report.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Commit as baseline
+        if: ${{ inputs.commit_baseline == true && inputs.suite == 'all' }}
+        run: |
+          cp eval/report.md eval/report-baseline.md
+          cp eval/report.json eval/report-baseline.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add eval/report-baseline.md eval/report-baseline.json
+          git commit -m "eval: commit baseline report (Phase AI-0)" || { echo "Nothing changed — baseline already current."; exit 0; }
+          git push
+
+      - name: Refuse partial baseline
+        if: ${{ inputs.commit_baseline == true && inputs.suite != 'all' }}
+        run: |
+          echo "::error::A baseline must cover ALL suites — re-run with suite=all."
+          exit 1
+
+      - name: Gate
+        if: ${{ inputs.commit_baseline != true }}
+        run: |
+          if [ "${{ steps.run.outcome }}" = "failure" ]; then
+            echo "::error::Eval gates FAILED — see the report artifact / job summary."
+            exit 1
+          fi
+          echo "Eval gates passed."

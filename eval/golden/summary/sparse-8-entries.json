@@ -1,0 +1,15 @@
+{
+  "id": "sparse-8-entries",
+  "note": "Sparse mid-year: only 8 entries' worth of rollup. Must produce a small, honest summary — no padding, no invented outcomes, routine tally count exact.",
+  "period": "mid-year check-in",
+  "lengthCap": "brief — at most 3 achievements per goal area; keep it tight",
+  "role": "Account Manager",
+  "frameworkBlock": "GOAL AREAS (results / projects map here):\n- Revenue Goals: Renewals, upsells and new revenue.\n- Client Relationships: Health and depth of key accounts.\nBEHAVIOURS / COMPETENCIES (tag work that demonstrates these):\n- Teamwork: Helping the wider team win.",
+  "pinned": [],
+  "rollup": "GOAL AREA: Revenue Goals\n  Highlights (ranked by impact):\n  - [impact 0.8] Closed the annual renewal for two key accounts (project: Renewal Drive FY26) (metric: 2 annual contracts)\n  - [impact 0.5] Prepared the renewal pipeline review for Q2 (project: Renewal Drive FY26)\n\nGOAL AREA: Client Relationships\n  Highlights (ranked by impact):\n  - [impact 0.7] Ran the Falcon onboarding kickoff workshop with the client team (project: Falcon Onboarding)\n  - [impact 0.5] Resolved a client pricing escalation and sent the revised quote the same day\n  Routine tallies:\n  - client follow-ups: 11×",
+  "expect": {
+    "noDuplicates": true,
+    "metrics": ["2 annual contracts"],
+    "rolledUp": [{ "routineType": "client follow-ups", "count": 11 }]
+  }
+}
