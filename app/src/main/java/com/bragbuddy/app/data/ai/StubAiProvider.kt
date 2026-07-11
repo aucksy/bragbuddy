@@ -40,4 +40,8 @@ class StubAiProvider @Inject constructor() : AiProvider {
     // No vision without a real provider — "no readable text" leaves the field unchanged (fail-safe).
     override suspend fun readDocumentText(request: ImageExtractRequest): Result<ImageExtractResult> =
         Result.success(ImageExtractResult(""))
+
+    // No AI to tailor the nudge — return the generic coaching question the caller also uses on failure.
+    override suspend fun suggestImpact(request: ImpactSuggestRequest): Result<ImpactSuggestion> =
+        Result.success(ImpactSuggestion("What changed or improved — can you put a number on it?"))
 }

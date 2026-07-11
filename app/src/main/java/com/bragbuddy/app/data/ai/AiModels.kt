@@ -169,3 +169,26 @@ data class ImageExtractResult(
     /** A first-person account of the work the image shows, or "" when it has no work content. */
     val text: String = "",
 )
+
+// ---------------- Impact coach (Phase 4 · "Add impact" list) ----------------
+
+/** One filed win that lacks a number, with the project context that makes the nudge project-aware. */
+data class ImpactSuggestRequest(
+    /** The cleaned achievement bullet. */
+    val bullet: String,
+    /** The project it's filed under (may be "Outside-project"). */
+    val project: String = "",
+    /** The user's own notes about that project / how it's measured ([com.bragbuddy.app.data.local.ProjectEntity.description]).
+     *  Blank when the project has no detail — the coach then asks generally. */
+    val projectDetail: String = "",
+    /** The goal area this counts toward. */
+    val goalArea: String = "",
+    /** The user's job role — light context. Blank = unset. */
+    val role: String = "",
+)
+
+@Serializable
+data class ImpactSuggestion(
+    /** ONE short question nudging the user toward the measurable outcome to add. Never a number. */
+    val question: String = "",
+)

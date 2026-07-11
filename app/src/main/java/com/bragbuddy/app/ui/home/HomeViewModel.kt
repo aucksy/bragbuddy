@@ -3,10 +3,13 @@ package com.bragbuddy.app.ui.home
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bragbuddy.app.data.ai.AiProvider
+import com.bragbuddy.app.data.ai.ImpactSuggestRequest
 import com.bragbuddy.app.data.entry.EntryRepository
 import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.PillarKind
+import com.bragbuddy.app.data.impact.ImpactCandidates
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.ProjectEntity
@@ -18,9 +21,11 @@ import com.bragbuddy.app.data.summary.SummaryStore
 import com.bragbuddy.app.reminder.ReliabilityCheck
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -43,6 +48,7 @@ class HomeViewModel @Inject constructor(
     private val frameworkStore: FrameworkStore,
     private val settings: SettingsStore,
     private val summaryStore: SummaryStore,
+    private val aiProvider: AiProvider,
     connectivity: ConnectivityMonitor,
 ) : ViewModel() {
 
@@ -153,6 +159,75 @@ class HomeViewModel @Inject constructor(
     val framework: StateFlow<Framework> = frameworkStore.framework
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Framework.DEFAULT)
 
+    // ---------------- Phase 4 · "Add impact" list ----------------
+
+    /** UI state while fetching (or falling back for) the project-aware coaching question. */
+    sealed interface ImpactSuggestUi {
+        data object Loading : ImpactSuggestUi
+        /** [isAi] false = the generic fallback (no key / AI failed) rather than a tailored question. */
+        data class Ready(val question: String, val isAi: Boolean) : ImpactSuggestUi
+    }
+
+    /** Filed wins that would be stronger with a number (see [ImpactCandidates]). Gated on a Groq key:
+     *  the add-impact merge re-runs the categorizer, so without AI the card is hidden (and, in practice,
+     *  there'd be no PROCESSED entries to list anyway). */
+    val impactCandidates: StateFlow<List<EntryEntity>> = combine(
+        repository.observeAll(), settings.settings,
+    ) { entries, s ->
+        if (!s.aiEnabled) emptyList() else ImpactCandidates.from(entries)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Session-only "not now" for the impact card (resets on next app open; there's still un-quantified
+     *  work, so it's fine to offer again — just not naggy within a session). */
+    private val _impactCardDismissed = MutableStateFlow(false)
+    val impactCardDismissed: StateFlow<Boolean> = _impactCardDismissed.asStateFlow()
+    fun dismissImpactCard() { _impactCardDismissed.value = true }
+
+    /** The coaching question for the entry whose "Add impact" sheet is open (null = no sheet). */
+    private val _impactSuggestion = MutableStateFlow<ImpactSuggestUi?>(null)
+    val impactSuggestion: StateFlow<ImpactSuggestUi?> = _impactSuggestion.asStateFlow()
+    /** The in-flight suggestion fetch — cancelled when a new sheet opens or the sheet closes, so a slow
+     *  result for a previously-open win can't flash into the sheet now showing a different one. */
+    private var suggestJob: Job? = null
+
+    /** Fetch the project-aware "what to quantify" question for [entry] (called when its sheet opens).
+     *  Falls back to a generic prompt on no-key / AI failure — never blocks adding the number. */
+    fun loadImpactSuggestion(entry: EntryEntity) {
+        suggestJob?.cancel()
+        _impactSuggestion.value = ImpactSuggestUi.Loading
+        suggestJob = viewModelScope.launch {
+            val s = settings.settings.first()
+            val detail = folders.value.firstOrNull { it.name.equals(entry.project, ignoreCase = true) }
+                ?.description.orEmpty()
+            val ai = s.groqApiKey.isNotBlank()
+            val question = if (!ai) {
+                GENERIC_IMPACT_QUESTION
+            } else {
+                aiProvider.suggestImpact(
+                    ImpactSuggestRequest(
+                        bullet = entry.bullet.orEmpty(),
+                        project = entry.project.orEmpty(),
+                        projectDetail = detail,
+                        goalArea = entry.goalCategory.orEmpty(),
+                        role = s.jobRole,
+                    ),
+                ).getOrNull()?.question?.takeIf { it.isNotBlank() } ?: GENERIC_IMPACT_QUESTION
+            }
+            _impactSuggestion.value = ImpactSuggestUi.Ready(
+                question = question,
+                isAi = ai && question != GENERIC_IMPACT_QUESTION,
+            )
+        }
+    }
+
+    fun clearImpactSuggestion() {
+        suggestJob?.cancel()
+        _impactSuggestion.value = null
+    }
+
+    /** Merge the user-typed impact into the win as one combined bullet (keeps its placement). */
+    fun addImpact(entry: EntryEntity, text: String) = repository.addImpact(entry, text)
+
     /** Per-entry actions for the inline folder expansion on Home (mirror the deep pillar view). */
     fun editText(id: Long, text: String) = repository.replaceText(id, text)
 
@@ -172,5 +247,11 @@ class HomeViewModel @Inject constructor(
         val area = goalArea?.takeIf { it.isNotBlank() }
             ?: frameworkStore.framework.first().goalAreas.firstOrNull()?.name ?: "Performance Goals"
         projects.create(name, area)
+    }
+
+    private companion object {
+        /** The fallback coaching prompt when there's no key / the AI can't tailor one. Kept identical to
+         *  the [StubAiProvider] wording so the experience reads the same with or without AI. */
+        const val GENERIC_IMPACT_QUESTION = "What changed or improved — can you put a number on it?"
     }
 }

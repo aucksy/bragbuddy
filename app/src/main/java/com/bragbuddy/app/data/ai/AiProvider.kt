@@ -55,6 +55,14 @@ interface AiProvider {
      */
     suspend fun readDocumentText(request: ImageExtractRequest): Result<ImageExtractResult>
 
+    /**
+     * Suggest, in one short **question**, what measurable outcome would strengthen a filed win that
+     * currently has no number (Phase 4 · the Home "Add impact" list). Project-aware — it uses the
+     * entry's project detail + goal area. It only ASKS; it never invents a number. Failure is safe —
+     * the caller falls back to a generic "what changed, in numbers?" prompt; nothing is written.
+     */
+    suspend fun suggestImpact(request: ImpactSuggestRequest): Result<ImpactSuggestion>
+
     /** Human-readable id of the active provider/model (for the backup-health / debug surfaces). */
     val label: String
 }

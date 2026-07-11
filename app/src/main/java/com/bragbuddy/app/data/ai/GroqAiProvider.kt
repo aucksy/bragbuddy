@@ -108,6 +108,20 @@ class GroqAiProvider @Inject constructor(
         return Result.failure(last)
     }
 
+    override suspend fun suggestImpact(request: ImpactSuggestRequest): Result<ImpactSuggestion> {
+        val bullet = request.bullet.trim()
+        if (bullet.isEmpty()) return Result.failure(IllegalStateException("No bullet to coach"))
+        // Cheap, JSON-reliable — the categorizer-class model + fallback (a short question, not a summary).
+        val system = AiPrompts.impactCoach(
+            bullet, request.project, request.projectDetail, request.goalArea, request.role,
+        )
+        return completeAndParse(
+            models = listOf(AiConfig.categorizerModel, AiConfig.categorizerFallback),
+            system = system,
+            user = bullet,
+        ) { AiJson.parse(it, ImpactSuggestion.serializer()) }
+    }
+
     // ---------------- HTTP + parsing plumbing ----------------
 
     /**

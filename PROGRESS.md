@@ -210,6 +210,60 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
+## Status: v0.25.0 — P4 · AI project-aware "Add impact" list on Home ✅ DONE (signed · tag-driven CI; compile+logic+UI+test adversarially reviewed) — **9-FEATURE BATCH COMPLETE**
+
+> **Phase 4 — the FINAL item of the 9-feature batch** (creator's 2026-07-10 request; locked via AskUserQuestion:
+> AI impact loop = an "Add impact" list on Home). Design locked via AskUserQuestion 2026-07-11: **collapsible
+> Home card** → **AI suggests what to quantify, then merges** → **type-only** input. **Room stays v4** (no
+> schema change). Firm invariant preserved: **the AI never invents a number — it only asks; the number comes
+> from the user.**
+
+**APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.25.0/BragBuddy-v0.25.0.apk` (signed; `.aab` alongside).
+
+### v0.25.0 — what was built (`versionCode 29`)
+1. **The "Add impact" card (Home).** A **collapsible** card (`ui/home/ImpactCard.kt`, built in the existing
+   reliability/nudge-card style) lists filed **wins that lack a number**. Backed by pure
+   `data/impact/ImpactCandidates.kt` (`from()` = **PROCESSED** + **non-routine** + has a **bullet** + `lacksMeasurable`
+   [no `metric` AND no number in the bullet via the existing `ImpactCheck`], newest-first), unit-tested
+   (`ImpactCandidatesTest`, 12). Collapsed = a count + "Show"; expands inline to ≤6 rows (+ "N more") each opening
+   the add-impact sheet; session-dismissible (in-memory). **Gated on `aiEnabled`** (a Groq key) in the VM: without
+   AI the card hides (the merge re-runs the categorizer, which needs a key — and there'd be no PROCESSED entries
+   to list anyway), so there's never a broken add.
+2. **Project-aware AI suggestion + type-only merge.** Tapping a row opens `ui/home/AddImpactSheet.kt` (custom-scrim,
+   never a Material sheet; `rememberDiscardGuard` protects a half-typed number). It shows the win + an **AI question**
+   about WHAT to quantify — new seam `AiProvider.suggestImpact` (`ImpactSuggestRequest`/`ImpactSuggestion` +
+   `AiPrompts.impactCoach`; Groq impl on the cheap categorizer model + fallback; Stub returns the generic question;
+   `HomeViewModel.loadImpactSuggestion` uses the entry's **project detail** [`ProjectEntity.description`] + goal area
+   + role; job-cancelled on close/re-open so a slow result can't flash into the wrong sheet; falls back to a generic
+   "what changed — can you put a number on it?" on no-key/failure). The prompt **only ASKS** — rule 3 forbids stating/
+   inventing a number; the question is shown, never stored. The user types the number and taps **Add impact**.
+3. **Non-destructive merge (`EntryProcessor.addImpact`).** The number is folded into the bullet via the existing
+   **COMBINE mode** (`categorizer(combineSingle=true)` — one merged bullet, never a split). **Unlike `replace`, the
+   row is NOT reset to RAW:** it stays **PROCESSED** with its placement, behaviours and ★/pin intact, and only the
+   **bullet + `metric` + impact score** change; on ANY AI failure / empty result the win is left **exactly as it
+   was** (retryable). This was the review fix (see below) — it means adding a number can never move a win, drop its
+   goal area, or demote a good record to a bullet-less Inbox row. `EntryRepository.addImpact` delegates to it
+   (fire-and-forget on the app scope).
+- **Tests:** `ImpactCandidatesTest` (12) — every exclusion reason + the number-word boundary ("five" counts) + the
+  occurredAt-over-createdAt ordering + the `lacksMeasurable` helper.
+- **REVIEW (4-dimension adversarial — compile / logic / UI / test):** compile = **CLEAN**; tests = **CORRECT** (all
+  12 hand-evaluated, no existing test broken — both `AiProvider` impls override the new method); UI = **no HIGH/MED**
+  (faithful card + custom-scrim sheet, bounded field, discard-guarded, no nested-clickable swallow); logic = **HOLD**,
+  **1 MED FIXED** — the original path routed through the destructive `replace()` (resets to RAW first), so a *transient*
+  AI blip demoted an already-good win to a bullet-less Inbox row → **rewritten as the non-destructive `addImpact`**
+  above (which also fixed 2 LOWs for free: no Outside-project goal-area re-guess, no permanent anchor pin). 2 other
+  LOWs fixed: the stale-suggestion race (job-cancel) and the toast copy ("your impact"). 1 LOW left by-design (the card
+  title counts all candidates while showing 6 with a "+N more" tail).
+- **On-device test (the creator's step):** (a) log a qualitative win ("shipped the checkout redesign", no number) →
+  it appears in the **Add impact** card → tap → the AI asks a project-aware question → type "cut drop-off 18%" → Add →
+  the bullet updates to fold in the number and the row leaves the card, **staying in the same project**; (b) confirm a
+  win with a number never appears in the card, and routine/BAU entries don't either; (c) turn OFF airplane-less…
+  actually: with a bad/removed key the card **hides** (no broken flow); (d) start typing a number, hit Back/scrim → the
+  **discard confirmation** appears; (e) generate a Summary and confirm the newly-quantified win reads with its number.
+  **NEXT = the 9-feature batch is COMPLETE — await the creator's next direction (iOS is still DEFERRED).**
+
+---
+
 ## Status: v0.24.0 — P3 · Notification-rationale popup + shorter/de-keyed onboarding privacy ✅ DONE (signed · tag-driven CI; compile+logic+UI+test adversarially reviewed)
 
 > **Phase 3 of the 9-feature batch** (creator's 2026-07-10 request; one signed APK per group). Two changes,

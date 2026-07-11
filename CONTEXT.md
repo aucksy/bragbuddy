@@ -254,8 +254,14 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   restore·de-dup) → **P2 v0.23.0** Recategorize (fix-a-wrong-category) + Theme(System/Light/Dark/Auto+scheduled) →
   **P3 v0.24.0** notification-rationale popup + shorten/de-key onboarding privacy → **P4 v0.25.0** AI
   project-aware "Add impact" on Home. Each phase = build → compile+logic+UI+test adversarial review → unit
-  tests → signed APK → handoff. **v0.24.0 = P3 SHIPPED** (latest); **NEXT = P4 v0.25.0** (the LAST batch item —
-  AI project-aware "Add impact" list on Home). **P3 (v0.24.0):** killed the naked OS notification dialog that
+  tests → signed APK → handoff. **THE 9-FEATURE BATCH IS COMPLETE — v0.25.0 = P4 SHIPPED (latest); await the
+  creator's next direction (iOS still DEFERRED).** **P4 (v0.25.0):** a **collapsible Home "Add impact" card**
+  (`ui/home/ImpactCard.kt`; pure `data/impact/ImpactCandidates.kt` = PROCESSED non-routine wins whose bullet has
+  no number; gated on a Groq key) → tap a win → custom-scrim `AddImpactSheet` with an **AI project-aware question**
+  about what to quantify (new `AiProvider.suggestImpact` seam, uses the project's `description` detail; the AI
+  **only asks — never invents a number**) → type the number → **non-destructive** `EntryProcessor.addImpact` folds
+  it into the bullet via COMBINE mode, **keeping the win PROCESSED with its placement/behaviours/★ intact** (a
+  transient AI blip can never demote a good record — the review-fix). **P3 (v0.24.0):** killed the naked OS notification dialog that
   raced Welcome → a **first-run rationale popup** on Home (custom-scrim `NotificationPrimerSheet`, gated by new
   device-local `notifPrimerHandled`; pure `NotificationPrimer.decide`; auto-satisfied silently pre-13/already-
   granted) whose "Allow" launches the real request; the Home reliability card is now **gated on the primer being

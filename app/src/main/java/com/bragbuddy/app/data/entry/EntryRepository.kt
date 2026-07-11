@@ -170,4 +170,17 @@ class EntryRepository @Inject constructor(
     fun replaceText(id: Long, text: String, combineSingle: Boolean = false) {
         appScope.launch { processor.replace(id, text, combineSingle) }
     }
+
+    /**
+     * Add a user-supplied impact/number to an already-filed win (Phase 4 · the Home "Add impact" list).
+     * Delegates to the **non-destructive** [EntryProcessor.addImpact], which folds the number into the
+     * bullet in COMBINE mode while keeping the win's placement, behaviours and ★/pin — and leaves it
+     * untouched on an AI failure (a transient blip can't demote a good record). Fire-and-forget on the
+     * app scope so the sheet can close immediately.
+     */
+    fun addImpact(entry: EntryEntity, impact: String) {
+        val add = impact.trim()
+        if (add.isEmpty()) return
+        appScope.launch { processor.addImpact(entry.id, add) }
+    }
 }

@@ -106,6 +106,11 @@ fun HomeScreen(
     val previewBannerCount by viewModel.previewBannerCount.collectAsStateWithLifecycle()
     val showReliabilityCard by viewModel.showReliabilityCard.collectAsStateWithLifecycle()
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
+    // Phase 4 · "Add impact" card + sheet.
+    val impactCandidates by viewModel.impactCandidates.collectAsStateWithLifecycle()
+    val impactCardDismissed by viewModel.impactCardDismissed.collectAsStateWithLifecycle()
+    val impactSuggestion by viewModel.impactSuggestion.collectAsStateWithLifecycle()
+    val showImpactCard = impactCandidates.isNotEmpty() && !impactCardDismissed
 
     // Time/system-state cards re-evaluate whenever Home comes (back) into view; the lifecycle-aware
     // collectors above also restart their upstreams on resume, so a background→foreground open
@@ -119,6 +124,9 @@ fun HomeScreen(
     var deleteTarget by remember { mutableStateOf<EntryEntity?>(null) }
     // Tap an entry → detail sheet (snapshot; toggles update it optimistically so ★/Pin flip instantly).
     var detailEntry by remember { mutableStateOf<EntryEntity?>(null) }
+    // The "Add impact" card's expand state + the entry whose add-impact sheet is open.
+    var impactExpanded by remember { mutableStateOf(false) }
+    var impactTarget by remember { mutableStateOf<EntryEntity?>(null) }
 
     fun copyAll() {
         val text = exportDocument(doc)
@@ -219,6 +227,18 @@ fun HomeScreen(
                 if (showReliabilityCard) {
                     item(key = "reliability-card") {
                         ReliabilityCard(palette, onReview = onOpenReliability, onDismiss = { viewModel.dismissReliabilityCard() })
+                    }
+                }
+                if (showImpactCard) {
+                    item(key = "impact-card") {
+                        ImpactCard(
+                            entries = impactCandidates,
+                            expanded = impactExpanded,
+                            onToggle = { impactExpanded = !impactExpanded },
+                            onAddImpact = { impactTarget = it },
+                            onDismiss = { viewModel.dismissImpactCard() },
+                            palette = palette,
+                        )
                     }
                 }
                 if (showDailyNudge) {
@@ -323,6 +343,22 @@ fun HomeScreen(
             onTogglePin = { v -> viewModel.setPinned(target.id, v); detailEntry = target.copy(isPinned = v) },
             onDelete = { detailEntry = null; deleteTarget = target },
             onDismiss = { detailEntry = null },
+        )
+    }
+
+    // Fetch the project-aware coaching question whenever an add-impact sheet opens (cleared on close).
+    LaunchedEffect(impactTarget) { impactTarget?.let { viewModel.loadImpactSuggestion(it) } }
+    impactTarget?.let { target ->
+        AddImpactSheet(
+            bullet = target.bullet.orEmpty(),
+            suggestion = impactSuggestion,
+            onAdd = { added ->
+                viewModel.addImpact(target, added)
+                android.widget.Toast.makeText(context, "Adding your impact…", android.widget.Toast.LENGTH_SHORT).show()
+                impactTarget = null
+                viewModel.clearImpactSuggestion()
+            },
+            onDismiss = { impactTarget = null; viewModel.clearImpactSuggestion() },
         )
     }
 }

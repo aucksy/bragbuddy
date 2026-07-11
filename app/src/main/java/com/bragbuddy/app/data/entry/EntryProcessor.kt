@@ -136,6 +136,44 @@ class EntryProcessor @Inject constructor(
     }
 
     /**
+     * Add a user-supplied impact/number to an already-filed win (Phase 4 · the Home "Add impact" list).
+     * **Non-destructive** — unlike [replace], the row is NOT reset to RAW: it stays PROCESSED with its
+     * placement, behaviours and ★/pin intact, and only the **bullet** is re-written to fold in the number
+     * (COMBINE mode) with the **metric** captured. On ANY AI failure / empty result the win is left
+     * EXACTLY as it was — so a transient blip can never demote a good record to a bullet-less Inbox row.
+     * The number always comes from the user ([impactText]); the AI only merges it, inventing nothing.
+     * Only enriches a PROCESSED row; runs under the processing [mutex].
+     */
+    suspend fun addImpact(id: Long, impactText: String) {
+        val add = impactText.trim()
+        if (add.isEmpty()) return
+        mutex.withLock {
+            val e = entryDao.getById(id) ?: return@withLock
+            if (e.status != EntryStatus.PROCESSED) return@withLock
+            val combined = "${e.rawTranscript.trim()} $add".trim()
+            runCatching {
+                // Anchor to the current project so the merged bullet has the right context; we keep the
+                // existing placement/behaviours regardless (only bullet + metric + impact change).
+                val anchor = e.project?.takeIf { it.isNotBlank() && !it.equals(INBOX_LABEL, ignoreCase = true) }
+                val p = prepare(e.copy(rawTranscript = combined, anchorProject = anchor ?: e.anchorProject), combineSingle = true)
+                val c = aiProvider.categorize(p.request).getOrNull()?.entries?.firstOrNull()
+                val newBullet = c?.bullet?.ifBlank { null }
+                if (c != null && newBullet != null) {
+                    val updated = e.copy(
+                        rawTranscript = combined,
+                        bullet = newBullet,
+                        metric = c.metric?.takeIf { it.isNotBlank() } ?: e.metric,
+                        impact = c.impact,
+                    )
+                    entryDao.update(updated)
+                    syncRollup(updated)
+                }
+                // else: couldn't produce a clean merged bullet → leave the win untouched (retryable).
+            }
+        }
+    }
+
+    /**
      * Resolve an Inbox entry in one tap (Inbox → quick-confirm). Assigns the [project] the user
      * picked and files it — no AI re-call: the cleaned bullet, behaviours and impact the model
      * already produced are kept; only the placement (project + goal area) is set and the row goes

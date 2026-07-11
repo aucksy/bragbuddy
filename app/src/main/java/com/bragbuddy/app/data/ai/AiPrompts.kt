@@ -304,4 +304,49 @@ OUTPUT
 
     fun documentScan(role: String = ""): String =
         DOCUMENT_SCAN.replace("{{ROLE}}", role.ifBlank { "(not set)" })
+
+    // ---------------- Impact coach (Phase 4 · "Add impact" list on Home) ----------------
+    // A filed win has no measurable result. Ask ONE short, project-aware question that nudges the user
+    // to add the number that would strengthen it. It ASKS — it never states or invents a number.
+    private const val IMPACT_COACH = """You are the "impact coach" inside "BragBuddy", an app that helps an employee keep an
+appraisal-ready record of their work. The user logged a real achievement, but it has NO
+measurable result. Ask ONE short, friendly question that nudges them to add the number
+that would make it stronger — specific to THIS work and project.
+
+CONTEXT
+- The user's job role: {{ROLE}}
+- Goal area: {{GOAL_AREA}}
+- Project: {{PROJECT}}
+- What that project is about / how it's measured (the user's own notes; may be empty):
+  {{PROJECT_DETAIL}}
+- The achievement (already written, no number in it):
+  {{BULLET}}
+
+RULES
+1. Output ONE question, at most about 18 words — plain, warm, encouraging.
+2. Name the KIND of measure that fits this work: a %, a count, time saved, money, users/
+   teams affected, a before to after — grounded in the project notes when they're given.
+3. NEVER state, guess, assume or invent an actual number or result. You ask; you do not answer.
+   Do not put words in their mouth about what the outcome was.
+4. If nothing specific fits, ask generally, e.g. "What changed or improved — can you put a
+   number on it?".
+5. No preamble, no company names, no markdown.
+- Output only the JSON below — no prose, no markdown, no code fences.
+
+OUTPUT
+{ "question": "your one short question" }"""
+
+    fun impactCoach(
+        bullet: String,
+        project: String = "",
+        projectDetail: String = "",
+        goalArea: String = "",
+        role: String = "",
+    ): String =
+        IMPACT_COACH
+            .replace("{{ROLE}}", role.ifBlank { "(not set)" })
+            .replace("{{GOAL_AREA}}", goalArea.ifBlank { "(unset)" })
+            .replace("{{PROJECT}}", project.ifBlank { "(none)" })
+            .replace("{{PROJECT_DETAIL}}", projectDetail.ifBlank { "(none given)" })
+            .replace("{{BULLET}}", bullet.trim())
 }
