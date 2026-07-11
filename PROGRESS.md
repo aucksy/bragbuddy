@@ -12,7 +12,35 @@ current code — that is the context, not chat history.
 
 ---
 
-## ▶ NEXT ROADMAP — Android v2 (agreed 2026-07-07): image scan → "+" radial capture → onboarding + privacy · THEN iOS
+## ▶ NEXT ROADMAP — Subscription launch + AI-magic (agreed 2026-07-11)
+
+> **This is the live "what's next."** Direction locked with the creator 2026-07-11 (AskUserQuestion):
+> **managed AI key for all at launch** (BYOK stays ONLY as the test-mode setup until launch-readiness,
+> then demotes to a hidden Advanced option) · **₹149/mo · ₹999/yr India-first, single Pro tier** ·
+> **paid hook = the Review Pack** · **iOS only after Android proves conversion**. Do NOT re-litigate.
+>
+> **The three governing docs (read before any phase):**
+> - `docs/IMPLEMENTATION-PLAN.md` — **the deep spec, phase by phase, incl. the FINAL verbatim prompt
+>   texts** (authored by Claude Fable 5 for execution by Claude Opus 4.8 — paste the prompts, don't
+>   re-write them).
+> - `docs/PRODUCT-ASSESSMENT.md` — business/UX assessment + subscription model + M-phase rationale.
+> - `docs/AI-SYSTEM-ASSESSMENT.md` — AI-brain assessment (categorizer/summary/impact-coach) + efficiency.
+>
+> **Phase order:** **AI-0** eval harness + golden set (repo-only, no tag; owner gate: add `GROQ_API_KEY`
+> repo secret) → **AI-1** v0.26.0 categorizer magic + efficiency (prompt restructure for Groq prefix
+> caching ≈40-45% cheaper, rubrics, 4 baked examples, routine-label reuse, output validator, Whisper
+> vocabulary prompt, description caps) → **AI-2** v0.27.0 summary fixes + **impact-coach-at-capture (the
+> USP move)** → **M1** v0.28.0 managed AI proxy → **M2** first-session/polish → **M3** Play Store +
+> Billing + caps → **M4** Review Pack → **M5** capture speed → **M6** retention/season → **M7** review
+> cycles → **M8** iOS. One phase per chat, fresh chat per phase, same ritual as ever — **plus a new
+> standing rule: any prompt/model change ships EVAL-GATED** (thresholds met and ≥ committed baseline).
+>
+> **Exact next step: Phase AI-0** (build `eval/` harness + golden set from the creator's real record,
+> commit a baseline report; no app change, no release tag). Then AI-1 in a fresh chat.
+
+---
+
+## ✅ COMPLETED ROADMAP — Android v2 (agreed 2026-07-07): image scan → "+" radial capture → onboarding + privacy · THEN iOS
 
 > This is the live "what's next." Vertical-slice phases, **one per chat**, same rhythm as Phases 0–7.
 > iOS is **deferred** (research parked at the end of this section). Start each phase in a fresh chat

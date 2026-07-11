@@ -273,6 +273,13 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   broader need — *correct any wrongly-filed entry* → **Recategorize** (entry-detail: pick a placement category +
   folder AND multi-select behaviour evidence, no AI; replaced the old folder-only "Move"). Theme is
   **device-local** (not backed up), Auto uses two clock-picker times. See `PROGRESS.md` top block for detail.
+- **▶ Direction locked 2026-07-11 — subscription launch + AI-magic.** Assessment done; decisions locked
+  (managed AI key for all at launch — **BYOK is the test-mode setup until launch-readiness only** — ·
+  ₹149/mo·₹999/yr single Pro tier · Review Pack paid hook · iOS after Android converts). **The roadmap
+  lives in `PROGRESS.md` (top block); the deep phase spec incl. FINAL verbatim prompt texts is
+  `docs/IMPLEMENTATION-PLAN.md`** (authored by Fable 5 for Opus 4.8 — paste, don't re-write), with
+  rationale in `docs/PRODUCT-ASSESSMENT.md` + `docs/AI-SYSTEM-ASSESSMENT.md`. New standing rule: **any
+  prompt/model change ships eval-gated** (Phase AI-0 harness). Exact next step: **Phase AI-0**.
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
   round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
   errors). Fix from the CI log via the **public** GitHub API (unauthenticated is enough for run status
