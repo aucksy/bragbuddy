@@ -1,0 +1,4 @@
+Today's date: {{TODAY}}
+Project anchor for this note: {{PROJECT_ANCHOR}}
+Transcript:
+{{TRANSCRIPT}}

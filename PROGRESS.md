@@ -42,8 +42,13 @@ current code — that is the context, not chat history.
 > push `eval-baseline-*` → run + commit baseline; push `eval-run-*` → gate check. No manual button.
 > **Baseline gate results (the "before" AI-1 must beat): 3 gates RED — routineReuse 57.1%,
 > coachPass 75.0%, summaryChecks 88.2%; plus metricPreserved 20.0% (ungated, dire).** Full numbers +
-> the AI-1 target list are in `## Status: Phase AI-0` below. **Exact next step: Phase AI-1 (v0.26.0)
-> in a fresh chat** — see the handoff prompt the assistant provides.
+> the AI-1 target list are in `## Status: Phase AI-0` below.
+>
+> **Phase AI-1 (v0.26.0) is BUILT + adversarially reviewed (2026-07-11)** — the two-part cache-first
+> prompt restructure, behaviour blurbs, routine-label reuse, output validator, Whisper vocab, description
+> caps + fallback-confidence guard, all eval-mirrored. **Exact next step: push `eval-run-ai1-*` to gate
+> the change in CI (thresholds AND ≥ baseline), then tag `v0.26.0`, then commit a fresh baseline.** Detail
+> in `## Status: v0.26.0` below.
 
 ---
 
@@ -242,6 +247,69 @@ was made.** When it resumes, this is the pre-done research:
 - **Capture parity:** no iOS overlay (Apple forbids) — the notification opens the app straight into a
   minimal auto-recording screen + App Intents (Siri/Shortcuts/Action Button/Lock-Screen). Blessed in the
   PRD/Brief.
+
+---
+
+## Status: v0.26.0 — Phase AI-1 · Categorizer magic + efficiency 🛠️ BUILT (eval-gated; awaiting the `eval-run-ai1-*` CI gate, then the `v0.26.0` ship tag)
+
+> **Phase AI-1 of the subscription-launch roadmap** (`docs/IMPLEMENTATION-PLAN.md` · Phase AI-1). Goal:
+> placement/scoring consistency up, AI cost down ~40-45%, no behaviour regressions — **eval-gated**
+> (AI-0 thresholds met AND ≥ the committed baseline on every metric). The FINAL prompt text was pasted
+> verbatim from the plan (not rewritten). **Room stays v4** (no schema change). **First adversarially-
+> reviewed change under the new standing rule: a prompt change edits the Kotlin AND `eval/prompts/*.txt`
+> in one commit (`PromptSyncTest` enforces it), and the tag is gated by the eval before the release.**
+
+### v0.26.0 — what was built (`versionCode 30`)
+1. **Prompt restructure (cache-first, 1a).** `AiPrompts.CATEGORIZER` + its single builder are replaced by
+   a **two-part** prompt: `AiPrompts.categorizerSystem(framework, projects, role, routineTypes,
+   combineSingle)` (static instructions + 4 calibrated examples FIRST, then the user's rarely-changing
+   CONTEXT — role / framework / projects / routine labels) and `AiPrompts.categorizerUser(today,
+   projectAnchor, transcript)` (the per-call volatiles). `GroqAiProvider.categorize` now sends
+   `[system, user]`; Groq prefix-caching then discounts the whole static block (~calibrated, byte-stable)
+   on every call ≈ the 40-45% saving. `COMBINE_MODE` still appends to the very end of the system message
+   (cache-neutral). `CategorizeRequest` gained `routineTypes`.
+2. **Context enrichment & bounding (1b).** `FrameworkPrompt.categorizerBlock` now renders **BEHAVIOUR +
+   DEVELOPMENT pillars with their blurbs again** (goal areas stay names-only — preserves the B2b property
+   that a goal-area detail edit affects summaries only) so the model tags behaviours accurately. New
+   `EntryDao.distinctRoutineTypes()` (top-20 by frequency) feeds `{{ROUTINE_TYPES}}` so the model **reuses
+   an existing routine label** instead of coining a near-duplicate variant. Project descriptions are
+   **capped at 300 chars** (word-boundary, pure `data/entry/TextCaps.kt`) before every categorize call AND
+   in the impact coach; a hint under the project-detail field ("A line or two is plenty — this rides along
+   every time the AI files an entry").
+3. **Output validation (1c).** New pure `data/entry/CategorizedNormalizer.kt`, applied in
+   `processEntry`/`refileSingle` between categorize success and the row write: snaps `project` to
+   canonical placement casing (a **phantom** project → Inbox + the guess kept in `suggestedProjects` +
+   confidence capped 0.5), snaps `goalCategory` to a goal-area/development name (**unknown left verbatim**
+   — the Uncategorized catch-all keeps its guarantee), snaps `demonstrates` to canonical BEHAVIOUR names
+   and **drops ghosts/sub-behaviours**, and **rejects an implausible `dateMentioned`** (> 370 days past or
+   on/after tomorrow). Unit-tested (`CategorizedNormalizerTest`, 6). The anchor override in
+   `applyCategorized` still wins for anchored rows (normalizer runs first, anchor force-files after).
+4. **Whisper vocabulary (1d).** `GroqTranscriber` now injects `ProjectDao` and sends a priming `prompt`
+   multipart — "Work log for a {role}. Projects: {names}." — capped ~200 tokens (role kept, project list
+   truncated) so Whisper spells project names right. Resilient: a DB read failure `runCatching`s to an
+   empty prompt and never blocks transcription.
+5. **Fallback confidence guard (1e).** When `completeAndParse` succeeds via the **8B fallback** model, each
+   entry's confidence is capped at 0.75 (a `completeAndParse` `onFallbackUsed` transform) so a borderline
+   small-model placement leans Inbox rather than silently mis-filing.
+- **Eval side (the ship gate):** `eval/prompts/categorizer.txt` → split into `categorizer-system.txt` +
+  `categorizer-user.txt` (byte-verified equal to the new Kotlin consts); `run.mjs` mirror updated for the
+  behaviour/development blurbs, the 300-char description cap, and the two-part message shape; **fixed the
+  documented AI-0 harness anchor-override gap** — an anchored case now snaps every entry's project + goal
+  to the anchor before placement matching (mirroring `applyCategorized`), so `real-009/011` score
+  truthfully. `node eval/run.mjs --dry-run` green (47/12/4).
+- **Tests:** `PromptSyncTest` (two-part), `AiPromptsTest`, `FrameworkPromptTest` updated; new
+  `CategorizedNormalizerTest` (6) + `TextCapsTest` (5).
+- **REVIEW (2 independent adversarial agents — Kotlin compile+logic, eval-harness mirror):** Kotlin =
+  **no HIGH/MED** (DI/ProjectDao injection, `completeAndParse` overload binding, normalizer edge cases,
+  vocab-budget loop, anchor-override ordering all verified; 2 LOW cosmetic — one KDoc wording tightened).
+  Eval = **no HIGH**; **1 MED FIXED** (project-description cap wasn't mirrored in `projectLines` → added
+  `capDescription`, so the harness measures exactly what the app sends; currently inert but keeps the
+  APP-MIRROR honest); 3 LOW documented non-issues.
+- **NEXT:** push `eval-run-ai1-*` → CI runs the eval on main with `--baseline` (must pass every threshold
+  AND be ≥ the committed baseline everywhere). On green: re-verify Groq slugs live → tag **v0.26.0** →
+  on-device test → commit a **fresh baseline** (`eval-baseline-ai1-*`) → suggest a fresh chat for **AI-2
+  (v0.27.0)** (summary fixes + impact-coach-at-capture). On a red gate: read the report, change the
+  minimum, re-run — record the delta here.
 
 ---
 

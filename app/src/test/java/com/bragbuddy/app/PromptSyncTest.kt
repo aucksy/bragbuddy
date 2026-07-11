@@ -23,38 +23,48 @@ import java.nio.file.Paths
  */
 class PromptSyncTest {
 
-    // ---------------- PART A · categorizer ----------------
+    // ---------------- PART A · categorizer (AI-1 · two-part) ----------------
 
     @Test
-    fun `categorizer prompt matches eval-prompts categorizer_txt`() {
-        val expected = promptFile("categorizer.txt")
-        val actual = AiPrompts.categorizer(
-            today = "{{TODAY}}",
+    fun `categorizer SYSTEM prompt matches eval-prompts categorizer-system_txt`() {
+        // {{ROUTINE_TYPES}} formats each label as "- <label>", so a sentinel can't survive verbatim —
+        // assert through the empty-list fallback ("(none yet)") instead (the file keeps the placeholder).
+        val expected = promptFile("categorizer-system.txt").replace("{{ROUTINE_TYPES}}", "(none yet)")
+        val actual = AiPrompts.categorizerSystem(
             framework = "{{APPRAISAL_FRAMEWORK}}",
             projects = listOf("{{PROJECTS}}"),
             role = "{{ROLE}}",
-            projectAnchor = "{{PROJECT_ANCHOR}}",
+            routineTypes = emptyList(),
             combineSingle = false,
         )
         assertEquals(expected, normalize(actual))
     }
 
     @Test
-    fun `combine mode appendix matches eval-prompts categorizer-combine_txt`() {
-        val base = AiPrompts.categorizer(
+    fun `categorizer USER prompt matches eval-prompts categorizer-user_txt`() {
+        val expected = promptFile("categorizer-user.txt")
+        val actual = AiPrompts.categorizerUser(
             today = "{{TODAY}}",
+            projectAnchor = "{{PROJECT_ANCHOR}}",
+            transcript = "{{TRANSCRIPT}}",
+        )
+        assertEquals(expected, normalize(actual))
+    }
+
+    @Test
+    fun `combine mode appendix matches eval-prompts categorizer-combine_txt`() {
+        val base = AiPrompts.categorizerSystem(
             framework = "{{APPRAISAL_FRAMEWORK}}",
             projects = listOf("{{PROJECTS}}"),
             role = "{{ROLE}}",
-            projectAnchor = "{{PROJECT_ANCHOR}}",
+            routineTypes = emptyList(),
             combineSingle = false,
         )
-        val combined = AiPrompts.categorizer(
-            today = "{{TODAY}}",
+        val combined = AiPrompts.categorizerSystem(
             framework = "{{APPRAISAL_FRAMEWORK}}",
             projects = listOf("{{PROJECTS}}"),
             role = "{{ROLE}}",
-            projectAnchor = "{{PROJECT_ANCHOR}}",
+            routineTypes = emptyList(),
             combineSingle = true,
         )
         // The file stores the appendix without its leading blank lines; it rides as base + "\n\n" + appendix.

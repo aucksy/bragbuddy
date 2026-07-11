@@ -9,9 +9,10 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 /**
- * Phase B2b: the daily categorizer sees category **names + sub-folder names**, never the category
- * **detail blurbs** (those feed the summary only). Guards that split so a future edit can't leak a
- * blurb back into daily filing.
+ * The daily categorizer block: GOAL AREAS render **names only** (their detail feeds the summary, not
+ * daily filing — Phase B2b), while BEHAVIOUR / DEVELOPMENT pillars render **name + blurb** (AI-1) so
+ * the model can tag work to the behaviour it genuinely evidences. Sub-folder names ride along as
+ * context under any category.
  */
 class FrameworkPromptTest {
 
@@ -27,7 +28,7 @@ class FrameworkPromptTest {
         ProjectEntity(name = name, goalArea = area, description = "desc", createdAt = 0L)
 
     @Test
-    fun `categorizer block keeps category names but drops every detail blurb`() {
+    fun `categorizer block keeps names, drops the goal-area blurb, keeps behaviour and development blurbs`() {
         val block = FrameworkPrompt.categorizerBlock(
             framework,
             listOf(project("Raven Migration", "Performance Goals")),
@@ -36,10 +37,11 @@ class FrameworkPromptTest {
         assertThat(block).contains("Performance Goals")
         assertThat(block).contains("Leadership & Behaviours")
         assertThat(block).contains("Learning & Growth")
-        // No category detail blurbs anywhere — they are summary-only now.
+        // GOAL-AREA blurb stays summary-only (never in daily filing).
         assertThat(block).doesNotContain("SECRET_GOAL_BLURB")
-        assertThat(block).doesNotContain("SECRET_BEHAVIOUR_BLURB")
-        assertThat(block).doesNotContain("SECRET_DEV_BLURB")
+        // AI-1: behaviour + development blurbs ARE injected so the model tags behaviours accurately.
+        assertThat(block).contains("SECRET_BEHAVIOUR_BLURB")
+        assertThat(block).contains("SECRET_DEV_BLURB")
     }
 
     @Test

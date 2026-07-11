@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.bragbuddy.app.data.ai.AiProvider
 import com.bragbuddy.app.data.ai.ImpactSuggestRequest
 import com.bragbuddy.app.data.entry.EntryRepository
+import com.bragbuddy.app.data.entry.TextCaps
 import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.PillarKind
@@ -197,8 +198,10 @@ class HomeViewModel @Inject constructor(
         _impactSuggestion.value = ImpactSuggestUi.Loading
         suggestJob = viewModelScope.launch {
             val s = settings.settings.first()
-            val detail = folders.value.firstOrNull { it.name.equals(entry.project, ignoreCase = true) }
-                ?.description.orEmpty()
+            val detail = TextCaps.cap(
+                folders.value.firstOrNull { it.name.equals(entry.project, ignoreCase = true) }
+                    ?.description.orEmpty(),
+            )
             val ai = s.groqApiKey.isNotBlank()
             val question = if (!ai) {
                 GENERIC_IMPACT_QUESTION

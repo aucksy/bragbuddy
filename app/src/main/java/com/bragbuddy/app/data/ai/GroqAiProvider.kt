@@ -42,16 +42,23 @@ class GroqAiProvider @Inject constructor(
     override val label: String = AiConfig.categorizerLabel()
 
     override suspend fun categorize(request: CategorizeRequest): Result<CategorizeResult> {
-        val system = AiPrompts.categorizer(
-            request.today, request.framework, request.projects, request.role, request.projectAnchor,
-            request.combineSingle,
+        val transcript = request.transcript.trim()
+        if (transcript.isEmpty()) return Result.success(CategorizeResult(emptyList()))
+        // AI-1 two-part shape: the cache-first STATIC+CONTEXT system message, and the per-call
+        // volatiles (today / anchor / transcript) as the user message.
+        val system = AiPrompts.categorizerSystem(
+            request.framework, request.projects, request.role, request.routineTypes, request.combineSingle,
         )
-        val user = request.transcript.trim()
-        if (user.isEmpty()) return Result.success(CategorizeResult(emptyList()))
+        val user = AiPrompts.categorizerUser(request.today, request.projectAnchor, transcript)
         return completeAndParse(
             models = listOf(AiConfig.categorizerModel, AiConfig.categorizerFallback),
             system = system,
             user = user,
+            // AI-1 · fallback confidence guard: a result produced by the small 8B fallback is capped at
+            // 0.75 confidence, so a borderline placement leans Inbox rather than silently mis-filing.
+            onFallbackUsed = { r: CategorizeResult ->
+                r.copy(entries = r.entries.map { it.copy(confidence = minOf(it.confidence, 0.75)) })
+            },
         ) { AiJson.parse(it, CategorizeResult.serializer()) }
     }
 
@@ -133,15 +140,20 @@ class GroqAiProvider @Inject constructor(
         models: List<String>,
         system: String,
         user: String,
+        onFallbackUsed: (T) -> T = { it },
         parse: (String) -> T,
     ): Result<T> {
         val key = settings.settings.first().groqApiKey.trim()
         if (key.isBlank()) return Result.failure(IllegalStateException("No Groq key set"))
 
         var last: Throwable = IllegalStateException("No model responded")
-        for (model in models) {
+        for ((index, model) in models.withIndex()) {
             val parsed = callChat(model, system, user, key).mapCatching(parse)
-            if (parsed.isSuccess) return parsed
+            if (parsed.isSuccess) {
+                // A non-primary (fallback) model produced this — let the caller adjust it (e.g. cap the
+                // categorizer's confidence, since the small model is less reliable at placement).
+                return if (index == 0) parsed else parsed.map(onFallbackUsed)
+            }
             parsed.exceptionOrNull()?.let { last = it }
         }
         return Result.failure(last)

@@ -126,8 +126,8 @@ function fill(template, replacements) {
 // APP-MIRROR · context builders
 // ---------------------------------------------------------------------------
 
-/** Mirrors FrameworkPrompt.categorizerBlock (data/entry/FrameworkPrompt.kt): category NAMES plus
- *  each category's sub-folder names; NO category blurbs (Phase B2b). */
+/** Mirrors FrameworkPrompt.categorizerBlock (data/entry/FrameworkPrompt.kt): GOAL AREAS = names only;
+ *  BEHAVIOUR/DEVELOPMENT = name + blurb (AI-1); each category's sub-folder names ride along. */
 function categorizerFrameworkBlock(framework, projects) {
   const byCategory = new Map();
   for (const p of projects) {
@@ -135,34 +135,47 @@ function categorizerFrameworkBlock(framework, projects) {
     if (!byCategory.has(key)) byCategory.set(key, []);
     byCategory.get(key).push(p.name);
   }
-  const line = (pillar, label) => {
+  const line = (pillar, label, withBlurb) => {
     const subs = (byCategory.get(pillar.name.trim().toLowerCase()) || []).join(', ');
-    return `- ${pillar.name}${subs ? ` · ${label}: ${subs}` : ''}`;
+    const head = withBlurb && pillar.blurb && pillar.blurb.trim() ? `- ${pillar.name}: ${pillar.blurb}` : `- ${pillar.name}`;
+    return `${head}${subs ? ` · ${label}: ${subs}` : ''}`;
   };
   const pillars = framework.pillars || [];
   const kind = (k) => pillars.filter((p) => p.kind === k);
   const out = [];
   out.push('GOAL AREAS (results / projects map here):');
-  for (const p of kind('GOAL_AREA')) out.push(line(p, 'projects'));
+  for (const p of kind('GOAL_AREA')) out.push(line(p, 'projects', false));
   out.push('BEHAVIOURS / COMPETENCIES (tag work that demonstrates these):');
-  for (const p of kind('BEHAVIOUR')) out.push(line(p, 'focus areas'));
+  for (const p of kind('BEHAVIOUR')) out.push(line(p, 'focus areas', true));
   const dev = kind('DEVELOPMENT');
   if (dev.length) {
     out.push('DEVELOPMENT (optional):');
-    for (const p of dev) out.push(line(p, 'focus areas'));
+    for (const p of dev) out.push(line(p, 'focus areas', true));
   }
   return out.join('\n').trim();
 }
 
+/** Mirrors TextCaps.cap (data/entry/TextCaps.kt): word-boundary truncate to ~300 chars + ellipsis. */
+function capDescription(text, max = 300) {
+  const t = String(text ?? '').trim();
+  if (t.length <= max) return t;
+  const hard = t.slice(0, max).replace(/\s+$/, '');
+  const lastSpace = hard.lastIndexOf(' ');
+  let body = lastSpace >= Math.floor(max / 2) ? hard.slice(0, lastSpace) : hard;
+  body = body.replace(/\s+$/, '').replace(/[,;.:\-]+$/, '');
+  return body + '…';
+}
+
 /** Mirrors EntryProcessor.prepare (data/entry/EntryProcessor.kt): the {{PROJECTS}} lines are the
- *  placement universe — sub-folders under GOAL_AREA categories only — as "- Name [Area] — desc". */
+ *  placement universe — sub-folders under GOAL_AREA categories only — as "- Name [Area] — desc",
+ *  the description capped at 300 chars (TextCaps.cap) exactly as the app does before every call. */
 function projectLines(framework, projects) {
   const goalNames = (framework.pillars || [])
     .filter((p) => p.kind === 'GOAL_AREA')
     .map((p) => p.name.toLowerCase());
   return projects
     .filter((p) => goalNames.includes(p.goalArea.trim().toLowerCase()))
-    .map((p) => `- ${p.name} [${p.goalArea}]${p.description && p.description.trim() ? ` — ${p.description}` : ''}`);
+    .map((p) => `- ${p.name} [${p.goalArea}]${p.description && p.description.trim() ? ` — ${capDescription(p.description)}` : ''}`);
 }
 
 /** Mirrors AiPrompts.categorizer + GroqAiProvider.categorize: one system message (the filled
@@ -403,7 +416,14 @@ function scoreCategorizerCase(c, record) {
         .map((p) => p.name)
     : [];
   const pillarNames = (framework.pillars || []).map((p) => p.name);
-  const anchored = Boolean((ctx.anchor || '').trim());
+  const anchorName = (ctx.anchor || '').trim();
+  const anchored = Boolean(anchorName);
+  // APP-MIRROR: EntryProcessor.applyCategorized — an anchored capture is force-filed to the anchor
+  // project (canonical name) and that project's goal area, whatever the model output. Score it that
+  // way so a model "Inbox"/development guess on an anchored row isn't under-credited (AI-1 fix).
+  const anchorProj = anchored ? (projects.find((p) => norm(p.name) === norm(anchorName)) || null) : null;
+  const anchorProjectName = anchorProj ? anchorProj.name : anchorName;
+  const anchorGoalArea = anchorProj ? anchorProj.goalArea : null;
   const expect = c.expect || {};
   const entries = Array.isArray(record.parsed?.entries) ? record.parsed.entries : null;
 
@@ -438,8 +458,8 @@ function scoreCategorizerCase(c, record) {
   if (expect.placements) {
     const remaining = entries.map((e) => ({
       e,
-      project: snapProject(e.project ?? 'Inbox', placementNames),
-      goal: snapGoal(e.goalCategory ?? 'Inbox', pillarNames),
+      project: anchored ? anchorProjectName : snapProject(e.project ?? 'Inbox', placementNames),
+      goal: anchored ? (anchorGoalArea ?? snapGoal(e.goalCategory ?? 'Inbox', pillarNames)) : snapGoal(e.goalCategory ?? 'Inbox', pillarNames),
       used: false,
     }));
     const misses = [];

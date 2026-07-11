@@ -5,6 +5,7 @@ import com.bragbuddy.app.data.ai.AiProvider
 import com.bragbuddy.app.data.ai.CategorizeRequest
 import com.bragbuddy.app.data.ai.CategorizedEntry
 import com.bragbuddy.app.data.framework.FrameworkStore
+import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.local.BragBuddyDatabase
 import com.bragbuddy.app.data.local.EntryDao
@@ -450,8 +451,15 @@ class EntryProcessor @Inject constructor(
         entryDao.observeIn(listOf(EntryStatus.FAILED)).first().forEach { process(it.id) }
     }
 
-    /** Everything the categorizer call needs for one entry, plus the resolved anchor. */
-    private data class Prep(val request: CategorizeRequest, val anchor: String?, val anchorGoalArea: String?)
+    /** Everything the categorizer call needs for one entry, plus the resolved anchor and the canonical
+     *  universe the output validator ([CategorizedNormalizer]) snaps against. */
+    private data class Prep(
+        val request: CategorizeRequest,
+        val anchor: String?,
+        val anchorGoalArea: String?,
+        val placementNames: List<String>,
+        val pillars: List<Pillar>,
+    )
 
     private suspend fun prepare(entry: EntryEntity, combineSingle: Boolean = false): Prep {
         val role = settings.settings.first().jobRole
@@ -464,12 +472,15 @@ class EntryProcessor @Inject constructor(
         val projects = placement.map { p ->
             buildString {
                 append("- ").append(p.name).append(" [").append(p.goalArea).append("]")
-                p.description?.takeIf { it.isNotBlank() }?.let { append(" — ").append(it) }
+                // Cap the description (rides on EVERY call + the cached prefix) at 300 chars (AI-1).
+                p.description?.takeIf { it.isNotBlank() }?.let { append(" — ").append(TextCaps.cap(it)) }
             }
         }
-        // The categorizer framework block = category NAMES + each category's sub-folder names, but NOT
-        // the category detail blurbs (Phase B2b: a category detail feeds the SUMMARY only, so editing it
-        // no longer affects daily filing). Full project details ride below in {{PROJECTS}}.
+        // AI-1 · routine-label reuse: the user's existing routine labels (most-used first) so the model
+        // reuses a fitting one instead of coining a near-duplicate variant.
+        val routineTypes = runCatching { entryDao.distinctRoutineTypes() }.getOrDefault(emptyList())
+        // The categorizer framework block = category NAMES (goal areas) + behaviour/development blurbs
+        // (AI-1) + each category's sub-folder names. Full project details ride below in {{PROJECTS}}.
         val framework = FrameworkPrompt.categorizerBlock(fw, activeProjects)
         // Folder-tap anchor: fixes the project for this whole capture (and its split siblings).
         val anchor = entry.anchorProject?.takeIf { it.isNotBlank() }
@@ -480,12 +491,15 @@ class EntryProcessor @Inject constructor(
                 today = LocalDate.now().toString(),
                 framework = framework,
                 projects = projects,
+                routineTypes = routineTypes,
                 role = role,
                 projectAnchor = anchor,
                 combineSingle = combineSingle,
             ),
             anchor,
             anchorGoalArea,
+            placement.map { it.name },
+            fw.pillars,
         )
     }
 
@@ -493,7 +507,10 @@ class EntryProcessor @Inject constructor(
     private suspend fun processEntry(entry: EntryEntity) {
         val p = prepare(entry)
         aiProvider.categorize(p.request).fold(
-            onSuccess = { result ->
+            onSuccess = { raw ->
+                // AI-1 · output validation: snap fuzzy placements/goals/behaviours to canonical, park
+                // phantom projects in the Inbox, reject implausible dates — before the row write.
+                val result = CategorizedNormalizer.normalize(raw, p.placementNames, p.pillars)
                 if (result.entries.isEmpty()) {
                     // No usable work contribution — keep it, but hold it in the Inbox rather than
                     // silently dropping (never lose an entry).
@@ -529,7 +546,9 @@ class EntryProcessor @Inject constructor(
     private suspend fun refileSingle(entry: EntryEntity, combineSingle: Boolean = false) {
         val p = prepare(entry, combineSingle)
         aiProvider.categorize(p.request).fold(
-            onSuccess = { result ->
+            onSuccess = { raw ->
+                // AI-1 · output validation (same as the capture path); refile files exactly this one row.
+                val result = CategorizedNormalizer.normalize(raw, p.placementNames, p.pillars)
                 val first = result.entries.firstOrNull()
                 val updated = if (first == null) entry.copy(status = EntryStatus.INBOX, confidence = 0.0)
                 else entry.applyCategorized(first, p.anchor, p.anchorGoalArea)

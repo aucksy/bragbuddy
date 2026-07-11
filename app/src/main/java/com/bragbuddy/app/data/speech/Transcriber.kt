@@ -1,5 +1,6 @@
 package com.bragbuddy.app.data.speech
 
+import com.bragbuddy.app.data.local.ProjectDao
 import com.bragbuddy.app.data.prefs.SettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -38,15 +39,22 @@ class TranscriptionHttpException(val code: Int, message: String) : Exception(mes
 @Singleton
 class GroqTranscriber @Inject constructor(
     private val settings: SettingsStore,
+    private val projectDao: ProjectDao,
     private val client: OkHttpClient,
 ) : Transcriber {
 
     override val label: String = "Groq · Whisper-large-v3"
 
     override suspend fun transcribe(audio: File): Result<String> = withContext(Dispatchers.IO) {
-        val key = settings.settings.first().groqApiKey.trim()
+        val settingsNow = settings.settings.first()
+        val key = settingsNow.groqApiKey.trim()
         if (key.isBlank()) return@withContext Result.failure(IllegalStateException("No transcription key set"))
         if (!audio.exists() || audio.length() == 0L) return@withContext Result.failure(IllegalStateException("No audio recorded"))
+
+        // AI-1 · Whisper vocabulary: a short priming prompt of the user's role + project names so Whisper
+        // spells "Raven Migration", "CommXHub" etc. correctly. Resilient — a DB read failure must never
+        // block transcription, so it's runCatching to an empty prompt.
+        val vocabPrompt = runCatching { buildVocabPrompt(settingsNow.jobRole) }.getOrDefault("")
 
         runCatching {
             // Build the request INSIDE runCatching: a malformed key character (a stray control/
@@ -56,6 +64,7 @@ class GroqTranscriber @Inject constructor(
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("model", MODEL)
                 .addFormDataPart("response_format", "text")
+                .apply { if (vocabPrompt.isNotBlank()) addFormDataPart("prompt", vocabPrompt) }
                 .addFormDataPart("file", audio.name, audio.asRequestBody("audio/m4a".toMediaType()))
                 .build()
             val request = Request.Builder()
@@ -76,8 +85,33 @@ class GroqTranscriber @Inject constructor(
         }
     }
 
+    /**
+     * "Work log for a {role}. Projects: {names}." — capped to ~200 tokens (≈800 chars) so a long
+     * project list can never crowd out the audio; the role is always kept and only the project list is
+     * truncated. Empty when there's nothing useful to prime with.
+     */
+    private suspend fun buildVocabPrompt(role: String): String {
+        val roleClause = role.trim().takeIf { it.isNotBlank() }?.let { "Work log for a $it." } ?: "Work log."
+        val names = projectDao.observeActive().first().map { it.name.trim() }.filter { it.isNotBlank() }
+        if (names.isEmpty()) return roleClause
+        val budget = MAX_PROMPT_CHARS - roleClause.length - " Projects: .".length
+        val kept = mutableListOf<String>()
+        var used = 0
+        for (n in names) {
+            val add = (if (kept.isEmpty()) n.length else n.length + 2) // ", "
+            if (used + add > budget) break
+            kept += n
+            used += add
+        }
+        if (kept.isEmpty()) return roleClause
+        return "$roleClause Projects: ${kept.joinToString(", ")}."
+    }
+
     private companion object {
         const val ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions"
         const val MODEL = "whisper-large-v3"
+
+        /** ~200 tokens for the Whisper priming prompt (≈4 chars/token). */
+        const val MAX_PROMPT_CHARS = 800
     }
 }

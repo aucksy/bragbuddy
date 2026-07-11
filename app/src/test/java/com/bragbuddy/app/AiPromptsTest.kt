@@ -8,53 +8,56 @@ import org.junit.Test
 class AiPromptsTest {
 
     @Test
-    fun `categorizer injects date, framework and projects, leaving no placeholders`() {
-        val prompt = AiPrompts.categorizer(
-            today = "2026-07-03",
+    fun `categorizer SYSTEM injects framework, projects and routine labels, leaving no placeholders`() {
+        val prompt = AiPrompts.categorizerSystem(
             framework = "GOAL AREAS:\n- Performance Goals: delivery",
             projects = listOf("- Atlas [Performance Goals] — redesign"),
+            role = "Product Owner",
+            routineTypes = listOf("access requests", "support tickets"),
         )
-        assertThat(prompt).contains("2026-07-03")
+        assertThat(prompt).contains("Product Owner")
         assertThat(prompt).contains("Performance Goals")
         assertThat(prompt).contains("- Atlas [Performance Goals] — redesign")
+        assertThat(prompt).contains("- access requests")
+        assertThat(prompt).contains("- support tickets")
         assertThat(prompt).doesNotContain("{{")
         assertThat(prompt).contains("JSON") // Groq JSON mode requires the word to appear
     }
 
     @Test
-    fun `categorizer handles empty framework and projects gracefully`() {
-        val prompt = AiPrompts.categorizer(today = "2026-07-03", framework = "", projects = emptyList())
-        assertThat(prompt).contains("(none set)")
-        assertThat(prompt).contains("(none yet)")
-        assertThat(prompt).contains("(not set)") // role unset
-        assertThat(prompt).contains("none")      // no anchor
+    fun `categorizer SYSTEM handles empty framework, projects and routine labels gracefully`() {
+        val prompt = AiPrompts.categorizerSystem(framework = "", projects = emptyList())
+        assertThat(prompt).contains("(none set)") // empty framework
+        assertThat(prompt).contains("(none yet)") // empty projects AND empty routine labels
+        assertThat(prompt).contains("(not set)")  // role unset
         assertThat(prompt).doesNotContain("{{")
     }
 
     @Test
-    fun `categorizer injects role and honours an explicit project anchor`() {
-        val prompt = AiPrompts.categorizer(
+    fun `categorizer USER carries date, anchor and transcript, leaving no placeholders`() {
+        val prompt = AiPrompts.categorizerUser(
             today = "2026-07-03",
-            framework = "GOAL AREAS:\n- Performance Goals: delivery",
-            projects = emptyList(),
-            role = "Product Owner",
             projectAnchor = "Raven Migration",
+            transcript = "  signed off two more markets  ",
         )
-        assertThat(prompt).contains("Product Owner")
+        assertThat(prompt).contains("2026-07-03")
         assertThat(prompt).contains("Raven Migration")
-        // The anchor instruction must be present so the model files into it directly.
-        assertThat(prompt).contains("explicit project anchor")
+        assertThat(prompt).contains("signed off two more markets")
         assertThat(prompt).doesNotContain("{{")
     }
 
     @Test
-    fun `combine mode adds the single-entry merge directive, default does not`() {
-        val plain = AiPrompts.categorizer(today = "2026-07-03", framework = "", projects = emptyList())
+    fun `categorizer USER falls back to none when there is no anchor`() {
+        val prompt = AiPrompts.categorizerUser(today = "2026-07-03", projectAnchor = null, transcript = "did a thing")
+        assertThat(prompt).contains("Project anchor for this note: none")
+    }
+
+    @Test
+    fun `combine mode adds the single-entry merge directive to the system prompt, default does not`() {
+        val plain = AiPrompts.categorizerSystem(framework = "", projects = emptyList())
         assertThat(plain).doesNotContain("COMBINE MODE")
 
-        val combined = AiPrompts.categorizer(
-            today = "2026-07-03", framework = "", projects = emptyList(), combineSingle = true,
-        )
+        val combined = AiPrompts.categorizerSystem(framework = "", projects = emptyList(), combineSingle = true)
         assertThat(combined).contains("COMBINE MODE")
         assertThat(combined).contains("EXACTLY ONE entry")
         assertThat(combined).doesNotContain("{{")

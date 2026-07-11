@@ -21,6 +21,9 @@ data class CategorizeRequest(
     val framework: String,
     /** One line per project: name + [goal area] + short description ({{PROJECTS}}). */
     val projects: List<String>,
+    /** The user's existing routine-work labels, most-used first ({{ROUTINE_TYPES}}) — the model reuses
+     *  a fitting one instead of inventing a variant (AI-1 · routine-label reuse). Empty = none yet. */
+    val routineTypes: List<String> = emptyList(),
     /** The user's job role — context to sharpen core-duty vs. beyond-scope judgement. Blank = unset. */
     val role: String = "",
     /** Explicit project anchor (folder-tap). When set, the model must file into this exact project. */

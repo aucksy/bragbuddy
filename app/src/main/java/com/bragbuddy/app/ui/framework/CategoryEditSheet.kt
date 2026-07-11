@@ -294,6 +294,12 @@ fun CategoryEditSheet(
                             scanBusy = scanState != ScanState.IDLE,
                             onScan = { startScan(target) },
                         )
+                        Spacer(Modifier.height(Spacing.s1))
+                        Text(
+                            "A line or two is plenty — this rides along every time the AI files an entry.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = palette.text3,
+                        )
                         Spacer(Modifier.height(Spacing.s2))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Spacer(Modifier.weight(1f))

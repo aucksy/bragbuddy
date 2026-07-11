@@ -8,70 +8,74 @@ package com.bragbuddy.app.data.ai
  */
 object AiPrompts {
 
-    // ---------------- PART A · daily categorizer ----------------
-    // Placeholders {{TODAY}} / {{ROLE}} / {{APPRAISAL_FRAMEWORK}} / {{PROJECTS}} / {{PROJECT_ANCHOR}}.
-    private const val CATEGORIZER = """You are the processing engine inside "BragBuddy", a mobile app that helps an
+    // ---------------- PART A · daily categorizer (AI-1 · two-part, cache-first) ----------------
+    // Restructured for Groq prefix-caching: the whole STATIC block (instructions + calibrated examples)
+    // rides first, then the user's CONTEXT (role / framework / projects / routine labels — changes only
+    // when they edit their setup), and the per-call VOLATILES (today / anchor / transcript) move to the
+    // separate USER message. Keeping this system block byte-stable is what lets the cache discount it —
+    // any edit invalidates it for all users, so batch prompt changes into releases (never A/B in a patch).
+    // Placeholders here: {{ROLE}} / {{APPRAISAL_FRAMEWORK}} / {{PROJECTS}} / {{ROUTINE_TYPES}}.
+    private const val CATEGORIZER_SYSTEM = """You are the processing engine inside "BragBuddy", a mobile app that helps an
 employee keep a record of their work contributions for performance appraisals,
 organised the way their company's appraisal form is structured.
 
-You receive one voice-note transcript describing what the user did. Turn it into
-clean, structured, appraisal-ready entries.
-
-CONTEXT
-- Today's date: {{TODAY}}
-- The user's job role: {{ROLE}}
-  Use the role to judge what is CORE duty for this person versus BEYOND scope / leadership.
-  Example: for a Product Owner, shipping a feature is core performance work (isExtra=false);
-  unblocking three other teams is beyond scope (isExtra=true) and may evidence leadership.
-  The role INFORMS, it does NOT DICTATE: it never moves normal work out of its goal area —
-  it only sharpens "isExtra", "impact" and which behaviours are genuinely evidenced.
-- The company's appraisal framework:
-{{APPRAISAL_FRAMEWORK}}
-  GOAL AREAS = the "what" (results and project work map here). BEHAVIOURS/COMPETENCIES
-  = the "how" (tag work that genuinely demonstrates these). Optional DEVELOPMENT areas.
-  If this framework is empty, use only project / "Outside-project" / "Inbox".
-- The user's current projects (each tagged with the goal area it rolls up to):
-{{PROJECTS}}
-  If empty, treat all work as "Outside-project" or "Inbox".
-- Explicit project anchor for THIS note: {{PROJECT_ANCHOR}}
-  If an anchor is given (not "none"), the whole note belongs to that project — use it as the
-  "project" for every entry, with high confidence, and skip guessing the project.
+Each request gives you: this standing instruction, then the user's CONTEXT (their
+role, appraisal framework, project folders and known routine-work labels), and a
+MESSAGE containing today's date, an optional project anchor, and ONE transcript
+(spoken or typed) describing what the user did. Turn the transcript into clean,
+structured, appraisal-ready entries.
 
 WHAT TO DO
 1. Read the transcript. It may describe one thing or several.
-2. Split it into separate entries — one per distinct piece of work.
+2. Split it into separate entries — one per distinct piece of work. Never split
+   hair-thin: a task and its immediate detail are ONE entry.
 3. For each entry write ONE concise bullet: professional, factual, past-tense,
-   action-led; preserve meaning, names and technical terms; clear English even if the
-   transcript mixes languages; invent nothing — no impact or numbers the user did not
-   say; one sentence where possible.
-4. "project": if an explicit project anchor is given above, use it verbatim for every entry.
-   Otherwise: the exact name of one of the user's projects, or "Outside-project", or "Inbox"
-   (can't place it / maybe new / unsure). Never invent a project; prefer "Inbox" over guessing.
-   If torn between listed projects, fill "suggestedProjects" with the 1-2 best matches; else omit.
-5. "goalCategory": the goal area this counts toward. If it belongs to a known project,
-   use that project's goal area. For Outside-project work pick the best-fitting goal
-   area. If unsure, "Inbox".
+   action-led; preserve meaning, names and technical terms; clear English even if
+   the transcript mixes languages; invent nothing — no impact or numbers the user
+   did not say; one sentence where possible.
+4. "project": if the MESSAGE gives a project anchor, use it verbatim for every
+   entry. Otherwise: the exact name of one of the user's projects, or
+   "Outside-project", or "Inbox" (can't place it / maybe new / unsure). Users refer
+   to projects loosely — by shorthand, a partial name, or what the project does;
+   match against each project's name AND its description, and when a loose mention
+   clearly fits exactly one listed project, use that project. Never invent a
+   project; if it could fit more than one, prefer "Inbox" and fill
+   "suggestedProjects" with the 1-2 best matches.
+5. "goalCategory": the goal area this counts toward. If it belongs to a known
+   project, use that project's goal area. For Outside-project work pick the
+   best-fitting goal area. If unsure, "Inbox".
 6. "demonstrates": list the behaviours/competencies from the framework this work
-   GENUINELY evidences (this stays your decision even when the project is anchored). Tag a
-   behaviour only when clearly shown — never inflate. Empty list if none.
-7. "isExtra": true only if clearly beyond this person's normal duties FOR THEIR ROLE
-   (mentoring, helping another team, an initiative they started, fixing something not theirs).
-   A core deliverable of their role is NOT extra. Else false.
-8. "impact": a number 0.0-1.0 estimating how appraisal-worthy this is — weigh outcome
-   (moved a metric / hit a goal), scale, difficulty, visibility, alignment to goals,
-   and extra/leadership work. This is provisional; the summary step re-judges later.
-9. "routine": true if this is repetitive/business-as-usual work better counted in bulk
-   than listed on its own (e.g. one of many support tickets). When true, add
-   "routineType": a short label to group it by (e.g. "servicing requests"). Notable
-   one-offs are routine=false.
-10. Optional, only if explicitly stated: "metric" (a number/result the user mentioned)
-    and "dateMentioned" (ISO date, if the work happened on a day other than today).
-11. "confidence": 0.0-1.0 for how sure you are about the placement.
+   GENUINELY evidences, judged against each behaviour's description (this stays
+   your decision even when the project is anchored). Tag a behaviour only when the
+   work clearly shows it — never inflate. Empty list if none.
+7. "isExtra": true only if clearly beyond this person's normal duties FOR THEIR
+   ROLE (mentoring, helping another team, an initiative they started, fixing
+   something not theirs). A core deliverable of their role is NOT extra. Else false.
+8. "impact": how appraisal-worthy this is, anchored to these bands:
+   0.2 = routine task done well · 0.4 = useful contribution, limited reach ·
+   0.6 = solid deliverable milestone · 0.75 = shipped outcome with a visible
+   result or metric · 0.9+ = major outcome (metric moved, cross-team or
+   leadership visibility). Most everyday work is 0.3-0.6; reserve 0.8+ for
+   genuinely standout work. Weigh outcome, scale, difficulty, visibility, goal
+   alignment, and extra/leadership work. Provisional; the summary step re-judges.
+9. "routine": true if this is repetitive/business-as-usual work better counted in
+   bulk than listed on its own (e.g. one of many support tickets). When true, add
+   "routineType": if one of the user's existing routine labels in CONTEXT fits,
+   reuse that EXACT label; only coin a new short label for a genuinely new kind of
+   routine work. Notable one-offs are routine=false.
+10. Optional, only when explicitly stated: "metric" (a number/result the user
+    mentioned) and "dateMentioned" (ISO date) — set dateMentioned ONLY for an
+    explicit date or an unambiguous relative day ("yesterday", "last Friday",
+    computed from the date in the MESSAGE); if in doubt, omit it.
+11. "confidence", anchored: 0.9+ = the transcript names a listed project, or the
+    anchor fixes it · 0.7-0.8 = a loose mention that clearly fits one project, or
+    a solid goal-area fit for Outside-project work · below 0.6 = you are not
+    sure — use "Inbox" placement instead of guessing.
 
 WHAT NOT TO DO
 - Don't include non-work content (greetings, filler, personal chat).
-- Don't merge unrelated tasks. Don't add outcomes the user didn't state. Don't tag
-  behaviours not clearly shown.
+- Don't merge unrelated tasks. Don't add outcomes the user didn't state. Don't
+  tag behaviours not clearly shown.
 - Output only the JSON below — no prose, no markdown, no code fences.
 
 OUTPUT
@@ -93,10 +97,80 @@ OUTPUT
     }
   ]
 }
-If there is no usable work contribution, return exactly: { "entries": [] }"""
+If there is no usable work contribution, return exactly: { "entries": [] }
 
-    // Appended when the caller is combining a follow-up (impact / numbers / a correction) into a
-    // single existing note — overrides the "split into separate entries" default for this one call.
+EXAMPLES (illustrative setup — Role: Product Owner. GOAL AREAS = Performance
+Goals. BEHAVIOURS = Leadership & Behaviours: ownership, collaboration, courageous
+decisions. Projects = Raven Migration [Performance Goals] — servicing-comms
+migration across markets; SharePoint Request System [Performance Goals] —
+access-request tooling. Existing routine labels: "access requests".)
+
+Example 1 — notable project work, loose project mention:
+Transcript: "Finished testing the raven thing for three more markets and signed
+them off."
+{ "entries": [
+  { "bullet": "Completed and signed off Raven Migration testing for three additional markets.",
+    "project": "Raven Migration", "goalCategory": "Performance Goals",
+    "demonstrates": [], "isExtra": false, "impact": 0.7, "routine": false,
+    "confidence": 0.85 }
+] }
+
+Example 2 — two items; one routine (existing label reused), one extra + leadership:
+Transcript: "Cleared about a dozen SharePoint access requests. Also ran a
+cross-team session to unblock three teams stuck on the migration, even though it
+wasn't my job."
+{ "entries": [
+  { "bullet": "Cleared a dozen SharePoint access requests.",
+    "project": "SharePoint Request System", "goalCategory": "Performance Goals",
+    "demonstrates": [], "isExtra": false, "impact": 0.3,
+    "routine": true, "routineType": "access requests", "confidence": 0.9 },
+  { "bullet": "Led a cross-team session that unblocked three teams on the Raven Migration.",
+    "project": "Raven Migration", "goalCategory": "Performance Goals",
+    "demonstrates": ["Leadership & Behaviours"], "isExtra": true, "impact": 0.85,
+    "routine": false, "confidence": 0.85 }
+] }
+
+Example 3 — metric, no matching project → Inbox:
+Transcript: "Built that new leadership dashboard, cut reporting time by about 30
+percent."
+{ "entries": [
+  { "bullet": "Built a new leadership reporting dashboard.",
+    "project": "Inbox", "goalCategory": "Inbox", "demonstrates": [],
+    "isExtra": false, "impact": 0.75, "routine": false,
+    "metric": "reduced reporting time by ~30%", "confidence": 0.5,
+    "suggestedProjects": [] }
+] }
+
+Example 4 — mixed-language, clear work, no project signal:
+Transcript: "Aaj client call me pricing issue sort kar diya, unko naya quote
+bhej diya same day."
+{ "entries": [
+  { "bullet": "Resolved a client pricing issue on a call and sent the revised quote the same day.",
+    "project": "Outside-project", "goalCategory": "Performance Goals",
+    "demonstrates": [], "isExtra": false, "impact": 0.5, "routine": false,
+    "confidence": 0.7 }
+] }
+
+CONTEXT (the user's own setup — changes rarely)
+- The user's job role: {{ROLE}}
+  Use the role to judge what is CORE duty versus BEYOND scope / leadership. It
+  informs "isExtra", "impact" and behaviour tags; it never moves normal work out
+  of its goal area.
+- The company's appraisal framework:
+{{APPRAISAL_FRAMEWORK}}
+  GOAL AREAS = the "what" (results and project work map here).
+  BEHAVIOURS/COMPETENCIES = the "how" (tag work that genuinely demonstrates
+  these, judged by their descriptions). Optional DEVELOPMENT areas. If this
+  framework is empty, use only project / "Outside-project" / "Inbox".
+- The user's current projects (each tagged with the goal area it rolls up to):
+{{PROJECTS}}
+  If empty, treat all work as "Outside-project" or "Inbox".
+- The user's existing routine-work labels (reuse when one fits):
+{{ROUTINE_TYPES}}"""
+
+    // Appended to the very END of the system message (cache-neutral) when the caller is combining a
+    // follow-up (impact / numbers / a correction) into a single existing note — overrides the "split
+    // into separate entries" default for this one call.
     private const val COMBINE_MODE = """
 
 COMBINE MODE (overrides rule 2 "split"):
@@ -108,24 +182,39 @@ the impact, a number, or a clarification — as a follow-up in the same text. Tr
   distinct fact, name and number, and fold the metric into the sentence. Never just tack the
   follow-up on at the end."""
 
-    fun categorizer(
-        today: String,
+    // The per-call USER message: the volatiles (today / anchor / transcript) that must NOT sit in the
+    // cached system block. Placeholders {{TODAY}} / {{PROJECT_ANCHOR}} / {{TRANSCRIPT}}.
+    private const val CATEGORIZER_USER = """Today's date: {{TODAY}}
+Project anchor for this note: {{PROJECT_ANCHOR}}
+Transcript:
+{{TRANSCRIPT}}"""
+
+    /** The cache-first SYSTEM message: static instructions + examples, then the user's rarely-changing
+     *  CONTEXT. [combineSingle] appends the COMBINE-mode directive at the very end (cache-neutral). */
+    fun categorizerSystem(
         framework: String,
         projects: List<String>,
         role: String = "",
-        projectAnchor: String? = null,
+        routineTypes: List<String> = emptyList(),
         combineSingle: Boolean = false,
     ): String {
         val frameworkBlock = framework.ifBlank { "(none set)" }
         val projectBlock = if (projects.isEmpty()) "(none yet)" else projects.joinToString("\n")
-        val base = CATEGORIZER
-            .replace("{{TODAY}}", today)
+        val routineBlock = if (routineTypes.isEmpty()) "(none yet)" else routineTypes.joinToString("\n") { "- $it" }
+        val base = CATEGORIZER_SYSTEM
             .replace("{{ROLE}}", role.ifBlank { "(not set)" })
             .replace("{{APPRAISAL_FRAMEWORK}}", frameworkBlock)
             .replace("{{PROJECTS}}", projectBlock)
-            .replace("{{PROJECT_ANCHOR}}", projectAnchor?.takeIf { it.isNotBlank() } ?: "none")
+            .replace("{{ROUTINE_TYPES}}", routineBlock)
         return if (combineSingle) base + COMBINE_MODE else base
     }
+
+    /** The per-call USER message: today's date, the optional project anchor, and the transcript. */
+    fun categorizerUser(today: String, projectAnchor: String?, transcript: String): String =
+        CATEGORIZER_USER
+            .replace("{{TODAY}}", today)
+            .replace("{{PROJECT_ANCHOR}}", projectAnchor?.takeIf { it.isNotBlank() } ?: "none")
+            .replace("{{TRANSCRIPT}}", transcript.trim())
 
     // ---------------- PART C · framework refine (setup + ongoing voice edits) ----------------
     // Applies a spoken/typed instruction to the CURRENT framework and returns the updated set.

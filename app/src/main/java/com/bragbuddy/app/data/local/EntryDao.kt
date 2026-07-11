@@ -35,6 +35,14 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE id = :id")
     suspend fun getById(id: Long): EntryEntity?
 
+    /** The user's existing routine-work labels, most-used first (AI-1 · {{ROUTINE_TYPES}}). Fed to the
+     *  categorizer so the model reuses a fitting label instead of coining a near-duplicate variant. */
+    @Query(
+        "SELECT routineType FROM entries WHERE routineType IS NOT NULL AND routineType != '' " +
+            "GROUP BY routineType ORDER BY COUNT(*) DESC LIMIT 20",
+    )
+    suspend fun distinctRoutineTypes(): List<String>
+
     /** Toggle the ★ Standout flag (Phase 4 entry detail). Targeted update — can't race a re-file. */
     @Query("UPDATE entries SET isExtra = :value WHERE id = :id")
     suspend fun setExtra(id: Long, value: Boolean)

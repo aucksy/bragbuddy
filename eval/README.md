@@ -10,8 +10,9 @@ every AI phase must meet or beat.
 ```
 eval/
 ├── prompts/                  # canonical prompt texts — the SAME words the app ships
-│   ├── categorizer.txt       #   PART A daily categorizer (current single-message shape)
-│   ├── categorizer-combine.txt  # COMBINE MODE appendix (joined as base + "\n\n" + appendix)
+│   ├── categorizer-system.txt   # PART A daily categorizer — cache-first SYSTEM message (AI-1 two-part)
+│   ├── categorizer-user.txt     #   the per-call USER message (today / anchor / transcript)
+│   ├── categorizer-combine.txt  # COMBINE MODE appendix (joined as system + "\n\n" + appendix)
 │   ├── summary.txt           #   PART B summary generator
 │   └── impact-coach.txt      #   impact coach (one nudge question)
 ├── golden/
