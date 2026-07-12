@@ -997,8 +997,10 @@ async function main() {
 
   const gatesPassed = gates.every((g) => g.pass) && baselineRows.every((r) => r.pass);
 
+  // Summary + coach first: their failures drive gates directly, while categorizer failures are
+  // usually baseline-tolerated — so the capped annotation slots (10) go to what matters most.
   const failures = [];
-  for (const r of [...catResults, ...coachResults, ...summaryResults]) {
+  for (const r of [...summaryResults, ...coachResults, ...catResults]) {
     const failed = Object.entries(r.checks).filter(([, v]) => !v.pass);
     const adv = Object.entries(r.advisory || {}).filter(([, v]) => !v.pass);
     if (failed.length || adv.length)
