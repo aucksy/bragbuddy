@@ -291,10 +291,13 @@ WHAT TO DO
    one deliverable ("started the X redesign" then "shipped X, cut drop-off 18%") is a
    single arc — combine into one outcome-led bullet, not repeated lines. Prefer the
    fewest pointers that fully represent the work.
-2. Roll up routine work into single cumulative lines with counts and any metric, keeping
-   each routine label EXACTLY as the rollup names it — never reworded or re-pluralised.
+2. Reproduce EVERY "Routine tallies" line from the rollup in "rolledUp": the label
+   EXACTLY as the rollup names it (never reworded or re-pluralised), the same count,
+   plus any metric. Routine tallies never appear as achievements.
 3. Always include every pinned item, in the right goal area. A pinned item may also
-   appear among the highlights — include it ONCE, in its strongest phrasing.
+   appear among the highlights — include it ONCE, in its strongest phrasing. Pinned
+   items are selected FIRST and count toward the cap: drop an unpinned achievement
+   before ever dropping a pinned item.
 4. For each BEHAVIOUR/COMPETENCY, give 1-3 concrete evidence bullets; omit ones with
    no genuine evidence.
 5. Items listed under a DEVELOPMENT AREA belong in "development", never in
