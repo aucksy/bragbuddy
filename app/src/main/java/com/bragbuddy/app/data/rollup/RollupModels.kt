@@ -68,6 +68,10 @@ data class AggGoalArea(
     val highlights: List<AggHighlight>,
     val routine: List<AggRoutine>,
     val metrics: List<String>,
+    /** True when this area is a DEVELOPMENT-kind framework pillar (AI-2): the serializer then heads
+     *  it "DEVELOPMENT AREA:" so the summary model routes its items into `development[]`, not
+     *  `goalAreas[]`. Areas not in the framework (the catch-all guarantee) stay goal areas. */
+    val isDevelopment: Boolean = false,
 ) {
     val entryCount: Int get() = highlights.size + routine.sumOf { it.count }
 }

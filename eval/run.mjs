@@ -741,12 +741,14 @@ function scoreSummaryCase(c, record) {
       : (checks.setAside = { pass: false, detail: 'setAside is empty though input had to be condensed' });
   }
 
-  // ADVISORY until AI-2 ships its serializer/prompt fix: development content belongs in
-  // "development", not "goalAreas". Reported, never gated in the AI-0 baseline.
+  // GATED since AI-2 (serializer heads development pillars "DEVELOPMENT AREA:" + summary rule 5
+  // routes them): development content belongs in "development", never in "goalAreas". This was
+  // advisory in the AI-0/AI-1 baselines — promoting it makes summaryChecks strictly harder, which
+  // is the intended post-AI-2 bar.
   if (Array.isArray(expect.developmentKeys)) {
     const inDev = expect.developmentKeys.filter((k) => (body.development || []).some((d) => norm(d).includes(norm(k))));
     const leaked = expect.developmentKeys.filter((k) => achievements.some((a) => norm(a).includes(norm(k))));
-    advisory.developmentPlacement =
+    checks.developmentPlacement =
       inDev.length === expect.developmentKeys.length && leaked.length === 0
         ? { pass: true }
         : { pass: false, detail: `in development[]: ${inDev.length}/${expect.developmentKeys.length}; leaked into goalAreas: ${leaked.join('; ') || 'none'}` };

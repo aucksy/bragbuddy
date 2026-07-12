@@ -9,7 +9,7 @@ CONTEXT
 - Project: {{PROJECT}}
 - What that project is about / how it's measured (the user's own notes; may be empty):
   {{PROJECT_DETAIL}}
-- The achievement (already written, no number in it):
+- The achievement (the user's own words — may be a raw transcript):
   {{BULLET}}
 
 RULES

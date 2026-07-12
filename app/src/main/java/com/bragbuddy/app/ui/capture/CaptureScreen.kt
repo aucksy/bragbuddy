@@ -715,6 +715,8 @@ private fun ReviewContent(
  * The optional "add a number" affordance on the review screen — record a short clip just for the
  * metric, or type it. Either way it's appended to the transcript above, then Add files the combined
  * text. Always available; never gated by a guess about whether a number is already present.
+ * AI-2: when the note lacks a number, the hint line upgrades to the AI's project-aware question
+ * ([CaptureUiState.aiNudgeQuestion]) as soon as the parallel fetch lands.
  */
 @Composable
 private fun NumberNudge(
@@ -762,10 +764,14 @@ private fun NumberNudge(
                             color = if (!hasNumber) palette.primary else palette.text2,
                             fontWeight = FontWeight.Bold,
                         )
+                        // AI-2: the static hint upgrades to the AI's project-aware question when it
+                        // arrives (fetched in parallel — never delays review). Once a number is in
+                        // the note the calm generic hint returns.
+                        val aiQ = state.aiNudgeQuestion
                         Text(
-                            "%, time saved, ₹, people, before → after",
+                            if (!hasNumber && aiQ != null) aiQ else "%, time saved, ₹, people, before → after",
                             style = MaterialTheme.typography.bodySmall,
-                            color = palette.text3,
+                            color = if (!hasNumber && aiQ != null) palette.text2 else palette.text3,
                         )
                     }
                     MiniIconButton(Icons.Outlined.Mic, "Say the numbers", onStartVoiceNumber)
@@ -1010,8 +1016,10 @@ private fun PillButton(label: String, primary: Boolean, onClick: () -> Unit) {
 }
 
 /**
- * Shown AFTER a save whose text had no measurable value (local check — no AI). The entry is already
+ * Shown AFTER a save whose text had no measurable value (local check). The entry is already
  * saved; this only offers to append a number. Never blocks: tap Skip or outside to leave.
+ * AI-2: while the sheet is up, the static hint upgrades to the AI's project-aware question
+ * ([CaptureUiState.aiNudgeQuestion]) if it arrives — the save itself never waits for it.
  */
 @Composable
 fun SavedNudgeSheet(
@@ -1067,10 +1075,13 @@ fun SavedNudgeSheet(
                 color = palette.text1,
                 modifier = Modifier.fillMaxWidth(),
             )
+            // AI-2: the static line upgrades to the AI's project-aware question when it arrives
+            // (fetched in parallel with the save — the sheet never waits for it).
+            val aiQ = state.aiNudgeQuestion
             Text(
-                "A number makes it land — %, time saved, ₹, count, people.",
+                aiQ ?: "A number makes it land — %, time saved, ₹, count, people.",
                 style = MaterialTheme.typography.bodySmall,
-                color = palette.text3,
+                color = if (aiQ != null) palette.text2 else palette.text3,
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(Spacing.s3))
