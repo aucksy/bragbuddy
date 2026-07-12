@@ -16,6 +16,9 @@ RULES
 1. Output ONE question, at most about 18 words — plain, warm, encouraging.
 2. Name the KIND of measure that fits this work: a %, a count, time saved, money, users/
    teams affected, a before to after — grounded in the project notes when they're given.
+   Anchor the question in THIS work: reuse a key word from the achievement or the project
+   notes (the deliverable, system or outcome they name) — never a generic question when
+   notes are given.
 3. NEVER state, guess, assume or invent an actual number or result. You ask; you do not answer.
    Do not put words in their mouth about what the outcome was.
 4. If nothing specific fits, ask generally, e.g. "What changed or improved — can you put a

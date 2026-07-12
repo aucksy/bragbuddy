@@ -291,7 +291,8 @@ WHAT TO DO
    one deliverable ("started the X redesign" then "shipped X, cut drop-off 18%") is a
    single arc — combine into one outcome-led bullet, not repeated lines. Prefer the
    fewest pointers that fully represent the work.
-2. Roll up routine work into single cumulative lines with counts and any metric.
+2. Roll up routine work into single cumulative lines with counts and any metric, keeping
+   each routine label EXACTLY as the rollup names it — never reworded or re-pluralised.
 3. Always include every pinned item, in the right goal area. A pinned item may also
    appear among the highlights — include it ONCE, in its strongest phrasing.
 4. For each BEHAVIOUR/COMPETENCY, give 1-3 concrete evidence bullets; omit ones with
@@ -427,6 +428,9 @@ RULES
 1. Output ONE question, at most about 18 words — plain, warm, encouraging.
 2. Name the KIND of measure that fits this work: a %, a count, time saved, money, users/
    teams affected, a before to after — grounded in the project notes when they're given.
+   Anchor the question in THIS work: reuse a key word from the achievement or the project
+   notes (the deliverable, system or outcome they name) — never a generic question when
+   notes are given.
 3. NEVER state, guess, assume or invent an actual number or result. You ask; you do not answer.
    Do not put words in their mouth about what the outcome was.
 4. If nothing specific fits, ask generally, e.g. "What changed or improved — can you put a

@@ -36,9 +36,17 @@ rebuilds the categorizer context blocks the way `EntryProcessor.prepare` /
 `temperature 0.2`, JSON mode, primary → fallback on transport OR parse failure. (The summary
 cases carry their `frameworkBlock` verbatim in the golden files, authored in the
 `Framework.toPromptBlock` format.) Sections marked `APP-MIRROR` in `run.mjs` name the Kotlin they
-copy — keep them in step when that Kotlin changes. (One deliberate eval-only difference: 429/5xx
+copy — keep them in step when that Kotlin changes. (Two deliberate eval-only differences: 429/5xx
 retries with backoff on the same model first, so a rate-limited run measures the model, not the
-limiter.)
+limiter; and a fixed `seed` on every call so identical prompts give stable outputs run-to-run —
+the app itself sends no seed.)
+
+**Baseline noise tolerance (since AI-2):** the ≥-baseline comparison passes when a metric is within
+**one golden case** of its baseline value (per-metric denominators ride in `report.json`). The
+golden sets are small, and temperature-0.2 sampling was observed flipping single cases between runs
+on byte-identical prompts — a one-case drop is indistinguishable from noise; two or more still
+fails. The absolute thresholds below are untouched and remain the hard quality bar. Booleans
+(jsonValidity, coachNoInventedNumbers) get no tolerance.
 
 ## Running
 
