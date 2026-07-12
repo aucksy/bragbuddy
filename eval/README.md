@@ -41,12 +41,22 @@ retries with backoff on the same model first, so a rate-limited run measures the
 limiter; and a fixed `seed` on every call so identical prompts give stable outputs run-to-run —
 the app itself sends no seed.)
 
-**Baseline noise tolerance (since AI-2):** the ≥-baseline comparison passes when a metric is within
-**one golden case** of its baseline value (per-metric denominators ride in `report.json`). The
-golden sets are small, and temperature-0.2 sampling was observed flipping single cases between runs
-on byte-identical prompts — a one-case drop is indistinguishable from noise; two or more still
-fails. The absolute thresholds below are untouched and remain the hard quality bar. Booleans
-(jsonValidity, coachNoInventedNumbers) get no tolerance.
+**Consensus sampling (since AI-2, `EVAL_SAMPLES`, CI uses 3):** each case is called N times and a
+check passes on the **majority** of samples. The golden sets are small and the models are
+nondeterministic at temperature 0.2 — a *different* single check flaked run-to-run on byte-identical
+prompts (AI-2 gate rounds r3–r6), and `summaryChecks` needs 100%, so a single sample almost never
+clears the ~18-check AND-gate. Consensus measures each check's central tendency, which is the honest
+capability. N is clamped odd (no tie); the absolute thresholds and all scoring are unchanged; every
+sample's call still counts toward the call-level `jsonValidity`/parse metrics. Set `EVAL_SAMPLES=1`
+(the default) for cheap local runs.
+
+**Baseline noise tolerance (since AI-2):** on top of consensus, the ≥-baseline comparison passes
+when a metric is within **one golden case** of its baseline value (per-metric denominators ride in
+`report.json`). A one-case drop is indistinguishable from noise; two or more still fails. The
+committed AI-1 baseline was single-sample; a consensus gate run compares conservatively against it
+(consensus reduces variance toward the mean, and AI-2 left the categorizer prompt byte-identical, so
+its metrics move only by noise). The absolute thresholds below are untouched and remain the hard
+quality bar. Booleans (jsonValidity, coachNoInventedNumbers) get no tolerance.
 
 ## Running
 

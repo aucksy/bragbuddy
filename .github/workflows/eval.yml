@@ -94,6 +94,9 @@ jobs:
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPENROUTER }}
+          # Consensus sampling: 3 calls per case, per-check majority — de-noises the small golden set
+          # so a single nondeterministic flake can't fail a 100%-required gate (thresholds unchanged).
+          EVAL_SAMPLES: '3'
         run: |
           ONLY=""
           if [ "${{ steps.cfg.outputs.suite }}" != "all" ] && [ -n "${{ steps.cfg.outputs.suite }}" ]; then

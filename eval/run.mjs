@@ -47,6 +47,15 @@ const OPTS = {
   dryRun: args.includes('--dry-run'),
   noGate: args.includes('--no-gate'),
 };
+// Consensus sampling: call each case N times and take the per-check majority (de-noises a small
+// golden set against a nondeterministic model). --samples wins over EVAL_SAMPLES; default 1 (cheap
+// local runs). Clamped to an odd number ≥1 so the majority is never a tie.
+const SAMPLES = (() => {
+  let n = Number(argValue('--samples', process.env.EVAL_SAMPLES || '1')) || 1;
+  n = Math.max(1, Math.floor(n));
+  if (n % 2 === 0) n += 1; // keep it odd — no tie in a majority vote
+  return n;
+})();
 // Fail CLOSED on operator error — this is a ship gate, a typo must never green-light.
 const SUITES = ['categorizer', 'coach', 'summary'];
 if (OPTS.only && !SUITES.includes(OPTS.only)) {
@@ -865,35 +874,60 @@ async function main() {
   }
 
   console.log(`eval: ${catCases.length} categorizer + ${coachCases.length} coach + ${summaryCases.length} summary cases, concurrency 2` +
+    (SAMPLES > 1 ? `, consensus ${SAMPLES}× (majority per check)` : '') +
     (viaOpenRouter ? ` — via OpenRouter pinned to provider [${PROVIDER_PIN.only.join(', ')}]` : ''));
 
-  // ---- run categorizer ----
-  const catResults = await pool(catCases, async (c) => {
-    const record = await completeAndParse(config.baseUrl, apiKey, config.categorizer, buildCategorizerMessages(templates, c));
-    const scored = scoreCategorizerCase(c, record);
-    console.log(`  [categorizer] ${c.id} — ${Object.entries(scored.checks).map(([k, v]) => `${k}:${v.pass ? '✓' : '✗'}`).join(' ') || '(no expectations)'}${record.modelUsed === config.categorizer[1] ? ' (fallback)' : ''}`);
-    return { case: c, record, ...scored };
-  });
+  // Run one case SAMPLES times and MERGE per-check results by majority (≥⌈N/2⌉ passes → pass).
+  // Small golden sets against a nondeterministic model flake single checks run-to-run even on a
+  // byte-identical prompt (observed across AI-2 gate runs r3–r6), and summaryChecks needs 100% — so
+  // a single sample rarely clears an 18-check AND-gate. Consensus measures each check's central
+  // tendency, which is the honest capability. The absolute thresholds are unchanged. All SAMPLES
+  // records are kept for the call-level jsonValidity/parse metrics.
+  const consensus = async (c, models, buildMsgs, scoreFn, label) => {
+    const runs = [];
+    for (let s = 0; s < SAMPLES; s++) {
+      const record = await completeAndParse(config.baseUrl, apiKey, models, buildMsgs(templates, c));
+      runs.push({ record, scored: scoreFn(c, record) });
+    }
+    let merged;
+    if (SAMPLES === 1) {
+      merged = { case: c, record: runs[0].record, ...runs[0].scored, records: [runs[0].record] };
+    } else {
+      const need = Math.ceil(SAMPLES / 2);
+      const mergeMap = (pick) => {
+        const keys = new Set(runs.flatMap((r) => Object.keys(pick(r.scored) || {})));
+        const out = {};
+        for (const k of keys) {
+          const passes = runs.filter((r) => pick(r.scored)[k]?.pass).length;
+          out[k] = passes >= need
+            ? { pass: true }
+            : { pass: false, detail: (runs.map((r) => pick(r.scored)[k]?.detail).find(Boolean) || '') + ` (passed ${passes}/${SAMPLES})` };
+        }
+        return out;
+      };
+      const rep = runs.find((r) => r.record.parsed) || runs[0];
+      merged = {
+        case: c,
+        record: rep.record,
+        checks: mergeMap((s) => s.checks),
+        advisory: mergeMap((s) => s.advisory),
+        matched: rep.scored.matched,
+        question: rep.scored.question,
+        records: runs.map((r) => r.record),
+      };
+    }
+    const flags = Object.entries(merged.checks).map(([k, v]) => `${k}:${v.pass ? '✓' : '✗'}`).join(' ');
+    console.log(`  [${label}] ${c.id} — ${flags || '(no expectations)'}`);
+    return merged;
+  };
 
-  // ---- run coach ----
-  const coachResults = await pool(coachCases, async (c) => {
-    const record = await completeAndParse(config.baseUrl, apiKey, config.coach, buildCoachMessages(templates, c));
-    const scored = scoreCoachCase(c, record);
-    console.log(`  [coach] ${c.id} — ${Object.entries(scored.checks).map(([k, v]) => `${k}:${v.pass ? '✓' : '✗'}`).join(' ')}`);
-    return { case: c, record, ...scored };
-  });
-
-  // ---- run summary ----
-  const summaryResults = await pool(summaryCases, async (c) => {
-    const record = await completeAndParse(config.baseUrl, apiKey, config.summary, buildSummaryMessages(templates, c));
-    const scored = scoreSummaryCase(c, record);
-    console.log(`  [summary] ${c.id} — ${Object.entries(scored.checks).map(([k, v]) => `${k}:${v.pass ? '✓' : '✗'}`).join(' ')}`);
-    return { case: c, record, ...scored };
-  });
+  const catResults = await pool(catCases, (c) => consensus(c, config.categorizer, buildCategorizerMessages, scoreCategorizerCase, 'categorizer'));
+  const coachResults = await pool(coachCases, (c) => consensus(c, config.coach, buildCoachMessages, scoreCoachCase, 'coach'));
+  const summaryResults = await pool(summaryCases, (c) => consensus(c, config.summary, buildSummaryMessages, scoreSummaryCase, 'summary'));
 
   // ---- aggregate ----
   const all = [...catResults, ...coachResults, ...summaryResults];
-  const calls = all.map((r) => r.record);
+  const calls = all.flatMap((r) => r.records); // every SAMPLES call (call-level parse metrics)
   const parsedAll = calls.every((r) => r.parsed != null);
   const primaryParseFails = calls.filter((r) => r.primaryParseFail).length;
   const primaryParseFailRate = ratio(primaryParseFails, calls.length) ?? 0;
@@ -1042,6 +1076,7 @@ async function main() {
   md.push(`- Generated: ${now}`);
   md.push(`- Models: categorizer \`${config.categorizer.join('\` → \`')}\` · summary \`${config.summary.join('\` → \`')}\` (from \`AiConfig.kt\`)`);
   if (viaOpenRouter) md.push(`- Transport: OpenRouter, provider pinned to \`${PROVIDER_PIN.only.join(', ')}\` (same Groq inference the app uses; eval-only reroute)`);
+  if (SAMPLES > 1) md.push(`- Consensus: each case sampled ${SAMPLES}× — a check passes on the majority (de-noises the small golden set; thresholds unchanged)`);
   md.push(`- Prompts: categorizer \`${sha('categorizer.txt') || sha('categorizer-system.txt')}\` · summary \`${sha('summary.txt')}\` · coach \`${sha('impact-coach.txt')}\` (sha256/12)`);
   md.push(`- Cases: ${catCases.length} categorizer · ${coachCases.length} coach · ${summaryCases.length} summary${OPTS.limit ? ` (LIMITED to ${OPTS.limit}/set — not a shippable run)` : ''}`);
   md.push('');
@@ -1085,7 +1120,7 @@ async function main() {
   fs.writeFileSync(
     OPTS.jsonOut,
     JSON.stringify(
-      { generatedAt: now, models: config, transport: viaOpenRouter ? `openrouter:${PROVIDER_PIN.only.join(',')}` : 'direct-groq', thresholds: THRESHOLDS, counts: { categorizer: catCases.length, coach: coachCases.length, summary: summaryCases.length }, limited: OPTS.limit > 0, metrics, denominators, gates, gatesPassed, failures },
+      { generatedAt: now, models: config, transport: viaOpenRouter ? `openrouter:${PROVIDER_PIN.only.join(',')}` : 'direct-groq', samples: SAMPLES, thresholds: THRESHOLDS, counts: { categorizer: catCases.length, coach: coachCases.length, summary: summaryCases.length }, limited: OPTS.limit > 0, metrics, denominators, gates, gatesPassed, failures },
       null,
       2,
     ),

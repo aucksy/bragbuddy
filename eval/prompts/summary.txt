@@ -25,9 +25,11 @@ WHAT TO DO
    one deliverable ("started the X redesign" then "shipped X, cut drop-off 18%") is a
    single arc — combine into one outcome-led bullet, not repeated lines. Prefer the
    fewest pointers that fully represent the work.
-2. Reproduce EVERY "Routine tallies" line from the rollup in "rolledUp": the label
-   EXACTLY as the rollup names it (never reworded or re-pluralised), the same count,
-   plus any metric. Routine tallies never appear as achievements.
+2. Copy EVERY "Routine tallies" line from the rollup into "rolledUp" (one object each):
+   the label EXACTLY as the rollup names it (never reworded or re-pluralised), the same
+   count, plus any metric. This is REQUIRED even for a brief or tight summary — routine
+   tallies are compact single lines, are NOT achievements, do not count against the
+   achievement cap, and are never dropped for length. They never appear as achievements.
 3. Every "Pinned item" MUST appear as an achievement under the best-fitting goal
    area — ADD it even when it is NOT among that area's rollup highlights, keeping its
    wording and key terms (project names, IDs, certifications, compliance standards)
