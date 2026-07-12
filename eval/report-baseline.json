@@ -1,20 +1,21 @@
 {
-  "generatedAt": "2026-07-11T12:19:40.529Z",
+  "generatedAt": "2026-07-12T05:24:57.852Z",
   "models": {
-    "baseUrl": "https://api.groq.com/openai/v1/chat/completions",
+    "baseUrl": "https://openrouter.ai/api/v1/chat/completions",
     "categorizer": [
-      "llama-3.3-70b-versatile",
-      "llama-3.1-8b-instant"
+      "meta-llama/llama-3.3-70b-instruct",
+      "meta-llama/llama-3.1-8b-instruct"
     ],
     "summary": [
       "openai/gpt-oss-120b",
-      "llama-3.3-70b-versatile"
+      "meta-llama/llama-3.3-70b-instruct"
     ],
     "coach": [
-      "llama-3.3-70b-versatile",
-      "llama-3.1-8b-instant"
+      "meta-llama/llama-3.3-70b-instruct",
+      "meta-llama/llama-3.1-8b-instruct"
     ]
   },
+  "transport": "openrouter:groq",
   "thresholds": {
     "placementAccuracy": 0.85,
     "inboxRecall": 0.8,
@@ -33,26 +34,26 @@
   },
   "limited": false,
   "metrics": {
-    "placementAccuracy": 0.8888888888888888,
+    "placementAccuracy": 1,
     "inboxRecall": 0.8,
     "inboxPrecision": 0.9230769230769231,
     "jsonValidity": 1,
     "primaryParseFailRate": 0,
-    "routineReuse": 0.5714285714285714,
+    "routineReuse": 1,
     "impactBand": 0.9230769230769231,
-    "coachPass": 0.75,
+    "coachPass": 0.8333333333333334,
     "coachNoInventedNumbers": 1,
     "summaryChecks": 0.8823529411764706,
-    "entryCountAccuracy": 0.8888888888888888,
-    "demonstratesAccuracy": 0.7142857142857143,
-    "metricPreserved": 0.2,
+    "entryCountAccuracy": 0.9166666666666666,
+    "demonstratesAccuracy": 0.2857142857142857,
+    "metricPreserved": 0.6,
     "dateMentionedAccuracy": 1,
     "routineFalsePositiveFree": 1
   },
   "gates": [
     {
       "name": "placementAccuracy",
-      "value": 0.8888888888888888,
+      "value": 1,
       "threshold": 0.85,
       "pass": true,
       "extra": ""
@@ -80,9 +81,9 @@
     },
     {
       "name": "routineReuse",
-      "value": 0.5714285714285714,
+      "value": 1,
       "threshold": 1,
-      "pass": false,
+      "pass": true,
       "extra": ""
     },
     {
@@ -94,7 +95,7 @@
     },
     {
       "name": "coachPass",
-      "value": 0.75,
+      "value": 0.8333333333333334,
       "threshold": 0.9,
       "pass": false,
       "extra": ""
@@ -117,76 +118,30 @@
   "gatesPassed": false,
   "failures": [
     {
-      "id": "po-split-two",
-      "failed": {
-        "placements": "missing [{\"project\":\"Raven Migration\",\"goalCategory\":\"Performance Goals\"}]; got [{\"project\":\"SharePoint Request System\",\"goalCategory\":\"Performance Goals\"},{\"project\":\"Outside-project\",\"goalCategory\":\"Performance Goals\"}]",
-        "routine": "expected exact label(s) [\"access requests\"]; got [\"servicing requests\",null]"
-      },
-      "advisory": {},
-      "model": "llama-3.3-70b-versatile",
-      "error": null
-    },
-    {
-      "id": "po-routine-reuse",
-      "failed": {
-        "routine": "expected exact label(s) [\"access requests\"]; got [\"SharePoint access requests\"]"
-      },
-      "advisory": {},
-      "model": "llama-3.3-70b-versatile",
-      "error": null
-    },
-    {
-      "id": "po-routine-variant-phrasing",
-      "failed": {
-        "routine": "expected exact label(s) [\"access requests\"]; got [\"access approvals\"]"
-      },
-      "advisory": {},
-      "model": "llama-3.3-70b-versatile",
-      "error": null
-    },
-    {
-      "id": "eng-routine-tickets",
-      "failed": {
-        "inbox": "expected NOT parked; got [{\"project\":\"Inbox\",\"goalCategory\":\"Quality & Craft\",\"confidence\":0.8}]"
-      },
-      "advisory": {},
-      "model": "llama-3.3-70b-versatile",
-      "error": null
-    },
-    {
       "id": "eng-inbox-near-duplicate-projects",
       "failed": {
-        "inbox": "expected parked; got [{\"project\":\"Onboarding v2\",\"confidence\":0.8}]"
+        "inbox": "expected parked; got [{\"project\":\"Onboarding v2\",\"confidence\":0.85}]"
       },
       "advisory": {},
-      "model": "llama-3.3-70b-versatile",
-      "error": null
-    },
-    {
-      "id": "eng-anchored-conflicting-mention",
-      "failed": {
-        "entryCount": "expected 1, got 2"
-      },
-      "advisory": {},
-      "model": "llama-3.3-70b-versatile",
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
       "id": "po-metric-30-percent",
       "failed": {
-        "metric": "expected metric containing \"30\", got [null]"
+        "inbox": "expected NOT parked; got [{\"project\":\"Inbox\",\"goalCategory\":\"Inbox\",\"confidence\":0.5}]"
       },
       "advisory": {},
-      "model": "llama-3.3-70b-versatile",
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
-      "id": "eng-collab-docs",
+      "id": "po-extra-mentoring",
       "failed": {
-        "demonstrates": "missing required tag(s) [\"Collaboration\"], got [\"ownership\"]"
+        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"ownership\",\"collaboration\"]"
       },
       "advisory": {},
-      "model": "llama-3.1-8b-instant",
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
@@ -195,35 +150,35 @@
         "impactBand": "expected [0.2,0.6], got 0.8"
       },
       "advisory": {},
-      "model": "llama-3.3-70b-versatile",
-      "error": null
-    },
-    {
-      "id": "po-combine-number-followup",
-      "failed": {
-        "metric": "expected metric containing \"30\", got [null]"
-      },
-      "advisory": {},
-      "model": "llama-3.3-70b-versatile",
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
       "id": "real-003",
       "failed": {
-        "entryCount": "expected 1, got 3",
-        "metric": "expected metric containing \"20 days\", got [null,null,null]"
+        "entryCount": "expected 1, got 2",
+        "metric": "expected metric containing \"20 days\", got [null,null]"
       },
       "advisory": {},
-      "model": "llama-3.3-70b-versatile",
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
       "id": "real-005",
       "failed": {
-        "metric": "expected metric containing \"76 stories\", got [null,null,null,null,null,null,null]"
+        "metric": "expected metric containing \"76 stories\", got [null,null,null,null,null,null]"
       },
       "advisory": {},
-      "model": "llama-3.3-70b-versatile",
+      "model": "meta-llama/llama-3.3-70b-instruct",
+      "error": null
+    },
+    {
+      "id": "real-006",
+      "failed": {
+        "demonstrates": "missing required tag(s) [\"Set the Agenda\",\"Bring Others With You\",\"Do It the Right Way\"], got [\"leadership & behaviours\"]"
+      },
+      "advisory": {},
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
@@ -232,25 +187,26 @@
         "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"bring others with you\",\"do it the right way\"]"
       },
       "advisory": {},
-      "model": "llama-3.1-8b-instant",
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
       "id": "real-008",
       "failed": {
-        "inbox": "expected NOT parked; got [{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Outside-project\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.8},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.8},{\"project\":\"Outside-project\",\"goalCategory\":\"Inbox\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Inbox\",\"confidence\":0.6},{\"project\":\"Platform Health\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Outside-project\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.8},{\"project\":\"Outside-project\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.8},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.8},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.8}]"
+        "inbox": "expected NOT parked; got [{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7}]",
+        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"bring others with you\",\"do it the right way\"]"
       },
       "advisory": {},
-      "model": "llama-3.3-70b-versatile",
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
       "id": "real-009",
       "failed": {
-        "placements": "missing [{\"project\":\"Intake Hub for CommXHub\",\"goalCategory\":\"Performance Goals\"},{\"project\":\"Intake Hub for CommXHub\",\"goalCategory\":\"Performance Goals\"}]; got [{\"project\":\"Inbox\",\"goalCategory\":\"Learning & Growth\"},{\"project\":\"Inbox\",\"goalCategory\":\"Learning & Growth\"},{\"project\":\"Inbox\",\"goalCategory\":\"Learning & Growth\"},{\"project\":\"Inbox\",\"goalCategory\":\"Learning & Growth\"}]"
+        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda: define what winning looks like\",\"bring others with you: build a diverse and inclusive team\",\"do it the right way: communicate frequently, candidly and clearly\",\"bring others with you: seek and provide coaching and feedback\",\"do it the right way: demonstrate courageous and authentic leadership\",\"bring others with you: make collaboration essential\",\"do it the right way: live the blue box values\"]"
       },
       "advisory": {},
-      "model": "llama-3.3-70b-versatile",
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
@@ -259,17 +215,16 @@
         "entryCount": "expected 1, got 4"
       },
       "advisory": {},
-      "model": "llama-3.3-70b-versatile",
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
       "id": "real-011",
       "failed": {
-        "entryCount": "expected 1, got 4",
-        "placements": "missing [{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\"}]; got [{\"project\":\"Inbox\",\"goalCategory\":\"Learning & Growth\"},{\"project\":\"Inbox\",\"goalCategory\":\"Learning & Growth\"},{\"project\":\"Inbox\",\"goalCategory\":\"Learning & Growth\"},{\"project\":\"Inbox\",\"goalCategory\":\"Learning & Growth\"}]"
+        "entryCount": "expected 1, got 4"
       },
       "advisory": {},
-      "model": "llama-3.3-70b-versatile",
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
@@ -278,7 +233,7 @@
         "grounded": "no content-word overlap with the project detail/bullet"
       },
       "advisory": {},
-      "model": "llama-3.3-70b-versatile",
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
@@ -287,35 +242,25 @@
         "grounded": "no content-word overlap with the project detail/bullet"
       },
       "advisory": {},
-      "model": "llama-3.3-70b-versatile",
-      "error": null
-    },
-    {
-      "id": "coach-eng-retro",
-      "failed": {
-        "grounded": "no content-word overlap with the project detail/bullet"
-      },
-      "advisory": {},
-      "model": "llama-3.3-70b-versatile",
+      "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
       "id": "dense-year",
       "failed": {
-        "pinnedOnce": "[{\"key\":\"PCI-DSS\",\"hits\":0}]",
-        "rolledUpCounts": "expected [{\"routineType\":\"code reviews\",\"count\":84},{\"routineType\":\"support tickets\",\"count\":57}], got [{\"bullet\":\"Performed code reviews\",\"routineType\":\"code review\",\"count\":84},{\"bullet\":\"Handled support tickets\",\"routineType\":\"support ticket\",\"count\":57}]"
+        "pinnedOnce": "[{\"key\":\"PCI-DSS\",\"hits\":0}]"
       },
       "advisory": {},
       "model": "openai/gpt-oss-120b",
       "error": null
     },
     {
-      "id": "development-heavy",
-      "failed": {},
-      "advisory": {
-        "developmentPlacement": "in development[]: 2/2; leaked into goalAreas: Kubernetes; SQL course"
+      "id": "routine-heavy",
+      "failed": {
+        "rolledUpCounts": "expected [{\"routineType\":\"access requests\",\"count\":62},{\"routineType\":\"servicing requests\",\"count\":38}], got [{\"bullet\":\"Processed 62 access requests with average turnaround under 1 day\",\"routineType\":\"access request\",\"count\":62},{\"bullet\":\"Handled 38 servicing requests\",\"routineType\":\"servicing request\",\"count\":38}]"
       },
-      "model": "llama-3.3-70b-versatile",
+      "advisory": {},
+      "model": "openai/gpt-oss-120b",
       "error": null
     }
   ]
