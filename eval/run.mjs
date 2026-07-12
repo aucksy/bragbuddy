@@ -754,8 +754,11 @@ function scoreSummaryCase(c, record) {
     const development = Array.isArray(body.development) ? body.development : [];
     const behaviourEvidence = (body.behaviours || []).flatMap((b) => b.evidence || []);
     const pinnedSurfaces = [...achievements, ...development, ...behaviourEvidence];
+    // Hyphen/space-tolerant match: a summary that rephrases "PCI-DSS" as "PCI DSS" has NOT dropped
+    // the pinned item, so hyphenation must not fail the check (both collapse to "pci dss").
+    const loose = (s) => norm(s).replace(/-/g, ' ').replace(/\s+/g, ' ');
     const bad = expect.pinnedKeys
-      .map((key) => ({ key, hits: pinnedSurfaces.filter((a) => norm(a).includes(norm(key))).length }))
+      .map((key) => ({ key, hits: pinnedSurfaces.filter((a) => loose(a).includes(loose(key))).length }))
       .filter((r) => r.hits !== 1);
     checks.pinnedOnce = bad.length === 0 ? { pass: true } : { pass: false, detail: JSON.stringify(bad) };
   }
