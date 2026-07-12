@@ -6,7 +6,7 @@
   "role": "Software Engineer",
   "frameworkBlock": "GOAL AREAS (results / projects map here):\n- Delivery: Shipping planned product work on time and to spec.\n- Quality & Craft: Reliability, code health, incident reduction.\nBEHAVIOURS / COMPETENCIES (tag work that demonstrates these):\n- Collaboration: Working across the team and beyond it.\n- Ownership: Seeing problems through end to end without being asked.\nDEVELOPMENT (optional):\n- Learning & Growth: Courses, certifications, new skills.",
   "pinned": [],
-  "rollup": "GOAL AREA: Delivery\n  Highlights (ranked by impact):\n  - [impact 0.7] Shipped the saved-cards feature for checkout (project: Checkout Redesign)\n\nDEVELOPMENT AREA: Learning & Growth\n  Highlights (ranked by impact):\n  - [impact 0.5] Completed the Kubernetes administrator certification\n  - [impact 0.4] Finished the advanced SQL course and shared the notes with the team\n\nBEHAVIOUR EVIDENCE (concrete bullets that demonstrated each):\n- Ownership:\n  - Shipped the saved-cards feature for checkout.",
+  "rollup": "GOAL AREA: Delivery\n  Highlights (ranked by impact):\n  - [impact 0.7] Shipped the saved-cards feature for checkout (project: Checkout Redesign) (evidences: Ownership)\n\nDEVELOPMENT AREA: Learning & Growth\n  Highlights (ranked by impact):\n  - [impact 0.5] Completed the Kubernetes administrator certification\n  - [impact 0.4] Finished the advanced SQL course and shared the notes with the team\n\nBEHAVIOUR EVIDENCE (concrete bullets that demonstrated each):\n- Ownership:\n  - Shipped the saved-cards feature for checkout",
   "expect": {
     "noDuplicates": true,
     "developmentKeys": ["Kubernetes", "SQL course"]

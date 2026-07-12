@@ -684,12 +684,23 @@ function scoreSummaryCase(c, record) {
   const checks = {};
   const advisory = {};
   const body = record.parsed?.summary;
+  const expect = c.expect || {};
   if (!record.parsed || !body || !Array.isArray(body.goalAreas)) {
-    checks.valid = { pass: false, detail: record.error || 'no parsable summary body' };
+    // Unparseable / no reply — every specified expectation fails under the SAME check keys the
+    // live branch uses (mirroring scoreCategorizerCase), so the summaryChecks denominator stays
+    // identical either way and a broken call can't shrink the metric's basis.
+    const why = record.error || 'no parsable summary body';
+    checks.valid = { pass: false, detail: why };
+    if (expect.noDuplicates !== false) checks.noDuplicates = { pass: false, detail: why };
+    if (Array.isArray(expect.arcKeys)) checks.arcsMerged = { pass: false, detail: why };
+    if (Array.isArray(expect.metrics)) checks.metricsPreserved = { pass: false, detail: why };
+    if (Array.isArray(expect.pinnedKeys)) checks.pinnedOnce = { pass: false, detail: why };
+    if (Array.isArray(expect.rolledUp)) checks.rolledUpCounts = { pass: false, detail: why };
+    if (expect.setAsideNonEmpty) checks.setAside = { pass: false, detail: why };
+    if (Array.isArray(expect.developmentKeys)) checks.developmentPlacement = { pass: false, detail: why };
     return { checks, advisory };
   }
   checks.valid = { pass: true };
-  const expect = c.expect || {};
 
   const achievements = body.goalAreas.flatMap((g) => (g.achievements || []).map((a) => a.bullet || ''));
   const rolledUp = body.goalAreas.flatMap((g) => g.rolledUp || []);

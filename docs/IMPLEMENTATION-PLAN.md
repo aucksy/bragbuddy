@@ -268,7 +268,7 @@ When `completeAndParse` succeeded via the **fallback** model, cap each entry's `
 
 ### 2b. Impact coach at capture — the USP move (code; prompt tweak)
 Trigger: a capture whose text has no measurable value (`ImpactCheck.hasMeasurable == false`) and `aiEnabled`.
-- **Voice/image REVIEW phase:** when the transcript lands, fire `suggestImpact` **in parallel** (VM scope, cancel-on-dismiss/add — reuse the `loadImpactSuggestion` job pattern). `NumberNudge` gains an optional `aiQuestion: String?`; static copy shows immediately, the AI question **swaps in when it arrives**. Anchored captures pass the folder's (capped) detail; otherwise role + goal area.
+- **Voice/image REVIEW phase:** when the transcript lands, fire `suggestImpact` **in parallel** (VM scope, cancel-on-dismiss/add — reuse the `loadImpactSuggestion` job pattern). `NumberNudge` gains an optional `aiQuestion: String?`; static copy shows immediately, the AI question **swaps in when it arrives**. Anchored captures pass the folder's (capped) detail + its goal area; otherwise role only (no goal area exists before categorization). *(Wording corrected during AI-2 — the original "otherwise role + goal area" was incoherent: a non-anchored capture has no goal area yet.)*
 - **Typed post-save:** `SavedNudgeSheet` same pattern on save.
 - Prompt: relabel the `{{BULLET}}` context line to `The achievement (the user's own words — may be a raw transcript):` so transcript-mode is in-distribution.
 - Invariants: never delays or blocks save; no-key/offline/slow → static text stands; the question is shown, never stored. Cost note: ~₹0.4/user/mo at ~12 no-number captures.

@@ -319,6 +319,12 @@ OUTPUT (JSON only — no prose, no markdown, no code fences)
   "setAside": [ { "what": "string", "why": "string" } ]
 }"""
 
+    /** A stable fingerprint of the SUMMARY template itself, folded into the cached-summary input
+     *  signature ([com.bragbuddy.app.ui.summary.SummaryViewModel]) so a prompt-text change (an AI
+     *  phase) marks every cached summary stale — otherwise a record whose rollup didn't change
+     *  would keep presenting a pre-fix summary as "up to date". Regenerate stays user-triggered. */
+    val summaryTemplateFingerprint: String get() = SUMMARY.hashCode().toString()
+
     fun summary(
         period: String,
         lengthCap: String,

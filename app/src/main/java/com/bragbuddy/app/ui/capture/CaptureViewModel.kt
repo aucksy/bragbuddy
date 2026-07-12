@@ -23,6 +23,7 @@ import com.bragbuddy.app.data.speech.AudioRecorder
 import com.bragbuddy.app.data.speech.GroqTranscriber
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -192,7 +193,13 @@ class CaptureViewModel @Inject constructor(
         }
         viewModelScope.launch { settings.setLastCaptureMode(mode) }
         when (mode) {
-            CaptureMode.TYPE -> stopVoiceInternal()
+            CaptureMode.TYPE -> {
+                stopVoiceInternal()
+                // Leaving a voice/image take for the keyboard: its coach question (if any) is for
+                // the abandoned take — drop it so it can't surface on the typed post-save sheet.
+                nudgeJob?.cancel()
+                _state.update { it.copy(aiNudgeQuestion = null) }
+            }
             // Image opens on its own pick-a-source screen: stop any live voice recording and clear a
             // leftover voice phase (REVIEW/ERROR) so it can't render inside image mode. A deliberate
             // mode-switch abandons an unsaved voice take (the offline path already auto-queues; only
@@ -433,7 +440,17 @@ class CaptureViewModel @Inject constructor(
             val s = settings.settings.first()
             if (s.groqApiKey.isBlank()) return@launch
             val anchor = anchorProject
-            val folder = anchor?.let { runCatching { projects.byName(it) }.getOrNull() }
+            // A failed folder read never blocks the nudge (ask with role-only context instead) —
+            // but cancellation must propagate, not be swallowed into a "null folder".
+            val folder = anchor?.let {
+                try {
+                    projects.byName(it)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+            }
             val question = aiProvider.suggestImpact(
                 ImpactSuggestRequest(
                     bullet = take,
