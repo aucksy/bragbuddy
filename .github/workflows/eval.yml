@@ -75,7 +75,8 @@ jobs:
       - name: Check secret
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # The owner's secret is named OPENROUTER; accept OPENROUTER_API_KEY too for portability.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPENROUTER }}
         run: |
           if [ -z "$OPENROUTER_API_KEY" ] && [ -z "$GROQ_API_KEY" ]; then
             echo "::error::No API secret set — add OPENROUTER_API_KEY (preferred: OpenRouter pinned to Groq, fits the run in quota) or GROQ_API_KEY (direct Groq) under Settings → Secrets and variables → Actions."
@@ -92,7 +93,7 @@ jobs:
         continue-on-error: true   # the report + artifact must land even on a red gate
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPENROUTER }}
         run: |
           ONLY=""
           if [ "${{ steps.cfg.outputs.suite }}" != "all" ] && [ -n "${{ steps.cfg.outputs.suite }}" ]; then
