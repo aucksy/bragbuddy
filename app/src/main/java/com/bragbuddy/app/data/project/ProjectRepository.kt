@@ -58,6 +58,9 @@ class ProjectRepository @Inject constructor(
 
     suspend fun goalAreaOf(name: String): String? = dao.getByName(name)?.goalArea
 
+    /** Read one folder by its exact name (e.g. the capture anchor → its detail feeds the impact coach). */
+    suspend fun byName(name: String): ProjectEntity? = dao.getByName(name.trim())
+
     /** Re-home every sub-folder when its category (pillar) is renamed, so folders don't orphan. */
     suspend fun renameCategory(oldName: String, newName: String) {
         val a = oldName.trim()

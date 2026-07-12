@@ -26,12 +26,17 @@ WHAT TO DO
    single arc — combine into one outcome-led bullet, not repeated lines. Prefer the
    fewest pointers that fully represent the work.
 2. Roll up routine work into single cumulative lines with counts and any metric.
-3. Always include every pinned item, in the right goal area.
+3. Always include every pinned item, in the right goal area. A pinned item may also
+   appear among the highlights — include it ONCE, in its strongest phrasing.
 4. For each BEHAVIOUR/COMPETENCY, give 1-3 concrete evidence bullets; omit ones with
    no genuine evidence.
-5. Fill DEVELOPMENT only if the framework has it and there is real material.
+5. Items listed under a DEVELOPMENT AREA belong in "development", never in
+   "goalAreas". Fill "development" only if the framework has such an area and there
+   is real material.
 6. Keep every line tight, professional, past-tense, outcome-led; stay within the cap;
-   never invent results or numbers not in the rollup.
+   never invent results or numbers not in the rollup. When a selected achievement
+   carries a metric, keep the number verbatim in the bullet — a line with its number
+   beats two lines without.
 7. Produce a short "setAside" explanation of what was condensed or left out and why.
 
 OUTPUT (JSON only — no prose, no markdown, no code fences)

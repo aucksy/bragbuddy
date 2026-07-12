@@ -87,6 +87,9 @@ object RollupAggregator {
         // Framework goal-area order first, then any leftover data areas (kept, never lost).
         val fwGoalKeys = framework.pillars.filter { it.kind != PillarKind.BEHAVIOUR }.map { it.name.lowercase() }
         val orderedKeys = (fwGoalKeys.filter { byArea.containsKey(it) } + byArea.keys.filter { it !in fwGoalKeys }).distinct()
+        // DEVELOPMENT-kind pillar names (case-insensitive): these areas serialize under a
+        // "DEVELOPMENT AREA:" header (AI-2) so the summary routes them into development[].
+        val devKeys = framework.pillars.filter { it.kind == PillarKind.DEVELOPMENT }.map { it.name.lowercase() }.toSet()
 
         val goalAreas = orderedKeys.map { key ->
             val group = byArea.getValue(key)
@@ -107,7 +110,7 @@ object RollupAggregator {
             val metrics = group.filter { it.routine }
                 .mapNotNull { it.metric?.takeIf { m -> m.isNotBlank() } }
                 .distinct().take(METRIC_CAP)
-            AggGoalArea(areaDisplay.getValue(key), highlights, routine, metrics)
+            AggGoalArea(areaDisplay.getValue(key), highlights, routine, metrics, isDevelopment = key in devKeys)
         }
 
         // Behaviour evidence: concrete bullets from notable work, ranked by impact.
@@ -127,7 +130,7 @@ object RollupAggregator {
     /** Serialise the aggregate into the `{{ROLLUP}}` prompt block — bounded, tight, model-friendly. */
     fun serialize(agg: AggregatedRollup): String = buildString {
         agg.goalAreas.forEach { area ->
-            appendLine("GOAL AREA: ${area.name}")
+            appendLine("${if (area.isDevelopment) "DEVELOPMENT AREA" else "GOAL AREA"}: ${area.name}")
             if (area.highlights.isNotEmpty()) {
                 appendLine("  Highlights (ranked by impact):")
                 area.highlights.forEach { h ->

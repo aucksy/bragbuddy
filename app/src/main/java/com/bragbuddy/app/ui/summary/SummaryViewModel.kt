@@ -2,6 +2,7 @@ package com.bragbuddy.app.ui.summary
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bragbuddy.app.data.ai.AiPrompts
 import com.bragbuddy.app.data.ai.AiProvider
 import com.bragbuddy.app.data.ai.SummaryRequest
 import com.bragbuddy.app.data.entry.EntryRepository
@@ -144,8 +145,11 @@ class SummaryViewModel @Inject constructor(
         }
 
         val frameworkBlock = inp.framework.toPromptBlock()
+        // The prompt-template fingerprint rides in the signature so a prompt change (an AI phase)
+        // marks cached summaries stale even when the rollup itself didn't move (AI-2 review fix).
         val signature = RollupAggregator.signature(
             rollupString, pinnedForPrompt.joinToString("\n"), frameworkBlock, inp.role, period.name, length.name,
+            AiPrompts.summaryTemplateFingerprint,
         )
         val key = "${period.name}::${length.name}"
         val cached = cache[key]

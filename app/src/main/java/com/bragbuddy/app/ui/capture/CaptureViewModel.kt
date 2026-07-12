@@ -6,10 +6,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bragbuddy.app.data.ai.AiProvider
 import com.bragbuddy.app.data.ai.ImageExtractRequest
+import com.bragbuddy.app.data.ai.ImpactSuggestRequest
 import com.bragbuddy.app.data.entry.EntryRepository
 import com.bragbuddy.app.data.entry.OfflineRecovery
+import com.bragbuddy.app.data.entry.TextCaps
 import com.bragbuddy.app.data.image.ImageInput
 import com.bragbuddy.app.data.impact.ImpactCheck
+import com.bragbuddy.app.data.project.ProjectRepository
 import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.net.ConnectivityMonitor
 import com.bragbuddy.app.data.prefs.AppSettings
@@ -20,6 +23,7 @@ import com.bragbuddy.app.data.speech.AudioRecorder
 import com.bragbuddy.app.data.speech.GroqTranscriber
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -71,6 +75,10 @@ data class CaptureUiState(
     val savedEntryId: Long = 0L,
     val addingNumber: Boolean = false,
     val numberDraft: String = "",
+    /** AI-2 · impact coach at capture: the project-aware "what to quantify" question, fetched in
+     *  PARALLEL while the user reviews (voice/image) or right after a typed save. Null = not (yet)
+     *  available — the static nudge copy stands. Shown only; never stored with the entry. */
+    val aiNudgeQuestion: String? = null,
 )
 
 /**
@@ -92,6 +100,7 @@ class CaptureViewModel @Inject constructor(
     private val connectivity: ConnectivityMonitor,
     private val recovery: OfflineRecovery,
     private val aiProvider: AiProvider,
+    private val projects: ProjectRepository,
 ) : ViewModel() {
 
     private val recorder by lazy { AudioRecorder(appContext) }
@@ -105,6 +114,9 @@ class CaptureViewModel @Inject constructor(
     private var timerJob: Job? = null
     private var ampJob: Job? = null
     private var imageJob: Job? = null
+    /** The in-flight impact-coach fetch (AI-2) — cancelled whenever the take it was asked for is no
+     *  longer the one on screen, so a slow answer can never flash into a different capture. */
+    private var nudgeJob: Job? = null
     private var submitting = false
     private var didSave = false
     private var lastAudio: File? = null
@@ -181,14 +193,21 @@ class CaptureViewModel @Inject constructor(
         }
         viewModelScope.launch { settings.setLastCaptureMode(mode) }
         when (mode) {
-            CaptureMode.TYPE -> stopVoiceInternal()
+            CaptureMode.TYPE -> {
+                stopVoiceInternal()
+                // Leaving a voice/image take for the keyboard: its coach question (if any) is for
+                // the abandoned take — drop it so it can't surface on the typed post-save sheet.
+                nudgeJob?.cancel()
+                _state.update { it.copy(aiNudgeQuestion = null) }
+            }
             // Image opens on its own pick-a-source screen: stop any live voice recording and clear a
             // leftover voice phase (REVIEW/ERROR) so it can't render inside image mode. A deliberate
             // mode-switch abandons an unsaved voice take (the offline path already auto-queues; only
             // an online transport-failure the user navigates away from is dropped).
             CaptureMode.IMAGE -> {
                 stopVoiceInternal()
-                _state.update { it.copy(phase = VoicePhase.IDLE, reviewText = "", imageThumb = null) }
+                nudgeJob?.cancel()
+                _state.update { it.copy(phase = VoicePhase.IDLE, reviewText = "", imageThumb = null, aiNudgeQuestion = null) }
             }
             CaptureMode.SPEAK -> if (!keepError) _state.update { it.copy(phase = VoicePhase.IDLE) }
         }
@@ -206,10 +225,11 @@ class CaptureViewModel @Inject constructor(
     fun onImageChosen(uri: Uri) {
         if (_state.value.phase == VoicePhase.TRANSCRIBING) return // already reading one
         imageJob?.cancel()
+        nudgeJob?.cancel() // a fresh image invalidates any prior take's coach question
         impactAdded = false // a fresh image starts fresh — never inherit a prior take's combine flag
         _state.update {
             it.copy(mode = CaptureMode.IMAGE, imageThumb = uri, phase = VoicePhase.TRANSCRIBING,
-                error = null, needsKey = false, reviewText = "")
+                error = null, needsKey = false, reviewText = "", aiNudgeQuestion = null)
         }
         imageJob = viewModelScope.launch {
             val s = settings.settings.first()
@@ -261,6 +281,7 @@ class CaptureViewModel @Inject constructor(
         didSave = false
         lastAudio = null
         impactAdded = false
+        nudgeJob?.cancel() // a fresh take invalidates any prior take's coach question
         viewModelScope.launch {
             if (settings.settings.first().groqApiKey.isBlank()) {
                 _state.update {
@@ -395,7 +416,52 @@ class CaptureViewModel @Inject constructor(
     /** After a voice take, show the transcript editable; nothing is saved until [confirmAdd]. */
     private fun enterReview(text: String) {
         submitting = false
-        _state.update { it.copy(phase = VoicePhase.REVIEW, reviewText = text, error = null, numberStage = NumberStage.NONE) }
+        _state.update {
+            it.copy(phase = VoicePhase.REVIEW, reviewText = text, error = null, numberStage = NumberStage.NONE, aiNudgeQuestion = null)
+        }
+        // AI-2 · impact coach at capture: fetched in PARALLEL while the user reads the transcript —
+        // the static nudge shows immediately and upgrades if/when the question lands. Never blocks.
+        maybeCoachNudge(text)
+    }
+
+    /**
+     * Fire the project-aware "what should you quantify?" coach for [text] when it lacks a measurable
+     * value and AI is available (AI-2 · the capture-time USP move). Fire-and-forget on the VM scope:
+     * it never delays or blocks review/save; on no-key / offline / failure / a blank answer the
+     * static nudge copy simply stands. An anchored capture grounds the question in that folder's
+     * (capped) detail + goal area; otherwise the role is the only context. The question is only ever
+     * SHOWN ([CaptureUiState.aiNudgeQuestion]) — it is never stored with the entry.
+     */
+    private fun maybeCoachNudge(text: String) {
+        nudgeJob?.cancel()
+        val take = text.trim()
+        if (take.isBlank() || ImpactCheck.hasMeasurable(take)) return
+        nudgeJob = viewModelScope.launch {
+            val s = settings.settings.first()
+            if (s.groqApiKey.isBlank()) return@launch
+            val anchor = anchorProject
+            // A failed folder read never blocks the nudge (ask with role-only context instead) —
+            // but cancellation must propagate, not be swallowed into a "null folder".
+            val folder = anchor?.let {
+                try {
+                    projects.byName(it)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            val question = aiProvider.suggestImpact(
+                ImpactSuggestRequest(
+                    bullet = take,
+                    project = anchor.orEmpty(),
+                    projectDetail = TextCaps.cap(folder?.description.orEmpty()),
+                    goalArea = folder?.goalArea.orEmpty(),
+                    role = s.jobRole,
+                ),
+            ).getOrNull()?.question?.trim().orEmpty()
+            if (question.isNotBlank()) _state.update { it.copy(aiNudgeQuestion = question) }
+        }
     }
 
     fun onReviewTextChange(text: String) = _state.update { it.copy(reviewText = text) }
@@ -420,10 +486,11 @@ class CaptureViewModel @Inject constructor(
     /** Discard this take and start over — re-record (voice) or pick another image (image). */
     fun reRecord() {
         cancelNumber()
+        nudgeJob?.cancel() // the take this question was asked for is being discarded
         if (_state.value.mode == CaptureMode.IMAGE) {
-            _state.update { it.copy(phase = VoicePhase.IDLE, reviewText = "", imageThumb = null, error = null) }
+            _state.update { it.copy(phase = VoicePhase.IDLE, reviewText = "", imageThumb = null, error = null, aiNudgeQuestion = null) }
         } else {
-            _state.update { it.copy(reviewText = "", error = null) }
+            _state.update { it.copy(reviewText = "", error = null, aiNudgeQuestion = null) }
             startVoice()
         }
     }
@@ -533,8 +600,14 @@ class CaptureViewModel @Inject constructor(
                 source != EntrySource.TEXT -> _saved.tryEmit(Unit)
                 // Typed with a measurable value → dismiss instantly.
                 ImpactCheck.hasMeasurable(text) -> _saved.tryEmit(Unit)
-                // Typed with no number → the free, local post-save nudge (never blocks).
-                else -> { savedText = text.trim(); _state.update { it.copy(savedNudge = true, savedEntryId = id) } }
+                // Typed with no number → the post-save nudge (never blocks). The saved sheet shows
+                // instantly with the static copy; the AI's project-aware question (AI-2) swaps in
+                // if it arrives while the sheet is up.
+                else -> {
+                    savedText = text.trim()
+                    _state.update { it.copy(savedNudge = true, savedEntryId = id, aiNudgeQuestion = null) }
+                    maybeCoachNudge(text)
+                }
             }
         }
     }

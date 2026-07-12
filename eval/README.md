@@ -88,7 +88,8 @@ Baseline runs never fail the job (they are the measurement); gate runs fail on a
 
 Reported but not gated: entry-count accuracy, demonstrates (required tags present), metric field
 preservation, dateMentioned accuracy, routine false-positive rate. The development-placement check
-is **advisory until AI-2** (the current serializer labels development areas as goal areas).
+is **gated since AI-2** (the serializer heads development pillars "DEVELOPMENT AREA:" and summary
+rule 5 routes them into `development[]`); it was advisory in the AI-0/AI-1 baselines.
 "Parked in Inbox" is judged **after the scorer's snapping**: a phantom project name snaps to Inbox
 first (the AI-1 validator's planned rule — the shipping app does not snap yet), then the app's own
 `statusFor` logic applies: `project/goalCategory == "Inbox"` or `confidence < 0.6`, never for
@@ -131,7 +132,7 @@ mode (the add-impact / add-detail merge path: exactly one entry, follow-up folde
 `coach.jsonl`: `{ "id", "bullet", "project", "projectDetail", "goalArea", "role" }` — no expected
 string; scored by the rubric. `summary/*.json`: see the four files — `expect` supports
 `noDuplicates`, `arcKeys`, `metrics`, `pinnedKeys`, `rolledUp`, `setAsideNonEmpty`,
-`developmentKeys` (advisory).
+`developmentKeys` (gated since AI-2).
 
 ## Growing the set with the real record
 

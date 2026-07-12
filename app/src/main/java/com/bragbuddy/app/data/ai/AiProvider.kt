@@ -56,10 +56,11 @@ interface AiProvider {
     suspend fun readDocumentText(request: ImageExtractRequest): Result<ImageExtractResult>
 
     /**
-     * Suggest, in one short **question**, what measurable outcome would strengthen a filed win that
-     * currently has no number (Phase 4 · the Home "Add impact" list). Project-aware — it uses the
-     * entry's project detail + goal area. It only ASKS; it never invents a number. Failure is safe —
-     * the caller falls back to a generic "what changed, in numbers?" prompt; nothing is written.
+     * Suggest, in one short **question**, what measurable outcome would strengthen a win that has
+     * no number — a filed bullet (Phase 4 · the Home "Add impact" list) or a just-captured raw
+     * transcript (AI-2 · the capture review / post-save nudge). Project-aware — it uses the
+     * project's detail + goal area when known. It only ASKS; it never invents a number. Failure is
+     * safe — the caller falls back to the static/generic nudge copy; nothing is written.
      */
     suspend fun suggestImpact(request: ImpactSuggestRequest): Result<ImpactSuggestion>
 

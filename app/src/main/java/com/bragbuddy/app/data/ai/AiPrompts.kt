@@ -292,12 +292,17 @@ WHAT TO DO
    single arc — combine into one outcome-led bullet, not repeated lines. Prefer the
    fewest pointers that fully represent the work.
 2. Roll up routine work into single cumulative lines with counts and any metric.
-3. Always include every pinned item, in the right goal area.
+3. Always include every pinned item, in the right goal area. A pinned item may also
+   appear among the highlights — include it ONCE, in its strongest phrasing.
 4. For each BEHAVIOUR/COMPETENCY, give 1-3 concrete evidence bullets; omit ones with
    no genuine evidence.
-5. Fill DEVELOPMENT only if the framework has it and there is real material.
+5. Items listed under a DEVELOPMENT AREA belong in "development", never in
+   "goalAreas". Fill "development" only if the framework has such an area and there
+   is real material.
 6. Keep every line tight, professional, past-tense, outcome-led; stay within the cap;
-   never invent results or numbers not in the rollup.
+   never invent results or numbers not in the rollup. When a selected achievement
+   carries a metric, keep the number verbatim in the bullet — a line with its number
+   beats two lines without.
 7. Produce a short "setAside" explanation of what was condensed or left out and why.
 
 OUTPUT (JSON only — no prose, no markdown, no code fences)
@@ -313,6 +318,12 @@ OUTPUT (JSON only — no prose, no markdown, no code fences)
   },
   "setAside": [ { "what": "string", "why": "string" } ]
 }"""
+
+    /** A stable fingerprint of the SUMMARY template itself, folded into the cached-summary input
+     *  signature ([com.bragbuddy.app.ui.summary.SummaryViewModel]) so a prompt-text change (an AI
+     *  phase) marks every cached summary stale — otherwise a record whose rollup didn't change
+     *  would keep presenting a pre-fix summary as "up to date". Regenerate stays user-triggered. */
+    val summaryTemplateFingerprint: String get() = SUMMARY.hashCode().toString()
 
     fun summary(
         period: String,
@@ -394,9 +405,10 @@ OUTPUT
     fun documentScan(role: String = ""): String =
         DOCUMENT_SCAN.replace("{{ROLE}}", role.ifBlank { "(not set)" })
 
-    // ---------------- Impact coach (Phase 4 · "Add impact" list on Home) ----------------
-    // A filed win has no measurable result. Ask ONE short, project-aware question that nudges the user
-    // to add the number that would strengthen it. It ASKS — it never states or invents a number.
+    // ---------------- Impact coach (Phase 4 · Home "Add impact" list; AI-2 · at capture) ----------------
+    // A win has no measurable result — a filed bullet (Home list) or a just-captured raw transcript
+    // (the review / post-save nudge). Ask ONE short, project-aware question that nudges the user to
+    // add the number that would strengthen it. It ASKS — it never states or invents a number.
     private const val IMPACT_COACH = """You are the "impact coach" inside "BragBuddy", an app that helps an employee keep an
 appraisal-ready record of their work. The user logged a real achievement, but it has NO
 measurable result. Ask ONE short, friendly question that nudges them to add the number
@@ -408,7 +420,7 @@ CONTEXT
 - Project: {{PROJECT}}
 - What that project is about / how it's measured (the user's own notes; may be empty):
   {{PROJECT_DETAIL}}
-- The achievement (already written, no number in it):
+- The achievement (the user's own words — may be a raw transcript):
   {{BULLET}}
 
 RULES

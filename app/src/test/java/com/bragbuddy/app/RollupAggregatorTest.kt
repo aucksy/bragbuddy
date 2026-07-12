@@ -110,6 +110,26 @@ class RollupAggregatorTest {
     }
 
     @Test
+    fun `development pillars serialize under a DEVELOPMENT AREA header, others stay goal areas`() {
+        // Framework.DEFAULT: Performance Goals = GOAL_AREA, Learning & Growth = DEVELOPMENT.
+        val items = listOf(
+            item(1, 1500, area = "Performance Goals", bullet = "Shipped the thing", impact = 0.7),
+            item(2, 1400, area = "learning & growth", bullet = "Completed the cert", impact = 0.5), // case-insensitive match
+            item(3, 1300, area = "Some Legacy Area", bullet = "Old filed work", impact = 0.4),
+        )
+        val agg = RollupAggregator.aggregate(items, 1000, 2000, fw)
+        assertThat(agg.goalAreas.single { it.name.equals("learning & growth", ignoreCase = true) }.isDevelopment).isTrue()
+        assertThat(agg.goalAreas.single { it.name == "Performance Goals" }.isDevelopment).isFalse()
+
+        val text = RollupAggregator.serialize(agg)
+        assertThat(text).contains("DEVELOPMENT AREA: learning & growth")
+        assertThat(text).contains("GOAL AREA: Performance Goals")
+        // An area the framework no longer names (the catch-all guarantee) still reads as a goal area.
+        assertThat(text).contains("GOAL AREA: Some Legacy Area")
+        assertThat(text).doesNotContain("DEVELOPMENT AREA: Performance Goals")
+    }
+
+    @Test
     fun `an empty window aggregates to nothing`() {
         val agg = RollupAggregator.aggregate(emptyList(), 0, 1000, fw)
         assertThat(agg.isEmpty).isTrue()
