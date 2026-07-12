@@ -294,10 +294,11 @@ WHAT TO DO
 2. Reproduce EVERY "Routine tallies" line from the rollup in "rolledUp": the label
    EXACTLY as the rollup names it (never reworded or re-pluralised), the same count,
    plus any metric. Routine tallies never appear as achievements.
-3. Always include every pinned item, in the right goal area. A pinned item may also
-   appear among the highlights — include it ONCE, in its strongest phrasing. Pinned
-   items are selected FIRST and count toward the cap: drop an unpinned achievement
-   before ever dropping a pinned item.
+3. Every "Pinned item" MUST appear as an achievement under the best-fitting goal
+   area — ADD it even when it is NOT among that area's rollup highlights, keeping its
+   wording and key terms (project names, IDs, certifications, compliance standards)
+   verbatim. Include each pinned item exactly ONCE, in its strongest phrasing; never
+   drop a pinned item to fit the cap (drop an unpinned achievement instead).
 4. For each BEHAVIOUR/COMPETENCY, give 1-3 concrete evidence bullets; omit ones with
    no genuine evidence.
 5. Items listed under a DEVELOPMENT AREA belong in "development", never in
