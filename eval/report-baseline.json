@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-12T05:24:57.852Z",
+  "generatedAt": "2026-07-12T06:48:21.781Z",
   "models": {
     "baseUrl": "https://openrouter.ai/api/v1/chat/completions",
     "categorizer": [
@@ -16,6 +16,7 @@
     ]
   },
   "transport": "openrouter:groq",
+  "samples": 3,
   "thresholds": {
     "placementAccuracy": 0.85,
     "inboxRecall": 0.8,
@@ -41,12 +42,27 @@
     "primaryParseFailRate": 0,
     "routineReuse": 1,
     "impactBand": 0.9230769230769231,
-    "coachPass": 0.8333333333333334,
+    "coachPass": 1,
     "coachNoInventedNumbers": 1,
-    "summaryChecks": 0.8823529411764706,
+    "summaryChecks": 1,
     "entryCountAccuracy": 0.9166666666666666,
-    "demonstratesAccuracy": 0.2857142857142857,
+    "demonstratesAccuracy": 0.14285714285714285,
     "metricPreserved": 0.6,
+    "dateMentionedAccuracy": 1,
+    "routineFalsePositiveFree": 1
+  },
+  "denominators": {
+    "placementAccuracy": 27,
+    "inboxRecall": 5,
+    "inboxPrecision": 26,
+    "primaryParseFailRate": 189,
+    "routineReuse": 7,
+    "impactBand": 13,
+    "coachPass": 12,
+    "summaryChecks": 18,
+    "entryCountAccuracy": 36,
+    "demonstratesAccuracy": 7,
+    "metricPreserved": 5,
     "dateMentionedAccuracy": 1,
     "routineFalsePositiveFree": 1
   },
@@ -95,9 +111,9 @@
     },
     {
       "name": "coachPass",
-      "value": 0.8333333333333334,
+      "value": 1,
       "threshold": 0.9,
-      "pass": false,
+      "pass": true,
       "extra": ""
     },
     {
@@ -109,18 +125,18 @@
     },
     {
       "name": "summaryChecks",
-      "value": 0.8823529411764706,
+      "value": 1,
       "threshold": 1,
-      "pass": false,
+      "pass": true,
       "extra": ""
     }
   ],
-  "gatesPassed": false,
+  "gatesPassed": true,
   "failures": [
     {
       "id": "eng-inbox-near-duplicate-projects",
       "failed": {
-        "inbox": "expected parked; got [{\"project\":\"Onboarding v2\",\"confidence\":0.85}]"
+        "inbox": "expected parked; got [{\"project\":\"Onboarding v2\",\"confidence\":0.85}] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -129,7 +145,7 @@
     {
       "id": "po-metric-30-percent",
       "failed": {
-        "inbox": "expected NOT parked; got [{\"project\":\"Inbox\",\"goalCategory\":\"Inbox\",\"confidence\":0.5}]"
+        "inbox": "expected NOT parked; got [{\"project\":\"Inbox\",\"goalCategory\":\"Inbox\",\"confidence\":0.5}] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -138,7 +154,7 @@
     {
       "id": "po-extra-mentoring",
       "failed": {
-        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"ownership\",\"collaboration\"]"
+        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"ownership\",\"collaboration\"] (passed 1/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -147,7 +163,7 @@
     {
       "id": "eng-development-cert",
       "failed": {
-        "impactBand": "expected [0.2,0.6], got 0.8"
+        "impactBand": "expected [0.2,0.6], got 0.8 (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -156,8 +172,8 @@
     {
       "id": "real-003",
       "failed": {
-        "entryCount": "expected 1, got 2",
-        "metric": "expected metric containing \"20 days\", got [null,null]"
+        "entryCount": "expected 1, got 2 (passed 1/3)",
+        "metric": "expected metric containing \"20 days\", got [null,null] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -166,7 +182,7 @@
     {
       "id": "real-005",
       "failed": {
-        "metric": "expected metric containing \"76 stories\", got [null,null,null,null,null,null]"
+        "metric": "expected metric containing \"76 stories\", got [null,null,null,null,null,null] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -175,7 +191,7 @@
     {
       "id": "real-006",
       "failed": {
-        "demonstrates": "missing required tag(s) [\"Set the Agenda\",\"Bring Others With You\",\"Do It the Right Way\"], got [\"leadership & behaviours\"]"
+        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"bring others with you\",\"do it the right way\"] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -184,7 +200,7 @@
     {
       "id": "real-007",
       "failed": {
-        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"bring others with you\",\"do it the right way\"]"
+        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"bring others with you\",\"do it the right way\"] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -193,8 +209,8 @@
     {
       "id": "real-008",
       "failed": {
-        "inbox": "expected NOT parked; got [{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7}]",
-        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"bring others with you\",\"do it the right way\"]"
+        "inbox": "expected NOT parked; got [{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7}] (passed 0/3)",
+        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"bring others with you\",\"do it the right way\"] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -203,7 +219,7 @@
     {
       "id": "real-009",
       "failed": {
-        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda: define what winning looks like\",\"bring others with you: build a diverse and inclusive team\",\"do it the right way: communicate frequently, candidly and clearly\",\"bring others with you: seek and provide coaching and feedback\",\"do it the right way: demonstrate courageous and authentic leadership\",\"bring others with you: make collaboration essential\",\"do it the right way: live the blue box values\"]"
+        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"bring others with you\",\"do it the right way\"] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -212,7 +228,7 @@
     {
       "id": "real-010",
       "failed": {
-        "entryCount": "expected 1, got 4"
+        "entryCount": "expected 1, got 4 (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -221,46 +237,11 @@
     {
       "id": "real-011",
       "failed": {
-        "entryCount": "expected 1, got 4"
+        "entryCount": "expected 1, got 4 (passed 0/3)",
+        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"bring others with you\",\"do it the right way\"] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
-      "error": null
-    },
-    {
-      "id": "coach-po-raven",
-      "failed": {
-        "grounded": "no content-word overlap with the project detail/bullet"
-      },
-      "advisory": {},
-      "model": "meta-llama/llama-3.3-70b-instruct",
-      "error": null
-    },
-    {
-      "id": "coach-eng-selector",
-      "failed": {
-        "grounded": "no content-word overlap with the project detail/bullet"
-      },
-      "advisory": {},
-      "model": "meta-llama/llama-3.3-70b-instruct",
-      "error": null
-    },
-    {
-      "id": "dense-year",
-      "failed": {
-        "pinnedOnce": "[{\"key\":\"PCI-DSS\",\"hits\":0}]"
-      },
-      "advisory": {},
-      "model": "openai/gpt-oss-120b",
-      "error": null
-    },
-    {
-      "id": "routine-heavy",
-      "failed": {
-        "rolledUpCounts": "expected [{\"routineType\":\"access requests\",\"count\":62},{\"routineType\":\"servicing requests\",\"count\":38}], got [{\"bullet\":\"Processed 62 access requests with average turnaround under 1 day\",\"routineType\":\"access request\",\"count\":62},{\"bullet\":\"Handled 38 servicing requests\",\"routineType\":\"servicing request\",\"count\":38}]"
-      },
-      "advisory": {},
-      "model": "openai/gpt-oss-120b",
       "error": null
     }
   ]
