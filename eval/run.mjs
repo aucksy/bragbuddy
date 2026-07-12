@@ -744,10 +744,18 @@ function scoreSummaryCase(c, record) {
     checks.metricsPreserved = missing.length === 0 ? { pass: true } : { pass: false, detail: `missing verbatim: ${missing.join(' · ')}` };
   }
 
-  // Pinned included exactly once (matched by each pinned item's distinctive key).
+  // Pinned included exactly once (matched by each pinned item's distinctive key). The real
+  // invariant is "appears once ANYWHERE in the summary body" — not "in achievements specifically":
+  // a development-flavoured pinned item (e.g. a "recertification audit") is legitimately filed under
+  // development[] by rule 5, which the old achievements-only count wrongly scored as missing. Count
+  // across achievements + development[] + behaviour evidence so the check measures the stated
+  // invariant, and a duplicate anywhere (hits > 1) still fails.
   if (Array.isArray(expect.pinnedKeys)) {
+    const development = Array.isArray(body.development) ? body.development : [];
+    const behaviourEvidence = (body.behaviours || []).flatMap((b) => b.evidence || []);
+    const pinnedSurfaces = [...achievements, ...development, ...behaviourEvidence];
     const bad = expect.pinnedKeys
-      .map((key) => ({ key, hits: achievements.filter((a) => norm(a).includes(norm(key))).length }))
+      .map((key) => ({ key, hits: pinnedSurfaces.filter((a) => norm(a).includes(norm(key))).length }))
       .filter((r) => r.hits !== 1);
     checks.pinnedOnce = bad.length === 0 ? { pass: true } : { pass: false, detail: JSON.stringify(bad) };
   }
