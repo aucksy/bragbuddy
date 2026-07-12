@@ -250,7 +250,16 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
-## Status: v0.26.0 — Phase AI-1 · Categorizer magic + efficiency 🛠️ BUILT (eval-gated; awaiting the `eval-run-ai1-*` CI gate, then the `v0.26.0` ship tag)
+## Status: v0.26.0 — Phase AI-1 · Categorizer magic + efficiency ✅ SHIPPED (signed · tag-driven CI; compile-green + adversarially reviewed; **eval ship-gate WAIVED by the owner** for this release)
+
+> **⚠️ Eval gate WAIVED (owner, 2026-07-12).** The standing "prompt changes ship eval-gated" rule was
+> **explicitly waived by the owner for v0.26.0** — the shared Groq FREE-tier key can't complete the
+> eval's ~63 live calls without throttling (see the quota block below), so the live quality gate could
+> not pass on infra grounds. The owner chose to ship on the strength of the **green compile gate + two
+> clean adversarial reviews** and to **report any AI-quality issues manually**. A fresh eval baseline was
+> **NOT** committed (no green run). **The eval remains the standing gate for AI-2+** — re-run it once a
+> usable Groq quota/key is available (higher-limit key, or a real reset window) before the next prompt
+> phase, to re-establish a trustworthy baseline.
 
 > **Phase AI-1 of the subscription-launch roadmap** (`docs/IMPLEMENTATION-PLAN.md` · Phase AI-1). Goal:
 > placement/scoring consistency up, AI cost down ~40-45%, no behaviour regressions — **eval-gated**
