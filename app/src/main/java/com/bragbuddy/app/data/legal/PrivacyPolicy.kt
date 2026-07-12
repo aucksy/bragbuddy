@@ -20,8 +20,11 @@ package com.bragbuddy.app.data.legal
 object PrivacyPolicy {
     /** Bump ONLY on a material change → the app re-prompts for acceptance.
      *  v2 (Phase M1): disclose the managed relay — by default entries pass through BragBuddy's own
-     *  stateless relay to Groq (stores nothing, logs no content); a BYOK key still goes direct. */
-    const val VERSION = 2
+     *  stateless relay to Groq (stores nothing, logs no content); a BYOK key still goes direct.
+     *  v3 (Phase M2): disclose the offline image-scan queue — when you scan while offline the
+     *  downscaled image is briefly saved on-device (parity with the offline voice clip), then deleted
+     *  as soon as it's read. Material (a new on-device retention path) → re-accept. */
+    const val VERSION = 3
     const val LAST_UPDATED = "12 July 2026"
     const val CONTACT_EMAIL = "simpleapps108@gmail.com"
     const val GOVERNING_LAW = "India"
@@ -63,8 +66,9 @@ object PrivacyPolicy {
             "Audio and images aren't kept",
             "A voice note is transcribed and then the recording is discarded — only the text remains. " +
                 "A scanned image is read and then dropped; we don't store it. If you're offline, a voice " +
-                "clip may wait briefly in the app's private storage and is deleted as soon as it's " +
-                "transcribed.",
+                "clip or a scanned image may wait briefly in the app's own private storage so your " +
+                "capture isn't lost, and is deleted as soon as it's transcribed or read. It's never " +
+                "backed up and never leaves your device except to be read.",
         ),
         Principle(
             "Encrypted in transit — and honest about at rest",
@@ -141,7 +145,8 @@ object PrivacyPolicy {
         Principle(
             "Audio and images aren't kept",
             "A voice note is transcribed and the recording is discarded; a scanned image is read and " +
-                "then dropped. Only the text stays.",
+                "then dropped. Only the text stays. If you're offline, a clip or image waits briefly on " +
+                "your device so nothing is lost, then is deleted once it's processed.",
         ),
         Principle(
             "No ads, no tracking, no selling",

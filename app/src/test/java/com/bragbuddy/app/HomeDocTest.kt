@@ -110,18 +110,19 @@ class HomeDocTest {
     }
 
     @Test
-    fun `queued offline voice notes surface in waitingVoice, nowhere else, and Home is not empty`() {
-        // A PENDING_AUDIO row (offline voice capture awaiting transcription) must stay visible —
-        // in its own waiting strip, not in processing / the Inbox peek / any pillar.
-        val pending = entry(status = EntryStatus.PENDING_AUDIO)
-        val doc = buildHomeDoc(listOf(pending), fw, folders = emptyList())
+    fun `queued offline captures surface in waiting, nowhere else, and Home is not empty`() {
+        // PENDING_AUDIO (voice) and PENDING_IMAGE (scan) rows awaiting network must stay visible — in
+        // the shared waiting strip, not in processing / the Inbox peek / any pillar.
+        val pendingVoice = entry(status = EntryStatus.PENDING_AUDIO)
+        val pendingImage = entry(status = EntryStatus.PENDING_IMAGE)
+        val doc = buildHomeDoc(listOf(pendingVoice, pendingImage), fw, folders = emptyList())
 
-        assertThat(doc.waitingVoice).hasSize(1)
-        assertThat(doc.waitingVoice.single().id).isEqualTo(pending.id)
+        assertThat(doc.waiting).hasSize(2)
+        assertThat(doc.waiting.map { it.id }).containsExactly(pendingVoice.id, pendingImage.id)
         assertThat(doc.processing).isEmpty()
         assertThat(doc.inbox).isNull()
         assertThat(doc.goals).isEmpty()
-        assertThat(doc.isEmpty).isFalse() // a queued note is content — never the empty state
+        assertThat(doc.isEmpty).isFalse() // a queued capture is content — never the empty state
     }
 
     @Test

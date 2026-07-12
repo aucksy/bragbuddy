@@ -1,7 +1,7 @@
 package com.bragbuddy.app.ui.framework
 
 import android.net.Uri
-import android.widget.Toast
+import com.bragbuddy.app.ui.common.LocalSnackbarController
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -97,6 +97,7 @@ fun CategoryEditSheet(
 ) {
     val palette = BragBuddyTheme.palette
     val context = LocalContext.current
+    val snackbar = LocalSnackbarController.current
     val scanEnabled by viewModel.scanEnabled.collectAsStateWithLifecycle()
     val scanState by viewModel.scanState.collectAsStateWithLifecycle()
     val adding = pillar == null
@@ -140,13 +141,13 @@ fun CategoryEditSheet(
         }.getOrNull()
         if (uri == null) {
             activeScanTarget = null
-            Toast.makeText(context, "Couldn't open the camera — choose an image instead", Toast.LENGTH_SHORT).show()
+            snackbar.show("Couldn't open the camera — choose an image instead")
             return
         }
         pendingPhotoUri = uri
         runCatching { takePhoto.launch(uri) }.onFailure {
             pendingPhotoUri = null; activeScanTarget = null
-            Toast.makeText(context, "No camera available — choose an image instead", Toast.LENGTH_SHORT).show()
+            snackbar.show("No camera available — choose an image instead")
         }
     }
 
@@ -166,7 +167,7 @@ fun CategoryEditSheet(
     LaunchedEffect(Unit) {
         viewModel.scanError.collect { msg ->
             activeScanTarget = null
-            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            snackbar.show(msg)
         }
     }
 
@@ -311,7 +312,7 @@ fun CategoryEditSheet(
                                 if (row.id != null && row.summary.trim() != row.baseSummary.trim()) {
                                     row.confirmSave = true
                                 } else {
-                                    doSaveProject(viewModel, row, baseName, context)
+                                    doSaveProject(viewModel, row, baseName, snackbar::show)
                                 }
                             }
                         }
@@ -338,7 +339,7 @@ fun CategoryEditSheet(
                         AlertDialog(
                             onDismissRequest = { row.confirmSave = false },
                             confirmButton = {
-                                TextButton(onClick = { row.confirmSave = false; doSaveProject(viewModel, row, baseName, context) }) {
+                                TextButton(onClick = { row.confirmSave = false; doSaveProject(viewModel, row, baseName, snackbar::show) }) {
                                     Text("Save")
                                 }
                             },
@@ -378,7 +379,7 @@ fun CategoryEditSheet(
                     confirmCategory = false
                     pillar?.let { viewModel.saveCategory(it.id, name, detail, kind) }
                     baseName = name.trim(); baseDetail = detail.trim(); baseKind = kind
-                    Toast.makeText(context, "Category saved", Toast.LENGTH_SHORT).show()
+                    snackbar.show("Category saved")
                 }) { Text("Save") }
             },
             dismissButton = { TextButton(onClick = { confirmCategory = false }) { Text("Cancel") } },
@@ -408,7 +409,7 @@ fun CategoryEditSheet(
     }
 }
 
-private fun doSaveProject(viewModel: FrameworkViewModel, row: ProjRowState, category: String, context: android.content.Context) {
+private fun doSaveProject(viewModel: FrameworkViewModel, row: ProjRowState, category: String, showMessage: (String) -> Unit) {
     val creating = row.id == null
     // The last-saved name is the "old" name — a change to it is a rename (offers the 3-option remap).
     val previousName = row.baseName
@@ -416,12 +417,12 @@ private fun doSaveProject(viewModel: FrameworkViewModel, row: ProjRowState, cate
         // A create that hit the (name, goalArea) unique index returns a non-positive id — nothing was
         // saved, so keep the row dirty and say so rather than falsely showing it as saved.
         if (creating && newId <= 0L) {
-            Toast.makeText(context, "Couldn't save — a project with that name already exists here.", Toast.LENGTH_SHORT).show()
+            showMessage("Couldn't save — a project with that name already exists here.")
         } else {
             if (creating) row.id = newId
             row.baseName = row.name
             row.baseSummary = row.summary
-            Toast.makeText(context, "Project saved", Toast.LENGTH_SHORT).show()
+            showMessage("Project saved")
         }
     }
 }

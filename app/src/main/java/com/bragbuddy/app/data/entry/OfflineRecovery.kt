@@ -1,6 +1,9 @@
 package com.bragbuddy.app.data.entry
 
 import android.content.Context
+import com.bragbuddy.app.data.ai.AiProvider
+import com.bragbuddy.app.data.ai.ImageExtractRequest
+import com.bragbuddy.app.data.image.ImageInput
 import com.bragbuddy.app.data.local.EntryDao
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntrySource
@@ -46,11 +49,16 @@ class OfflineRecovery @Inject constructor(
     private val entryDao: EntryDao,
     private val processor: EntryProcessor,
     private val transcriber: GroqTranscriber,
+    private val aiProvider: AiProvider,
     private val settings: SettingsStore,
     private val connectivity: ConnectivityMonitor,
     @ApplicationScope private val appScope: CoroutineScope,
 ) {
     private val mutex = Mutex()
+
+    /** Per-image count of failures that happened while ONLINE — bounds re-uploads of an unreadable
+     *  scan (see [drainPendingImage]). Only touched under the recovery [mutex]; process-scoped. */
+    private val imageAttempts = mutableMapOf<Long, Int>()
 
     /** Start watching connectivity for the app's lifetime (called once from BragBuddyApp). The
      *  StateFlow's current value is collected immediately, so an online launch recovers right away. */
@@ -74,6 +82,10 @@ class OfflineRecovery @Inject constructor(
             // the clip reference until this sweep removes it, so a crash between the two can't strand an
             // unreferenced file that the orphan sweep would re-adopt into a duplicate entry).
             runCatching { cleanupDrainedClips() }
+            // The image-scan queue mirrors the voice queue exactly (adopt → drain → cleanup).
+            runCatching { adoptOrphanImages() }
+            runCatching { drainPendingImage() }
+            runCatching { cleanupDrainedImages() }
             // Entries that failed while the model was unreachable get one automatic retry per
             // trigger — the same guarded, idempotent path as the Inbox's "Try again".
             runCatching { processor.reprocessFailed() }
@@ -192,16 +204,136 @@ class OfflineRecovery @Inject constructor(
         }
     }
 
+    // ---------------- Image-scan queue (mirrors the voice queue above) ----------------
+
+    /** Self-heal the crash window between "image written to the queue dir" and "row inserted": any
+     *  queue file no row references gets a PENDING_IMAGE row. Twin of [adoptOrphanClips]. */
+    private suspend fun adoptOrphanImages() {
+        val dir = File(context.filesDir, IMAGE_QUEUE_DIR)
+        val files = dir.listFiles()?.filter { it.isFile } ?: return
+        if (files.isEmpty()) return
+        val referenced = entryDao.allImagePaths().toSet()
+        val cutoff = System.currentTimeMillis() - ADOPT_AGE_MS
+        for (file in files) {
+            if (file.absolutePath in referenced) continue
+            if (file.lastModified() > cutoff) continue // possibly a queue insert still in flight
+            if (file.length() == 0L) { file.delete(); continue }
+            entryDao.insert(
+                EntryEntity(
+                    createdAt = file.lastModified().takeIf { it > 0 } ?: System.currentTimeMillis(),
+                    source = EntrySource.IMAGE,
+                    status = EntryStatus.PENDING_IMAGE,
+                    rawTranscript = "",
+                    imagePath = file.absolutePath,
+                ),
+            )
+        }
+    }
+
+    /**
+     * Drain the image-scan queue: read each PENDING_IMAGE row's saved JPEG with Groq vision, flip it to
+     * RAW, and hand it to the [EntryProcessor] — every outcome via [EntryProcessor.commitPendingImage]
+     * (the same compare-and-swap under the processing mutex) and **the file deleted only after** a
+     * durable commit. The queued file is a known-valid, size-capped JPEG ([ImageInput.compressToFile]).
+     * The vision path doesn't classify HTTP permanence like the transcriber, so a transient error keeps
+     * the row queued — but a **bounded** in-memory retry counter ([imageAttempts]) parks a row that has
+     * failed while ONLINE [MAX_IMAGE_ONLINE_ATTEMPTS] times, so a genuinely-unreadable image can't wedge
+     * the queue forever (re-uploading on every trigger). Offline failures don't count against it.
+     */
+    private suspend fun drainPendingImage() {
+        val s = settings.settings.first()
+        // No AI configured (no key AND no managed relay) → nothing to drain; the queue waits.
+        if (!s.cloudTranscription) return
+        val role = s.jobRole
+        val pending = entryDao.listByStatus(EntryStatus.PENDING_IMAGE)
+        for (e in pending) {
+            val file = e.imagePath?.takeIf { it.isNotBlank() }?.let { File(it) }
+            val dataUrl = file?.let { ImageInput.fileToDataUrl(it) }
+            if (dataUrl == null) {
+                // The image vanished (cleared storage edge). Park it honestly in the Inbox (INBOX, not
+                // FAILED — the auto-retry pass must never feed the placeholder to the AI) and remove any
+                // empty husk so the orphan sweep can't re-adopt it.
+                val committed = processor.commitPendingImage(e.id, e.imagePath) {
+                    it.copy(
+                        status = EntryStatus.INBOX,
+                        imagePath = null,
+                        rawTranscript = it.rawTranscript.ifBlank { LOST_IMAGE_TEXT },
+                        confidence = 0.0,
+                    )
+                }
+                if (committed) { file?.delete(); imageAttempts.remove(e.id) }
+                continue
+            }
+            aiProvider.extractFromImage(ImageExtractRequest(dataUrl, role)).fold(
+                onSuccess = { r ->
+                    val text = r.text.trim()
+                    if (text.isBlank()) {
+                        // Vision found no work — retrying would give blank again; hold it visibly.
+                        // Keep the file reference; cleanupDrainedImages owns the delete (crash-safe).
+                        processor.commitPendingImage(e.id, e.imagePath) {
+                            it.copy(status = EntryStatus.INBOX, rawTranscript = EMPTY_IMAGE_TEXT, confidence = 0.0)
+                        }
+                    } else {
+                        val committed = processor.commitPendingImage(e.id, e.imagePath) {
+                            it.copy(status = EntryStatus.RAW, rawTranscript = text)
+                        }
+                        if (committed) processor.process(e.id)
+                    }
+                    imageAttempts.remove(e.id) // settled either way
+                },
+                onFailure = {
+                    // Offline → just a network wait; don't count it (kept queued, retried next trigger).
+                    if (connectivity.isOnline.value) {
+                        val attempts = (imageAttempts[e.id] ?: 0) + 1
+                        if (attempts >= MAX_IMAGE_ONLINE_ATTEMPTS) {
+                            // Repeatedly failed while connected — a genuinely-unreadable image the vision
+                            // model keeps rejecting. Park it visibly (INBOX) so the waiting strip clears
+                            // and the queue can't re-upload it forever; cleanup deletes the file.
+                            val committed = processor.commitPendingImage(e.id, e.imagePath) {
+                                it.copy(status = EntryStatus.INBOX, rawTranscript = UNREADABLE_IMAGE_TEXT, confidence = 0.0)
+                            }
+                            if (committed) imageAttempts.remove(e.id)
+                        } else {
+                            imageAttempts[e.id] = attempts // keep queued; try again next trigger
+                        }
+                    }
+                },
+            )
+        }
+    }
+
+    /** Twin of [cleanupDrainedClips] for the image queue. */
+    private suspend fun cleanupDrainedImages() {
+        val paths = entryDao.settledWithImage(EntryStatus.PENDING_IMAGE)
+            .mapNotNull { it.imagePath?.takeIf { p -> p.isNotBlank() } }
+            .toSet()
+        for (path in paths) {
+            runCatching { File(path).delete() }
+            processor.clearDrainedImagePath(path)
+        }
+    }
+
     companion object {
         /** App-private dir (filesDir) holding queued offline voice clips until transcription. */
         const val VOICE_QUEUE_DIR = "voice_queue"
 
+        /** App-private dir (filesDir) holding queued offline image scans until they're read. */
+        const val IMAGE_QUEUE_DIR = "image_queue"
+
         /** Orphan-adoption grace period — must exceed any plausible queue-insert latency. */
         private const val ADOPT_AGE_MS = 2 * 60 * 1000L
+
+        /** How many times an image may fail to be read WHILE ONLINE before it's parked in the Inbox
+         *  instead of re-uploaded forever (a genuinely-unreadable scan the vision model keeps rejecting). */
+        private const val MAX_IMAGE_ONLINE_ATTEMPTS = 3
 
         private const val LOST_NOTE_TEXT = "Voice note — the audio clip couldn't be recovered."
         private const val EMPTY_NOTE_TEXT = "Voice note — nothing was heard in the recording."
         private const val UNTRANSCRIBABLE_NOTE_TEXT =
             "Voice note — the clip couldn't be transcribed (unreadable or too long)."
+        private const val LOST_IMAGE_TEXT = "Scanned image — the image couldn't be recovered."
+        private const val EMPTY_IMAGE_TEXT = "Scanned image — no work content was found in it."
+        private const val UNREADABLE_IMAGE_TEXT =
+            "Scanned image — it couldn't be read. Try scanning it again."
     }
 }

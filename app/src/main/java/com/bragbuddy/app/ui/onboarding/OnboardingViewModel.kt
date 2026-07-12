@@ -4,13 +4,18 @@ import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bragbuddy.app.data.drive.DriveBackupManager
+import com.bragbuddy.app.data.entry.EntryRepository
 import com.bragbuddy.app.data.legal.PrivacyPolicy
+import com.bragbuddy.app.data.local.EntryStatus
+import com.bragbuddy.app.data.local.INBOX_PLACEMENT
 import com.bragbuddy.app.data.prefs.SettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -31,6 +36,7 @@ import javax.inject.Inject
 class OnboardingViewModel @Inject constructor(
     private val settings: SettingsStore,
     private val drive: DriveBackupManager,
+    private val repository: EntryRepository,
 ) : ViewModel() {
 
     private val _finished = MutableStateFlow(false)
@@ -103,6 +109,51 @@ class OnboardingViewModel @Inject constructor(
             settings.setDriveAutoBackup(false)
         }
     }
+
+    // ---- Aha rehearsal (M2 · final step) ----
+
+    /** The made-real "YOUR RECORD · READY" beat: log one real win, watch it file live. */
+    sealed interface RehearsalUi {
+        /** Waiting for the user to log their first win. */
+        data object Prompt : RehearsalUi
+        /** Captured — the categorizer is filing it. */
+        data object Filing : RehearsalUi
+        /** Filed into a real goal area (managed AI live) — the made-real card. */
+        data class Ready(val bullet: String, val goalArea: String?) : RehearsalUi
+        /** Saved but not yet filed into a category (no AI configured / low confidence). Still kept —
+         *  it files itself once AI is set up. Honest graceful-degrade for the pre-proxy state. */
+        data class Saved(val bullet: String) : RehearsalUi
+    }
+
+    /** Highest entry id that existed when the rehearsal step opened; any newer row is "the first win".
+     *  Null = the step hasn't begun observing yet (so an unrelated background row can't trigger it). */
+    private val rehearsalBaseline = MutableStateFlow<Long?>(null)
+
+    /** Snapshot the baseline when the rehearsal step opens. Idempotent (a recomposition can't re-arm it). */
+    fun beginRehearsal() {
+        if (rehearsalBaseline.value != null) return
+        viewModelScope.launch {
+            rehearsalBaseline.value = repository.observeAll().first().maxOfOrNull { it.id } ?: 0L
+        }
+    }
+
+    val rehearsal: StateFlow<RehearsalUi> = combine(
+        repository.observeAll(), rehearsalBaseline,
+    ) { entries, baseline ->
+        if (baseline == null) return@combine RehearsalUi.Prompt
+        val fresh = entries.filter { it.id > baseline }.maxByOrNull { it.id }
+            ?: return@combine RehearsalUi.Prompt
+        val text = fresh.bullet?.takeIf { it.isNotBlank() } ?: fresh.rawTranscript
+        when (fresh.status) {
+            EntryStatus.RAW, EntryStatus.PENDING_AUDIO, EntryStatus.PENDING_IMAGE -> RehearsalUi.Filing
+            EntryStatus.PROCESSED -> RehearsalUi.Ready(
+                bullet = text,
+                goalArea = fresh.goalCategory?.trim()
+                    ?.takeIf { it.isNotEmpty() && !it.equals(INBOX_PLACEMENT, ignoreCase = true) },
+            )
+            EntryStatus.INBOX, EntryStatus.FAILED -> RehearsalUi.Saved(text)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RehearsalUi.Prompt)
 
     // ---- Standard steps ----
 

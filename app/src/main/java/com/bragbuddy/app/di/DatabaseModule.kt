@@ -24,6 +24,7 @@ object DatabaseModule {
                 BragBuddyDatabase.MIGRATION_1_2,
                 BragBuddyDatabase.MIGRATION_2_3,
                 BragBuddyDatabase.MIGRATION_3_4,
+                BragBuddyDatabase.MIGRATION_4_5,
             )
             .build()
 

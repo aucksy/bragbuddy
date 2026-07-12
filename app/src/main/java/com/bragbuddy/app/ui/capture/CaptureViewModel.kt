@@ -121,6 +121,9 @@ class CaptureViewModel @Inject constructor(
     private var didSave = false
     private var lastAudio: File? = null
     private var numberAudio: File? = null
+    /** The last decoded image `data:` URL while a scan is being read — held so a dismiss MID-READ can
+     *  back it up in [onCleared] (voice-parity). Nulled the moment the read finishes or is queued. */
+    private var lastImageDataUrl: String? = null
     private var savedText = "" // the just-saved text, so an added number appends to it (typed path)
     // True once the user has folded an impact/number follow-up into this take → file it as ONE merged
     // bullet (combine mode), not a normal split, so the AI rephrases both together and dedupes repeats.
@@ -231,27 +234,42 @@ class CaptureViewModel @Inject constructor(
             it.copy(mode = CaptureMode.IMAGE, imageThumb = uri, phase = VoicePhase.TRANSCRIBING,
                 error = null, needsKey = false, reviewText = "", aiNudgeQuestion = null)
         }
+        lastImageDataUrl = null
         imageJob = viewModelScope.launch {
             val s = settings.settings.first()
-            if (s.groqApiKey.isBlank()) {
+            // Gate on cloudTranscription (proxy-aware: a BYOK key OR the managed relay), not the raw
+            // key — so managed-mode keyless installs can still scan once the proxy is deployed.
+            if (!s.cloudTranscription) {
                 _state.update { it.copy(phase = VoicePhase.ERROR, needsKey = true, error = "Image scanning needs your Groq key.") }
                 return@launch
             }
             val dataUrl = withContext(Dispatchers.IO) { ImageInput.toDataUrl(appContext, uri) }
             if (_state.value.mode != CaptureMode.IMAGE) return@launch // user switched away mid-read
             if (dataUrl == null) { imageFail("Couldn't read that image — try another, or type it"); return@launch }
+            // Hold the decoded image so a dismiss MID-READ can back it up in onCleared (voice parity).
+            lastImageDataUrl = dataUrl
             val result = aiProvider.extractFromImage(ImageExtractRequest(dataUrl, s.jobRole))
             if (_state.value.mode != CaptureMode.IMAGE) return@launch // switched away during the read
             result.fold(
                 onSuccess = { r ->
                     val text = r.text.trim()
+                    // The read is done — the review text now holds the content; no backup needed.
+                    lastImageDataUrl = null
                     if (text.isBlank()) imageFail("I couldn't find any work in that image — try another, or type it")
                     else enterReview(text)
                 },
                 onFailure = {
+                    // Transport failure (offline / service unreachable) on a FRESH scan — the image
+                    // decoded fine (dataUrl != null), so it must never be lost (M2 offline image
+                    // queue, parity with voice): queue the compressed JPEG and let OfflineRecovery read
+                    // + file it when the network returns. A redo keeps the error state (its original
+                    // entry is already safe).
                     val offline = !connectivity.isOnline.value
-                    imageFail(if (offline) "You're offline — connect and try again, or type it"
-                              else it.message ?: "Couldn't read the image — try again, or type it")
+                    when {
+                        replaceId == null && offline -> queueImageForLater(dataUrl)
+                        offline -> imageFail("You're offline — your original entry is safe. Try again when you're connected.")
+                        else -> imageFail(it.message ?: "Couldn't read the image — try again, or type it")
+                    }
                 },
             )
         }
@@ -259,6 +277,33 @@ class CaptureViewModel @Inject constructor(
 
     private fun imageFail(message: String) {
         _state.update { it.copy(phase = VoicePhase.ERROR, error = message, needsKey = false) }
+    }
+
+    /**
+     * Keep an offline image scan instead of losing it: write the already-compressed JPEG into the
+     * durable image-note queue and store a PENDING_IMAGE row. [OfflineRecovery] reads + files it the
+     * moment the network allows. Mirrors [queueForLater] for voice; never blocks or deletes anything.
+     */
+    private fun queueImageForLater(dataUrl: String) {
+        if (didSave) return
+        val queued = runCatching {
+            val dir = File(appContext.filesDir, OfflineRecovery.IMAGE_QUEUE_DIR).apply { mkdirs() }
+            val dest = File(dir, "img_" + java.util.UUID.randomUUID().toString() + ".jpg")
+            if (ImageInput.dataUrlToFile(dataUrl, dest)) dest else null
+        }.getOrNull()
+        if (queued == null) {
+            imageFail("Couldn't save the scan — try again, or type it")
+            return
+        }
+        didSave = true
+        submitting = false
+        lastImageDataUrl = null
+        // Sequenced AFTER the row insert commits (both on the app scope) so an immediately-online
+        // recovery pass can actually see the new row.
+        entries.queueImageNote(queued.absolutePath, anchorProject) {
+            if (connectivity.isOnline.value) recovery.kick()
+        }
+        _state.update { it.copy(queuedOffline = true, error = null, needsKey = false) }
     }
 
     /** The image error state's "Try again" — re-read the same picked image, or (if none was picked,
@@ -283,7 +328,8 @@ class CaptureViewModel @Inject constructor(
         impactAdded = false
         nudgeJob?.cancel() // a fresh take invalidates any prior take's coach question
         viewModelScope.launch {
-            if (settings.settings.first().groqApiKey.isBlank()) {
+            // Gate on cloudTranscription (proxy-aware) so managed-mode keyless installs can record too.
+            if (!settings.settings.first().cloudTranscription) {
                 _state.update {
                     it.copy(phase = VoicePhase.ERROR, needsKey = true, error = "Voice needs your transcription key.")
                 }
@@ -666,6 +712,13 @@ class CaptureViewModel @Inject constructor(
         val queueOnDismiss = !didSave && replaceId == null && audio != null && audio.exists() &&
             (phase == VoicePhase.TRANSCRIBING || (phase == VoicePhase.ERROR && _state.value.canSaveForLater))
         if (queueOnDismiss && audio != null) queueForLater(audio)
+        // Same backstop for an image scan read that never reached review (dismissed mid-read, or a
+        // connected read that errored): the decoded JPEG is queued so the scan isn't silently lost.
+        val img = lastImageDataUrl
+        if (!didSave && replaceId == null && img != null &&
+            (phase == VoicePhase.TRANSCRIBING || phase == VoicePhase.ERROR)) {
+            queueImageForLater(img)
+        }
         runCatching { recorder.cancel() }
         // Clean up whatever wasn't queued — after a successful save/queue these are already null.
         lastAudio?.delete()

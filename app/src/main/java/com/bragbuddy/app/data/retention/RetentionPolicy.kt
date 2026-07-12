@@ -1,15 +1,14 @@
 package com.bragbuddy.app.data.retention
 
-import java.time.DayOfWeek
 import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.IsoFields
 
 /**
- * Phase 7 · pure decision logic for the three retention touches (PRD P0-1 + Design System §7):
- * the on-open "you haven't logged today" nudge, the gentle weekly catch-up, and the early preview
- * summary banner. Pure functions over plain inputs — no clock, no I/O — so every edge is
- * unit-tested ([RetentionPolicyTest]); callers pass `System.currentTimeMillis()` + the zone.
+ * Phase 7 · pure decision logic for the retention touches (PRD P0-1 + Design System §7): the on-open
+ * "you haven't logged today" nudge and the early preview summary banner. Pure functions over plain
+ * inputs — no clock, no I/O — so every edge is unit-tested ([RetentionPolicyTest]); callers pass
+ * `System.currentTimeMillis()` + the zone. ([weekKey] is retained for the weekly recap window math.)
  */
 object RetentionPolicy {
 
@@ -58,33 +57,6 @@ object RetentionPolicy {
         return lastEntryDay < today
     }
 
-    /** True inside the weekly catch-up window: Friday from [CATCHUP_START_HOUR]:00 through Sunday. */
-    fun inCatchupWindow(nowMillis: Long, zone: ZoneId): Boolean {
-        val now = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDateTime()
-        return when (now.dayOfWeek) {
-            DayOfWeek.FRIDAY -> now.hour >= CATCHUP_START_HOUR
-            DayOfWeek.SATURDAY, DayOfWeek.SUNDAY -> true
-            else -> false
-        }
-    }
-
-    /**
-     * The weekly catch-up sheet (Design §7 · "Anything bigger this week you didn't log?").
-     * Due on the first app-open inside the Fri-evening→Sunday window, at most once per ISO week
-     * ("Not this week" writes the week key). Skipped entirely for a user who has never logged.
-     */
-    fun catchupDue(
-        nowMillis: Long,
-        zone: ZoneId,
-        enabled: Boolean,
-        lastShownWeekKey: String,
-        hasAnyEntry: Boolean,
-    ): Boolean {
-        if (!enabled || !hasAnyEntry) return false
-        if (!inCatchupWindow(nowMillis, zone)) return false
-        return lastShownWeekKey != weekKey(nowMillis, zone)
-    }
-
     /**
      * The early preview banner (Design §7 · "Your summary's taking shape … From just N entries").
      * Shows once a handful of entries are filed and disappears forever after the first summary is
@@ -98,7 +70,4 @@ object RetentionPolicy {
 
     /** Entries filed before the preview banner appears (the design's "From just 5 entries"). */
     const val PREVIEW_MIN_ENTRIES = 5
-
-    /** The catch-up window opens Friday at 17:00 local. */
-    const val CATCHUP_START_HOUR = 17
 }

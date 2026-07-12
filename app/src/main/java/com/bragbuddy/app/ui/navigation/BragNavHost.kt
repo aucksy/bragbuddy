@@ -3,8 +3,10 @@ package com.bragbuddy.app.ui.navigation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -15,6 +17,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.compose.foundation.layout.Box
 import com.bragbuddy.app.ui.backup.BackupScreen
+import com.bragbuddy.app.ui.common.BragSnackbarHost
+import com.bragbuddy.app.ui.common.LocalSnackbarController
+import com.bragbuddy.app.ui.common.rememberSnackbarController
 import com.bragbuddy.app.ui.legal.PrivacyScreen
 import com.bragbuddy.app.ui.main.MainScaffold
 import com.bragbuddy.app.ui.onboarding.OnboardingScreen
@@ -43,7 +48,12 @@ fun BragNavHost(gateViewModel: RootGateViewModel = hiltViewModel()) {
     val startDestination = remember { if (resolved.showOnboarding) Routes.ONBOARDING else Routes.HOME }
     val reacceptOnly = remember { resolved.reacceptOnly }
 
-    NavHost(navController = navController, startDestination = startDestination) {
+    // M2 · one app-wide themed snackbar host (replaces scattered system toasts), available to every
+    // destination via [LocalSnackbarController] and floated above the whole nav graph.
+    val snackbar = rememberSnackbarController()
+    CompositionLocalProvider(LocalSnackbarController provides snackbar) {
+        Box(Modifier.fillMaxSize()) {
+            NavHost(navController = navController, startDestination = startDestination) {
         composable(Routes.ONBOARDING) {
             OnboardingScreen(
                 reacceptOnly = reacceptOnly,
@@ -91,6 +101,9 @@ fun BragNavHost(gateViewModel: RootGateViewModel = hiltViewModel()) {
             ),
         ) {
             PillarDetailScreen(onBack = { navController.popBackStack() })
+        }
+            }
+            BragSnackbarHost(controller = snackbar, modifier = Modifier.align(Alignment.BottomCenter))
         }
     }
 }

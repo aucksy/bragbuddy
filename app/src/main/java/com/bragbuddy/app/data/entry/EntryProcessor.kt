@@ -221,7 +221,7 @@ class EntryProcessor @Inject constructor(
      *
      * No AI re-call: the cleaned bullet / impact / metric the model produced are kept; only the placement
      * + evidence change and the row stays PROCESSED. Works on a PROCESSED / INBOX / FAILED row; skips a
-     * still-processing RAW row and an offline PENDING_AUDIO row (let those finish first). A named project
+     * still-processing RAW row and an offline PENDING_AUDIO/PENDING_IMAGE row (let those finish first). A named project
      * becomes the [anchorProject] so a later edit re-files here. A blank [goalArea] falls back to the
      * entry's current one (then "Inbox") — the sheet always sends a real category, so that's a defensive
      * floor only; keeping a real goal area is what lets the entry's evidence reach the summary rollup.
@@ -234,7 +234,8 @@ class EntryProcessor @Inject constructor(
     ) {
         mutex.withLock {
             val e = entryDao.getById(id) ?: return@withLock
-            if (e.status == EntryStatus.RAW || e.status == EntryStatus.PENDING_AUDIO) return@withLock
+            if (e.status == EntryStatus.RAW || e.status == EntryStatus.PENDING_AUDIO ||
+                e.status == EntryStatus.PENDING_IMAGE) return@withLock
             val clean = project.trim()
             val isOutside = clean.isBlank() || clean.equals(OUTSIDE_PROJECT, ignoreCase = true)
             val area = goalArea.trim().ifBlank { e.goalCategory?.takeIf { it.isNotBlank() } ?: INBOX_LABEL }
@@ -274,10 +275,10 @@ class EntryProcessor @Inject constructor(
     /**
      * Delete an entry and drop its rollup contribution (routed here from the repository so the running
      * rollup can't be left stale by a raw DAO delete). Under the lock so it can't race a re-file.
-     * A queued offline voice note's clip is deleted with its row (no orphaned audio).
+     * A queued offline voice note's clip / image scan's file is deleted with its row (no orphans).
      */
     suspend fun delete(id: Long) = mutex.withLock {
-        deleteAudioOf(entryDao.getById(id))
+        deleteQueuedFilesOf(entryDao.getById(id))
         rollupStore.remove(id)
         entryDao.deleteById(id)
     }
@@ -285,21 +286,26 @@ class EntryProcessor @Inject constructor(
     /** Bulk delete (multi-select). Drops each rollup contribution, then removes the rows. */
     suspend fun deleteMany(ids: List<Long>) = mutex.withLock {
         ids.forEach { id ->
-            deleteAudioOf(entryDao.getById(id))
+            deleteQueuedFilesOf(entryDao.getById(id))
             rollupStore.remove(id)
         }
         entryDao.deleteByIds(ids)
     }
 
-    /** Remove a queued voice note's on-device clip when its row goes away. Best-effort. */
-    private fun deleteAudioOf(entry: EntryEntity?) {
+    /** Remove a queued voice note's clip and/or image scan's file when its row goes away. Best-effort. */
+    private fun deleteQueuedFilesOf(entry: EntryEntity?) {
         entry?.audioPath?.takeIf { it.isNotBlank() }?.let { runCatching { java.io.File(it).delete() } }
+        entry?.imagePath?.takeIf { it.isNotBlank() }?.let { runCatching { java.io.File(it).delete() } }
     }
 
     /** Null out a drained voice clip's dangling path reference (offline-recovery cleanup) **under the
      *  processing mutex**, so it can't race — and be reinstated by — a concurrent full-row re-file of
      *  the same row. The file itself is deleted by the caller; this only clears the DB reference. */
     suspend fun clearDrainedClipPath(path: String) = mutex.withLock { entryDao.clearAudioPath(path) }
+
+    /** Image-queue twin of [clearDrainedClipPath] — clears a drained scan's dangling image reference
+     *  under the processing mutex. */
+    suspend fun clearDrainedImagePath(path: String) = mutex.withLock { entryDao.clearImagePath(path) }
 
     /**
      * Rebuild the running rollup from the current PROCESSED entries — the launch-time self-heal
@@ -344,6 +350,24 @@ class EntryProcessor @Inject constructor(
     ): Boolean = mutex.withLock {
         val e = entryDao.getById(id) ?: return@withLock false
         if (e.status != EntryStatus.PENDING_AUDIO || e.audioPath != expectedAudioPath) return@withLock false
+        entryDao.update(transform(e))
+        true
+    }
+
+    /**
+     * Image-queue twin of [commitPendingAudio]: commit the outcome of an offline image scan's recovery
+     * attempt with the same compare-and-swap guard — the row must still exist, still be PENDING_IMAGE,
+     * and still reference the same image file. Returns false when it was deleted/replaced meanwhile (a
+     * Drive restore re-inserts pending rows with fresh ids) so the caller keeps the file for the next
+     * pass.
+     */
+    suspend fun commitPendingImage(
+        id: Long,
+        expectedImagePath: String?,
+        transform: (EntryEntity) -> EntryEntity,
+    ): Boolean = mutex.withLock {
+        val e = entryDao.getById(id) ?: return@withLock false
+        if (e.status != EntryStatus.PENDING_IMAGE || e.imagePath != expectedImagePath) return@withLock false
         entryDao.update(transform(e))
         true
     }

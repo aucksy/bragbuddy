@@ -71,6 +71,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.ai.SummaryBehaviour
 import com.bragbuddy.app.data.ai.SummaryGoalArea
 import com.bragbuddy.app.data.framework.Framework
+import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.rollup.SummaryLength
 import com.bragbuddy.app.data.rollup.SummaryPeriod
@@ -98,6 +99,7 @@ fun SummaryScreen(
 ) {
     val palette = BragBuddyTheme.palette
     val context = LocalContext.current
+    val snackbar = LocalSnackbarController.current
     val clipboard = LocalClipboardManager.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val generating by viewModel.generating.collectAsStateWithLifecycle()
@@ -127,17 +129,17 @@ fun SummaryScreen(
 
     LaunchedEffect(message) {
         message?.let {
-            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            snackbar.show(it)
             viewModel.consumeMessage()
         }
     }
 
     fun copy(text: String, label: String) {
         if (text.isBlank()) {
-            android.widget.Toast.makeText(context, "Nothing to copy yet", android.widget.Toast.LENGTH_SHORT).show()
+            snackbar.show("Nothing to copy yet")
         } else {
             clipboard.setText(AnnotatedString(text))
-            android.widget.Toast.makeText(context, "$label — paste into Word or Docs", android.widget.Toast.LENGTH_SHORT).show()
+            snackbar.show("$label — paste into Word or Docs")
         }
     }
 
@@ -182,7 +184,7 @@ fun SummaryScreen(
                         onCopyText = { text, label -> copy(text, label) },
                         onRegenerate = {
                             if (s.isStale) viewModel.generate()
-                            else android.widget.Toast.makeText(context, "Already up to date", android.widget.Toast.LENGTH_SHORT).show()
+                            else snackbar.show("Already up to date")
                         },
                         onPromote = { area, i -> viewModel.promote(area, i) },
                         onDemote = { area, i -> viewModel.demote(area, i) },

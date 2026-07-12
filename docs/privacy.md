@@ -1,6 +1,6 @@
 # BragBuddy — Core Privacy Principles
 
-*Last updated: 12 July 2026 · Version 2*
+*Last updated: 12 July 2026 · Version 3*
 
 BragBuddy is a private, on-device work journal. Here's exactly how it treats your data — in plain
 language, and true to how the app actually works.
@@ -33,8 +33,9 @@ comfortable sharing with an AI provider.
 ### Audio and images aren't kept
 
 A voice note is transcribed and then the recording is discarded — only the text remains. A scanned image
-is read and then dropped; we don't store it. If you're offline, a voice clip may wait briefly in the
-app's private storage and is deleted as soon as it's transcribed.
+is read and then dropped; we don't store it. If you're offline, a voice clip or a scanned image may wait
+briefly in the app's own private storage so your capture isn't lost, and is deleted as soon as it's
+transcribed or read. It's never backed up and never leaves your device except to be read.
 
 ### Encrypted in transit — and honest about at rest
 

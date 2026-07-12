@@ -94,6 +94,17 @@ interface EntryDao {
     @Query("SELECT COUNT(*) FROM entries")
     fun observeCount(): Flow<Int>
 
+    /** Filed wins captured in a time window (M2 weekly recap — "N wins this week"). */
+    @Query("SELECT COUNT(*) FROM entries WHERE status = :status AND createdAt >= :start AND createdAt < :end")
+    suspend fun countByStatusBetween(status: EntryStatus, start: Long, end: Long): Int
+
+    /** Filed wins with a real metric, captured in a time window (M2 weekly recap — "M with numbers"). */
+    @Query(
+        "SELECT COUNT(*) FROM entries WHERE status = :status AND metric IS NOT NULL AND metric != '' " +
+            "AND createdAt >= :start AND createdAt < :end",
+    )
+    suspend fun countWithMetricBetween(status: EntryStatus, start: Long, end: Long): Int
+
     @Query("SELECT COUNT(*) FROM entries")
     suspend fun count(): Int
 
@@ -101,6 +112,12 @@ interface EntryDao {
      *  still-untranscribed offline voice note (PENDING_AUDIO) count as data worth backing up. */
     @Query("SELECT COUNT(*) FROM entries WHERE status != :excluded")
     suspend fun countExcluding(excluded: EntryStatus): Int
+
+    /** Count excluding several statuses — "is there real logged content?" must ignore BOTH offline
+     *  queues (PENDING_AUDIO, PENDING_IMAGE): neither is transcribed/read yet, so neither is data
+     *  worth backing up or that makes the local store "non-empty" for the restore-on-connect gate. */
+    @Query("SELECT COUNT(*) FROM entries WHERE status NOT IN (:excluded)")
+    suspend fun countExcludingAll(excluded: List<EntryStatus>): Int
 
     /** Every non-null clip path referenced by ANY row. The offline-recovery orphan sweep treats these
      *  as "owned" so a clip that already drained (its row left PENDING_AUDIO but a crash skipped the
@@ -118,6 +135,21 @@ interface EntryDao {
      *  inherited the path) once its file is gone. */
     @Query("UPDATE entries SET audioPath = NULL WHERE audioPath = :path")
     suspend fun clearAudioPath(path: String)
+
+    /** Every non-null image path referenced by ANY row — the image-queue orphan sweep's "owned" set
+     *  (mirrors [allAudioPaths] for the offline image scan). */
+    @Query("SELECT imagePath FROM entries WHERE imagePath IS NOT NULL AND imagePath != ''")
+    suspend fun allImagePaths(): List<String>
+
+    /** Rows that still reference an image but have already LEFT the queue (status != PENDING_IMAGE):
+     *  a drained scan whose file survived a crash before its delete (mirrors [settledWithAudio]). */
+    @Query("SELECT * FROM entries WHERE imagePath IS NOT NULL AND imagePath != '' AND status != :pending")
+    suspend fun settledWithImage(pending: EntryStatus): List<EntryEntity>
+
+    /** Null out an image reference from the row(s) carrying it once its file is gone (mirrors
+     *  [clearAudioPath]). */
+    @Query("UPDATE entries SET imagePath = NULL WHERE imagePath = :path")
+    suspend fun clearImagePath(path: String)
 
     /** Entries the user pinned "always include" — fed live to the Phase 5 summary ({{PINNED}}). */
     @Query("SELECT * FROM entries WHERE isPinned = 1 ORDER BY createdAt DESC")

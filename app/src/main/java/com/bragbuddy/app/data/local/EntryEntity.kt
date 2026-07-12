@@ -22,8 +22,12 @@ enum class EntrySource { VOICE, TEXT, IMAGE }
  *  - PENDING_AUDIO: an offline voice note — the clip is saved on-device ([EntryEntity.audioPath])
  *    but not yet transcribed. [OfflineRecovery] transcribes it when the network returns, moving the
  *    row to RAW (and deleting the audio). Never processed by the categorizer while in this state.
+ *  - PENDING_IMAGE: an offline image scan — the downscaled JPEG is saved on-device
+ *    ([EntryEntity.imagePath]) but not yet read by Groq vision. [OfflineRecovery] extracts its text
+ *    when the network returns, moving the row to RAW (and deleting the image). Never processed by the
+ *    categorizer while in this state.
  */
-enum class EntryStatus { RAW, PROCESSED, INBOX, FAILED, PENDING_AUDIO }
+enum class EntryStatus { RAW, PROCESSED, INBOX, FAILED, PENDING_AUDIO, PENDING_IMAGE }
 
 /**
  * The **raw log** — the immutable record of everything the user ever logged (Build Brief §
@@ -69,6 +73,14 @@ data class EntryEntity(
      * moment transcription succeeds. Never backed up; audio stays on this device. (Room v4 column.)
      */
     val audioPath: String? = null,
+
+    /**
+     * Absolute path of a saved-but-unread scanned image (status [EntryStatus.PENDING_IMAGE] only —
+     * an offline image scan queued for Groq vision). Cleared (and the file deleted) the moment the
+     * extraction succeeds. Never backed up; the image stays on this device only while offline, then is
+     * deleted after it's read — consistent with the privacy policy. (Room v5 column.)
+     */
+    val imagePath: String? = null,
 
     // ---- AI-derived (null until processed; see BragBuddy-System-Prompt PART A) ----
     /** One clean, appraisal-ready bullet. */

@@ -17,6 +17,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -27,12 +29,18 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -56,6 +64,9 @@ fun AdvancedScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val hasKey = settings.groqApiKey.isNotBlank()
     val managed = AiEndpointConfig.proxyConfigured
+    val uriHandler = LocalUriHandler.current
+    // The key is masked by default (it's a secret); a show/hide eye reveals it to verify a paste.
+    var revealKey by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = palette.bg,
@@ -125,28 +136,54 @@ fun AdvancedScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                     style = MaterialTheme.typography.bodySmall,
                     color = palette.text3,
                 )
+                if (!managed) {
+                    Spacer(Modifier.height(Spacing.s2))
+                    Text(
+                        "Open console.groq.com ↗",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = palette.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .clickable { uriHandler.openUri("https://console.groq.com/keys") }
+                            .padding(vertical = 2.dp),
+                    )
+                }
                 Spacer(Modifier.height(Spacing.s3))
-                androidx.compose.foundation.layout.Box(
+                Row(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 50.dp)
                         .clip(RoundedCornerShape(Radii.md))
                         .border(1.5.dp, palette.primary.copy(alpha = 0.45f), RoundedCornerShape(Radii.md))
                         .background(palette.surface)
-                        .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
-                    contentAlignment = Alignment.CenterStart,
+                        .padding(start = Spacing.s4, end = Spacing.s2, top = Spacing.s3, bottom = Spacing.s3),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (settings.groqApiKey.isEmpty()) {
-                        Text("Paste your Groq key (gsk_…)", style = MaterialTheme.typography.bodyMedium, color = palette.text3)
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        if (settings.groqApiKey.isEmpty()) {
+                            Text("Paste your Groq key (gsk_…)", style = MaterialTheme.typography.bodyMedium, color = palette.text3)
+                        }
+                        BasicTextField(
+                            value = settings.groqApiKey,
+                            onValueChange = { viewModel.setGroqApiKey(it) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            textStyle = LocalTextStyle.current.merge(TextStyle(color = palette.text1, fontSize = 14.sp)),
+                            cursorBrush = SolidColor(palette.primary),
+                            // Masked by default so the secret isn't shoulder-surfable; the eye reveals it.
+                            visualTransformation = if (revealKey) VisualTransformation.None else PasswordVisualTransformation(),
+                        )
                     }
-                    BasicTextField(
-                        value = settings.groqApiKey,
-                        onValueChange = { viewModel.setGroqApiKey(it) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = LocalTextStyle.current.merge(TextStyle(color = palette.text1, fontSize = 14.sp)),
-                        cursorBrush = SolidColor(palette.primary),
-                    )
+                    if (hasKey) {
+                        IconButton(onClick = { revealKey = !revealKey }) {
+                            Icon(
+                                if (revealKey) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                if (revealKey) "Hide key" else "Show key",
+                                tint = palette.text3,
+                            )
+                        }
+                    }
                 }
                 if (hasKey) {
                     Spacer(Modifier.height(Spacing.s3))

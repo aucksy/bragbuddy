@@ -37,11 +37,13 @@ class MainActivity : ComponentActivity() {
         // to pop over the Welcome screen on a fresh install. It's now asked once via a rationale popup
         // on first Home (Phase 3 · NotificationPrimer / NotificationPrimerSheet in the main shell).
 
-        // Keep the reminder in sync with the saved settings on every launch.
+        // Keep the daily reminder + weekly recap alarms in sync with saved settings on every launch.
         lifecycleScope.launch {
             val s = settingsStore.settings.first()
             if (s.reminderEnabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute)
             else reminderScheduler.cancel()
+            if (s.weeklyRecapEnabled) reminderScheduler.scheduleWeekly()
+            else reminderScheduler.cancelWeekly()
         }
 
         // Categorize anything left RAW by an interrupted run (never lose an entry).

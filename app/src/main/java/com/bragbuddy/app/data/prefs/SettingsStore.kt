@@ -64,10 +64,9 @@ data class AppSettings(
     /** Epoch millis of the last successful Drive backup (0 = never). Drives the health card. */
     val driveLastBackupAt: Long = 0L,
     // ---- Phase 7 · retention + reliability ----
-    /** The gentle weekly catch-up sheet (Design §7). Opt-out; default on. */
-    val catchupEnabled: Boolean = true,
-    /** ISO-week key (e.g. "2026-W27") the catch-up last showed for — max once per week. */
-    val catchupLastShownWeek: String = "",
+    /** The gentle weekly recap NOTIFICATION (M2 — replaced the in-app catch-up sheet). Opt-out;
+     *  default on. (Persisted under the legacy "catchup_enabled" key so the old opt-out carries over.) */
+    val weeklyRecapEnabled: Boolean = true,
     /** Day key (e.g. "2026-07-04") the on-open daily nudge was dismissed for (one day only). */
     val dailyNudgeDismissedDay: String = "",
     /** The week-1 early-preview summary banner was dismissed (it also hides forever after the
@@ -139,8 +138,7 @@ class SettingsStore @Inject constructor(
             reviewYearStartMonth = (p[KEY_REVIEW_YEAR_START] ?: 1).coerceIn(1, 12),
             driveAutoBackup = p[KEY_DRIVE_AUTO_BACKUP] ?: true,
             driveLastBackupAt = p[KEY_DRIVE_LAST_BACKUP_AT] ?: 0L,
-            catchupEnabled = p[KEY_CATCHUP_ENABLED] ?: true,
-            catchupLastShownWeek = p[KEY_CATCHUP_LAST_WEEK] ?: "",
+            weeklyRecapEnabled = p[KEY_WEEKLY_RECAP_ENABLED] ?: true,
             dailyNudgeDismissedDay = p[KEY_NUDGE_DISMISSED_DAY] ?: "",
             previewBannerDismissed = p[KEY_PREVIEW_DISMISSED] ?: false,
             oemAutostartDone = p[KEY_OEM_AUTOSTART_DONE] ?: false,
@@ -216,11 +214,8 @@ class SettingsStore @Inject constructor(
     suspend fun setDriveLastBackupAt(millis: Long) =
         store.edit { it[KEY_DRIVE_LAST_BACKUP_AT] = millis }
 
-    suspend fun setCatchupEnabled(enabled: Boolean) =
-        store.edit { it[KEY_CATCHUP_ENABLED] = enabled }
-
-    suspend fun setCatchupLastShownWeek(weekKey: String) =
-        store.edit { it[KEY_CATCHUP_LAST_WEEK] = weekKey }
+    suspend fun setWeeklyRecapEnabled(enabled: Boolean) =
+        store.edit { it[KEY_WEEKLY_RECAP_ENABLED] = enabled }
 
     suspend fun setDailyNudgeDismissedDay(dayKey: String) =
         store.edit { it[KEY_NUDGE_DISMISSED_DAY] = dayKey }
@@ -288,8 +283,8 @@ class SettingsStore @Inject constructor(
         val KEY_REVIEW_YEAR_START = intPreferencesKey("review_year_start_month")
         val KEY_DRIVE_AUTO_BACKUP = booleanPreferencesKey("drive_auto_backup")
         val KEY_DRIVE_LAST_BACKUP_AT = longPreferencesKey("drive_last_backup_at")
-        val KEY_CATCHUP_ENABLED = booleanPreferencesKey("catchup_enabled")
-        val KEY_CATCHUP_LAST_WEEK = stringPreferencesKey("catchup_last_shown_week")
+        // Persisted under the legacy "catchup_enabled" key so an existing opt-out carries over to the recap.
+        val KEY_WEEKLY_RECAP_ENABLED = booleanPreferencesKey("catchup_enabled")
         val KEY_NUDGE_DISMISSED_DAY = stringPreferencesKey("daily_nudge_dismissed_day")
         val KEY_PREVIEW_DISMISSED = booleanPreferencesKey("preview_banner_dismissed")
         val KEY_OEM_AUTOSTART_DONE = booleanPreferencesKey("oem_autostart_done")

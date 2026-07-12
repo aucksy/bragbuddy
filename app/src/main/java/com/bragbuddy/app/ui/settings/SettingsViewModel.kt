@@ -87,7 +87,10 @@ class SettingsViewModel @Inject constructor(
     fun setDefaultCaptureMethod(method: DefaultCaptureMethod) =
         viewModelScope.launch { settingsStore.setDefaultCaptureMethod(method) }
 
-    fun setCatchupEnabled(enabled: Boolean) = viewModelScope.launch { settingsStore.setCatchupEnabled(enabled) }
+    fun setWeeklyRecapEnabled(enabled: Boolean) = viewModelScope.launch {
+        settingsStore.setWeeklyRecapEnabled(enabled)
+        if (enabled) reminderScheduler.scheduleWeekly() else reminderScheduler.cancelWeekly()
+    }
 
     // ---------------- Theme (Phase 2 · device-local appearance) ----------------
 

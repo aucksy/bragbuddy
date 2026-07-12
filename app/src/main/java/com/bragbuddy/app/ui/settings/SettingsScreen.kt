@@ -215,20 +215,20 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(Spacing.s4))
 
-            // Weekly catch-up — the gentle Design §7 check-in; opt-out.
+            // Weekly recap — a quiet Sunday summary notification of the week's wins (M2); opt-out.
             Card(palette) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Weekly catch-up", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                        Text("Weekly recap", style = MaterialTheme.typography.titleMedium, color = palette.text1)
                         Text(
-                            "A soft weekend check-in: anything bigger this week you didn't log?",
+                            "A quiet Sunday summary of the wins you logged this week.",
                             style = MaterialTheme.typography.bodySmall,
                             color = palette.text3,
                         )
                     }
                     Switch(
-                        checked = settings.catchupEnabled,
-                        onCheckedChange = { viewModel.setCatchupEnabled(it) },
+                        checked = settings.weeklyRecapEnabled,
+                        onCheckedChange = { viewModel.setWeeklyRecapEnabled(it) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = palette.primary,

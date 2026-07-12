@@ -82,6 +82,29 @@ class EntryRepository @Inject constructor(
         }
     }
 
+    /**
+     * Queue an **offline image scan** (M2): the downscaled JPEG at [imagePath] is saved but couldn't
+     * be read by Groq vision (no network / transport failure). Stores a PENDING_IMAGE row so nothing
+     * scanned is lost; [OfflineRecovery] reads + files it when the network returns. Fire-and-forget
+     * (safe from onCleared). [onQueued] runs after the insert commits, so an immediate recovery kick
+     * can actually see the row. Mirrors [queueVoiceNote].
+     */
+    fun queueImageNote(imagePath: String, anchorProject: String? = null, onQueued: () -> Unit = {}) {
+        appScope.launch {
+            entryDao.insert(
+                EntryEntity(
+                    createdAt = System.currentTimeMillis(),
+                    source = EntrySource.IMAGE,
+                    status = EntryStatus.PENDING_IMAGE,
+                    rawTranscript = "",
+                    anchorProject = anchorProject?.takeIf { it.isNotBlank() },
+                    imagePath = imagePath,
+                ),
+            )
+            onQueued()
+        }
+    }
+
     /** Catch any entries left RAW by an interrupted run (called on launch). */
     fun processPending() {
         appScope.launch { processor.processPending() }

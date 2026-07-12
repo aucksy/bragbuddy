@@ -84,38 +84,8 @@ class RetentionPolicyTest {
         assertThat(nudge(now = at(2026, 7, 5, 19), dismissedDay = "2026-07-04")).isTrue()
     }
 
-    // ---------------- weekly catch-up ----------------
-
-    private fun catchup(
-        now: Long,
-        enabled: Boolean = true,
-        lastShownWeek: String = "",
-        hasAnyEntry: Boolean = true,
-    ) = RetentionPolicy.catchupDue(now, zone, enabled, lastShownWeek, hasAnyEntry)
-
-    @Test
-    fun `window opens Friday 17-00 and spans the weekend`() {
-        assertThat(catchup(at(2026, 7, 3, 16, 59))).isFalse() // Friday just before
-        assertThat(catchup(at(2026, 7, 3, 17, 0))).isTrue() // Friday 5pm
-        assertThat(catchup(at(2026, 7, 4, 9))).isTrue() // Saturday morning
-        assertThat(catchup(at(2026, 7, 5, 23, 59))).isTrue() // Sunday night
-        assertThat(catchup(at(2026, 7, 6, 0, 1))).isFalse() // Monday
-        assertThat(catchup(at(2026, 7, 2, 19))).isFalse() // Thursday evening
-    }
-
-    @Test
-    fun `shows at most once per ISO week`() {
-        val saturday = at(2026, 7, 4, 10)
-        assertThat(catchup(saturday, lastShownWeek = "2026-W27")).isFalse() // already shown this week
-        assertThat(catchup(saturday, lastShownWeek = "2026-W26")).isTrue() // last week's stamp
-    }
-
-    @Test
-    fun `respects the opt-out and skips a user who never logged`() {
-        val saturday = at(2026, 7, 4, 10)
-        assertThat(catchup(saturday, enabled = false)).isFalse()
-        assertThat(catchup(saturday, hasAnyEntry = false)).isFalse()
-    }
+    // (The weekly catch-up sheet + its RetentionPolicy.catchupDue window were retired in M2 in favour
+    //  of the weekly recap notification; those tests were removed with the function.)
 
     // ---------------- early preview banner ----------------
 

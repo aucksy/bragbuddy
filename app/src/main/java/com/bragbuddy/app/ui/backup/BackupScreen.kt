@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
 import com.bragbuddy.app.ui.theme.Radii
@@ -66,6 +67,7 @@ fun BackupScreen(
 ) {
     val palette = BragBuddyTheme.palette
     val context = LocalContext.current
+    val snackbar = LocalSnackbarController.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val showRestore by viewModel.showRestorePrompt.collectAsStateWithLifecycle()
@@ -90,7 +92,7 @@ fun BackupScreen(
 
     LaunchedEffect(message) {
         message?.let {
-            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            snackbar.show(it)
             viewModel.consumeMessage()
         }
     }

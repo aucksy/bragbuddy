@@ -64,6 +64,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.R
 import com.bragbuddy.app.data.local.EntryEntity
+import com.bragbuddy.app.data.local.EntryStatus
+import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.common.EntryBulletRow
 import com.bragbuddy.app.ui.entry.EntryDetailSheet
@@ -98,19 +100,19 @@ fun HomeScreen(
     val palette = BragBuddyTheme.palette
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val snackbar = LocalSnackbarController.current
+    // M2 · flash "Filed ✓ → <goal area>" the moment an entry finishes filing (RAW → PROCESSED).
+    LaunchedEffect(Unit) { viewModel.filedConfirmation.collect { snackbar.show(it) } }
     val doc by viewModel.doc.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val framework by viewModel.framework.collectAsStateWithLifecycle()
     val showRolePrompt by viewModel.showRolePrompt.collectAsStateWithLifecycle()
-    val showDailyNudge by viewModel.showDailyNudge.collectAsStateWithLifecycle()
-    val previewBannerCount by viewModel.previewBannerCount.collectAsStateWithLifecycle()
-    val showReliabilityCard by viewModel.showReliabilityCard.collectAsStateWithLifecycle()
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
-    // Phase 4 · "Add impact" card + sheet.
+    // M2 · the one-slot nudge queue: at most ONE dismissible card, resolved by priority in the VM.
+    val activeNudge by viewModel.activeNudge.collectAsStateWithLifecycle()
+    // Phase 4 · "Add impact" card content (the card itself is rendered only when [activeNudge] == Impact).
     val impactCandidates by viewModel.impactCandidates.collectAsStateWithLifecycle()
-    val impactCardDismissed by viewModel.impactCardDismissed.collectAsStateWithLifecycle()
     val impactSuggestion by viewModel.impactSuggestion.collectAsStateWithLifecycle()
-    val showImpactCard = impactCandidates.isNotEmpty() && !impactCardDismissed
 
     // Time/system-state cards re-evaluate whenever Home comes (back) into view; the lifecycle-aware
     // collectors above also restart their upstreams on resume, so a background→foreground open
@@ -131,10 +133,10 @@ fun HomeScreen(
     fun copyAll() {
         val text = exportDocument(doc)
         if (text.isBlank()) {
-            android.widget.Toast.makeText(context, "Nothing to copy yet", android.widget.Toast.LENGTH_SHORT).show()
+            snackbar.show("Nothing to copy yet")
         } else {
             clipboard.setText(AnnotatedString(text))
-            android.widget.Toast.makeText(context, "Copied — paste into Word or Docs", android.widget.Toast.LENGTH_SHORT).show()
+            snackbar.show("Copied — paste into Word or Docs")
         }
     }
     // Collapsible sections — expanded ids; default = none (everything starts collapsed) except the
@@ -211,9 +213,19 @@ fun HomeScreen(
         }
 
         if (doc.isEmpty) {
-            // A brand-new user on a risky OEM still deserves the reminder-health warning.
-            if (showReliabilityCard) {
-                ReliabilityCard(palette, onReview = onOpenReliability, onDismiss = { viewModel.dismissReliabilityCard() })
+            // A brand-new user on a risky OEM still deserves the reminder-health warning — the only
+            // nudge that can be active with no entries (daily/impact/preview all need prior content).
+            if (activeNudge != HomeViewModel.HomeNudge.None) {
+                HomeNudgeCard(
+                    nudge = activeNudge, palette = palette, impactCandidates = impactCandidates,
+                    impactExpanded = impactExpanded, onImpactToggle = { impactExpanded = !impactExpanded },
+                    onAddImpact = { impactTarget = it }, onDismissImpact = { viewModel.dismissImpactCard() },
+                    onOpenReliability = onOpenReliability, onDismissReliability = { viewModel.dismissReliabilityCard() },
+                    onDailyAdd = { CaptureLauncher.openDefault(context) }, onDismissDaily = { viewModel.dismissDailyNudge() },
+                    previewFirstGoal = doc.goals.firstOrNull()?.pillar?.name,
+                    previewFirstBehaviour = doc.behaviours.firstOrNull()?.pillar?.name,
+                    onSeePreview = onOpenSummary, onDismissPreview = { viewModel.dismissPreviewBanner() },
+                )
                 Spacer(Modifier.height(Spacing.s3))
             }
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -224,41 +236,24 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.s4),
                 contentPadding = PaddingValues(top = Spacing.s1, bottom = contentBottomPadding + Spacing.s4),
             ) {
-                if (showReliabilityCard) {
-                    item(key = "reliability-card") {
-                        ReliabilityCard(palette, onReview = onOpenReliability, onDismiss = { viewModel.dismissReliabilityCard() })
-                    }
-                }
-                if (showImpactCard) {
-                    item(key = "impact-card") {
-                        ImpactCard(
-                            entries = impactCandidates,
-                            expanded = impactExpanded,
-                            onToggle = { impactExpanded = !impactExpanded },
-                            onAddImpact = { impactTarget = it },
-                            onDismiss = { viewModel.dismissImpactCard() },
-                            palette = palette,
+                // M2 · exactly ONE dismissible nudge card (priority-resolved in the VM), above the strips.
+                if (activeNudge != HomeViewModel.HomeNudge.None) {
+                    item(key = "nudge") {
+                        HomeNudgeCard(
+                            nudge = activeNudge, palette = palette, impactCandidates = impactCandidates,
+                            impactExpanded = impactExpanded, onImpactToggle = { impactExpanded = !impactExpanded },
+                            onAddImpact = { impactTarget = it }, onDismissImpact = { viewModel.dismissImpactCard() },
+                            onOpenReliability = onOpenReliability, onDismissReliability = { viewModel.dismissReliabilityCard() },
+                            onDailyAdd = { CaptureLauncher.openDefault(context) }, onDismissDaily = { viewModel.dismissDailyNudge() },
+                            previewFirstGoal = doc.goals.firstOrNull()?.pillar?.name,
+                            previewFirstBehaviour = doc.behaviours.firstOrNull()?.pillar?.name,
+                            onSeePreview = onOpenSummary, onDismissPreview = { viewModel.dismissPreviewBanner() },
                         )
                     }
                 }
-                if (showDailyNudge) {
-                    item(key = "daily-nudge") {
-                        DailyNudgeCard(palette, onAdd = { CaptureLauncher.openDefault(context) }, onDismiss = { viewModel.dismissDailyNudge() })
-                    }
-                }
-                previewBannerCount?.let { count ->
-                    item(key = "preview-banner") {
-                        PreviewBannerCard(
-                            entryCount = count,
-                            firstGoalName = doc.goals.firstOrNull()?.pillar?.name,
-                            firstBehaviourName = doc.behaviours.firstOrNull()?.pillar?.name,
-                            onSee = onOpenSummary,
-                            onDismiss = { viewModel.dismissPreviewBanner() },
-                        )
-                    }
-                }
-                if (doc.waitingVoice.isNotEmpty()) {
-                    item(key = "waiting-voice") { WaitingVoiceCard(doc.waitingVoice.size, isOnline, palette) }
+                // Status strips (not dismissible cards) — coexist with the single nudge above.
+                if (doc.waiting.isNotEmpty()) {
+                    item(key = "waiting") { WaitingCard(doc.waiting, isOnline, palette) }
                 }
                 if (doc.processing.isNotEmpty()) {
                     item(key = "processing") { ProcessingCard(doc.processing, palette) }
@@ -354,7 +349,7 @@ fun HomeScreen(
             suggestion = impactSuggestion,
             onAdd = { added ->
                 viewModel.addImpact(target, added)
-                android.widget.Toast.makeText(context, "Adding your impact…", android.widget.Toast.LENGTH_SHORT).show()
+                snackbar.show("Adding your impact…")
                 impactTarget = null
                 viewModel.clearImpactSuggestion()
             },
@@ -673,14 +668,63 @@ private fun ProcessingCard(processing: List<EntryEntity>, palette: BragPalette) 
     }
 }
 
+// ---------------- M2 · one-slot nudge dispatcher ----------------
+
+/** Renders the single active dismissible nudge card (priority resolved in the VM). Used from both the
+ *  empty-state branch and the document LazyColumn, so exactly one card is ever visible. */
+@Composable
+private fun HomeNudgeCard(
+    nudge: HomeViewModel.HomeNudge,
+    palette: BragPalette,
+    impactCandidates: List<EntryEntity>,
+    impactExpanded: Boolean,
+    onImpactToggle: () -> Unit,
+    onAddImpact: (EntryEntity) -> Unit,
+    onDismissImpact: () -> Unit,
+    onOpenReliability: () -> Unit,
+    onDismissReliability: () -> Unit,
+    onDailyAdd: () -> Unit,
+    onDismissDaily: () -> Unit,
+    previewFirstGoal: String?,
+    previewFirstBehaviour: String?,
+    onSeePreview: () -> Unit,
+    onDismissPreview: () -> Unit,
+) {
+    when (nudge) {
+        HomeViewModel.HomeNudge.Reliability ->
+            ReliabilityCard(palette, onReview = onOpenReliability, onDismiss = onDismissReliability)
+        HomeViewModel.HomeNudge.Daily ->
+            DailyNudgeCard(palette, onAdd = onDailyAdd, onDismiss = onDismissDaily)
+        HomeViewModel.HomeNudge.Impact ->
+            ImpactCard(
+                entries = impactCandidates, expanded = impactExpanded, onToggle = onImpactToggle,
+                onAddImpact = onAddImpact, onDismiss = onDismissImpact, palette = palette,
+            )
+        is HomeViewModel.HomeNudge.Preview ->
+            PreviewBannerCard(
+                entryCount = nudge.count, firstGoalName = previewFirstGoal,
+                firstBehaviourName = previewFirstBehaviour, onSee = onSeePreview, onDismiss = onDismissPreview,
+            )
+        HomeViewModel.HomeNudge.None -> Unit
+    }
+}
+
 // ---------------- Phase 7 · retention + reliability cards ----------------
 // (Not in the design files except the preview banner — the others are built from tokens; flagged.)
 
-/** Queued offline voice notes (PENDING_AUDIO): visible so an offline capture never disappears.
- *  Copy is connectivity-aware — "waiting for network" would mislead while the device is online
- *  (a queued clip then usually means a service/key hiccup being retried). */
+/** Queued offline captures — voice notes (PENDING_AUDIO) and image scans (PENDING_IMAGE): visible so
+ *  an offline capture never disappears. Copy is modality-aware (voice / scan / mixed) and
+ *  connectivity-aware — "waiting for network" would mislead while online (a queued item then usually
+ *  means a service/key hiccup being retried). */
 @Composable
-private fun WaitingVoiceCard(count: Int, isOnline: Boolean, palette: BragPalette) {
+private fun WaitingCard(waiting: List<EntryEntity>, isOnline: Boolean, palette: BragPalette) {
+    val count = waiting.size
+    val images = waiting.count { it.status == EntryStatus.PENDING_IMAGE }
+    val noun = when {
+        images == 0 -> "voice ${plural(count, "note")}"
+        images == count -> plural(count, "scan")
+        else -> plural(count, "capture")
+    }
     Row(
         Modifier
             .fillMaxWidth()
@@ -697,15 +741,15 @@ private fun WaitingVoiceCard(count: Int, isOnline: Boolean, palette: BragPalette
         Spacer(Modifier.size(Spacing.s3))
         Column(Modifier.weight(1f)) {
             Text(
-                if (isOnline) "$count voice ${plural(count, "note")} saved — transcribing soon"
-                else "$count voice ${plural(count, "note")} saved — waiting for network",
+                if (isOnline) "$count $noun saved — processing soon"
+                else "$count $noun saved — waiting for network",
                 style = MaterialTheme.typography.titleSmall,
                 color = palette.text1,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
                 if (isOnline) "They'll be filed automatically. If this persists, check your Groq key in Settings."
-                else "They'll be transcribed and filed automatically.",
+                else "They'll be read and filed automatically.",
                 style = MaterialTheme.typography.bodySmall,
                 color = palette.text3,
             )

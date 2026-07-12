@@ -67,6 +67,7 @@ import com.bragbuddy.app.notification.NotificationPrimer
 import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.framework.FrameworkScreen
 import com.bragbuddy.app.ui.home.HomeScreen
+import com.bragbuddy.app.ui.common.tapHaptic
 import com.bragbuddy.app.ui.inbox.InboxScreen
 import com.bragbuddy.app.ui.summary.SummaryScreen
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
@@ -97,13 +98,11 @@ fun MainScaffold(
     // consent for the one metered call). Consumed by SummaryScreen once its state is ready.
     var summaryAutoGenerate by rememberSaveable { mutableStateOf(false) }
     val inboxCount by viewModel.inboxCount.collectAsStateWithLifecycle()
-    val showCatchup by viewModel.showCatchup.collectAsStateWithLifecycle()
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val contentBottom = 74.dp + navInset
 
-    // One evaluation per shell composition = one per app open (Design §7: the weekly catch-up
-    // shows on open in its window, max once a week — never re-prompts while the app sits open).
-    LaunchedEffect(Unit) { viewModel.maybeShowCatchup() }
+    // M2: the in-app weekly catch-up SHEET is retired — its job (a weekly "log anything bigger?"
+    // nudge) is now the weekly recap NOTIFICATION, which fires even when the app isn't opened.
 
     // Phase 3 · first-run notification-rationale popup. Replaces the old naked OS dialog that raced
     // Welcome: we explain WHY on first Home, then the popup's "Allow" launches the real request.
@@ -174,18 +173,6 @@ fun MainScaffold(
             onClick = { radialOpen = !radialOpen },
         )
 
-        // The first-run notification primer takes precedence over the weekly catch-up so the two
-        // custom scrims can never stack (the primer is rare and one-time).
-        if (showCatchup && !primerVisible) {
-            CatchupSheet(
-                onAdd = {
-                    viewModel.catchupHandled()
-                    CaptureLauncher.openDefault(context)
-                },
-                onSkip = { viewModel.catchupHandled() },
-            )
-        }
-
         // Rendered last = topmost: a modal first-run ask that covers the bar + FAB until resolved.
         if (primerVisible) {
             NotificationPrimerSheet(
@@ -243,6 +230,7 @@ private fun BoxScope.CaptureFab(modifier: Modifier, navInset: androidx.compose.u
             .size(52.dp)
             .clip(RoundedCornerShape(999.dp))
             .background(palette.primary)
+            .tapHaptic()
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -318,6 +306,7 @@ private fun BoxScope.RadialOption(
                 .clip(RoundedCornerShape(999.dp))
                 .background(palette.surface)
                 .border(1.dp, palette.border, RoundedCornerShape(999.dp))
+                .tapHaptic()
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) { Icon(icon, label, tint = palette.primary, modifier = Modifier.size(22.dp)) }

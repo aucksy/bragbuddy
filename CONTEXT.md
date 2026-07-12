@@ -280,8 +280,13 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   `docs/IMPLEMENTATION-PLAN.md`** (authored by Fable 5 for Opus 4.8 — paste, don't re-write), with
   rationale in `docs/PRODUCT-ASSESSMENT.md` + `docs/AI-SYSTEM-ASSESSMENT.md`. New standing rule: **any
   prompt/model change ships eval-gated** (Phase AI-0 harness). **Phases AI-0 → AI-1 (v0.26.0
-  categorizer magic) → AI-2 (v0.27.0 summary + impact-coach) → M1 (v0.28.0 managed AI proxy) all
-  SHIPPED.** Exact next step: **Phase M2 (v0.29.0) — first-session & polish**. **M1 (v0.28.0):** an
+  categorizer magic) → AI-2 (v0.27.0 summary + impact-coach) → M1 (v0.28.0 managed AI proxy) →
+  **M2 (v0.29.0 first-session & polish)** all SHIPPED.** Exact next step: **Phase M3 (v0.30.0) — Play
+  Store + Billing + paywall/trial + metering**. **M2 (v0.29.0):** onboarding aha rehearsal · Home
+  one-slot nudge queue · finger-down haptics · themed snackbars replacing all Toasts (+ "Filed ✓ →
+  category") · weekly recap notification (replaced the in-app catch-up sheet) · full image-offline-queue
+  parity (**Room v5**, `PENDING_IMAGE`) · BYOK key mask/link + capture gates → `cloudTranscription` ·
+  **privacy v3** (re-accept). Full detail in `PROGRESS.md` `## Status: v0.29.0`. **M1 (v0.28.0):** an
   injectable `AiEndpoint` seam — BYOK key → direct-Groq, no key → BragBuddy's Cloudflare Worker relay
   (`proxy/`, holds the server-side Groq key); BYOK demoted to Settings → AI engine (Advanced); privacy
   v2 (relay disclosure, re-accept). Shipped **proxy-ready but BYOK-effective** (zero regression). **M1

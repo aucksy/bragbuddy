@@ -13,6 +13,7 @@ import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.impact.ImpactCandidates
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
+import com.bragbuddy.app.data.local.INBOX_PLACEMENT
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.net.ConnectivityMonitor
 import com.bragbuddy.app.data.prefs.SettingsStore
@@ -23,9 +24,12 @@ import com.bragbuddy.app.reminder.ReliabilityCheck
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -70,10 +74,44 @@ class HomeViewModel @Inject constructor(
         // isEmpty=false initially so the first frame (before the DB/framework emit) doesn't flash the
         // empty-state CTA for a user who actually has content; the real value arrives immediately.
         HomeDoc(
-            processing = emptyList(), waitingVoice = emptyList(), goals = emptyList(),
+            processing = emptyList(), waiting = emptyList(), goals = emptyList(),
             behaviours = emptyList(), inbox = null, isEmpty = false,
         ),
     )
+
+    /**
+     * A "Filed ✓ → <goal area>" confirmation to flash as a snackbar the moment an entry finishes
+     * filing (M2). Fires only on a genuine RAW/INBOX/FAILED/PENDING → PROCESSED transition observed
+     * during this session — the first snapshot is a silent seed (so opening the app doesn't replay
+     * every past win) and a Drive restore, which inserts rows already PROCESSED with no prior state,
+     * never triggers it.
+     */
+    private val _filedConfirmation = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val filedConfirmation: SharedFlow<String> = _filedConfirmation.asSharedFlow()
+
+    init {
+        viewModelScope.launch {
+            var prev: Map<Long, EntryStatus>? = null
+            repository.observeAll().collect { entries ->
+                val was = prev
+                if (was != null) {
+                    val filed = entries.filter { e ->
+                        val before = was[e.id]
+                        e.status == EntryStatus.PROCESSED && before != null && before != EntryStatus.PROCESSED
+                    }
+                    // A single capture flips 1 (or a few split siblings) rows to PROCESSED. A wholesale
+                    // Drive restore flips many at once (its transaction emits one snapshot) — treat that
+                    // as bulk and stay silent, so a restore never machine-guns "Filed ✓".
+                    if (filed.isNotEmpty() && filed.size <= BULK_FILE_THRESHOLD) {
+                        val cat = filed.last().goalCategory?.trim()
+                            ?.takeIf { it.isNotEmpty() && !it.equals(INBOX_PLACEMENT, ignoreCase = true) }
+                        _filedConfirmation.tryEmit(if (cat != null) "Filed ✓ → $cat" else "Filed ✓")
+                    }
+                }
+                prev = entries.associate { it.id to it.status }
+            }
+        }
+    }
 
     /** Show the gentle first-run role prompt until the role is set or the prompt is dismissed. */
     val showRolePrompt: StateFlow<Boolean> = settings.settings
@@ -142,6 +180,25 @@ class HomeViewModel @Inject constructor(
         settings.setReliabilityDismissedRisks(ReliabilityCheck.check(appContext).riskSignature)
     }
 
+    // ---------------- M2 · Home one-slot nudge queue ----------------
+
+    /**
+     * The single dismissible nudge card Home may show (the "card diet" — at most ONE, so the record
+     * starts near the top). The two auto strips (filing / waiting-offline) are status-driven and
+     * render independently; this only arbitrates the four *dismissible* cards by fixed priority:
+     * **reliability > daily nudge > impact > preview**. (The notification primer is a MainScaffold
+     * overlay that gates the reliability card, not a Home card.)
+     */
+    sealed interface HomeNudge {
+        data object None : HomeNudge
+        data object Reliability : HomeNudge
+        data object Daily : HomeNudge
+        data object Impact : HomeNudge
+        data class Preview(val count: Int) : HomeNudge
+    }
+    // `activeNudge` (the resolver) is declared AFTER the impact flows below — it references them, and a
+    // property initializer can't read a `val` declared later (it would be null at construction).
+
     /** Drives the waiting-voice strip's copy: offline → "waiting for network"; online → the honest
      *  "retrying shortly" (a queued clip while online usually means a service/key hiccup). */
     val isOnline: StateFlow<Boolean> = connectivity.isOnline
@@ -183,6 +240,23 @@ class HomeViewModel @Inject constructor(
     private val _impactCardDismissed = MutableStateFlow(false)
     val impactCardDismissed: StateFlow<Boolean> = _impactCardDismissed.asStateFlow()
     fun dismissImpactCard() { _impactCardDismissed.value = true }
+
+    /** The M2 one-slot resolver (declared here, after the impact flows it reads). Priority:
+     *  reliability > daily > impact > preview; [HomeNudge.None] when nothing qualifies. */
+    val activeNudge: StateFlow<HomeNudge> = combine(
+        showReliabilityCard,
+        showDailyNudge,
+        combine(impactCandidates, impactCardDismissed) { c, dismissed -> c.isNotEmpty() && !dismissed },
+        previewBannerCount,
+    ) { reliability, daily, impact, preview ->
+        when {
+            reliability -> HomeNudge.Reliability
+            daily -> HomeNudge.Daily
+            impact -> HomeNudge.Impact
+            preview != null -> HomeNudge.Preview(preview)
+            else -> HomeNudge.None
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeNudge.None)
 
     /** The coaching question for the entry whose "Add impact" sheet is open (null = no sheet). */
     private val _impactSuggestion = MutableStateFlow<ImpactSuggestUi?>(null)
@@ -256,5 +330,9 @@ class HomeViewModel @Inject constructor(
         /** The fallback coaching prompt when there's no key / the AI can't tailor one. Kept identical to
          *  the [StubAiProvider] wording so the experience reads the same with or without AI. */
         const val GENERIC_IMPACT_QUESTION = "What changed or improved — can you put a number on it?"
+
+        /** More than this many rows flipping to PROCESSED in one snapshot = a bulk restore, not a
+         *  live capture — suppress the "Filed ✓" confirmation for it. */
+        const val BULK_FILE_THRESHOLD = 3
     }
 }

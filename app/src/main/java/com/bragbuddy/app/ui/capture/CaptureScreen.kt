@@ -78,6 +78,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.bragbuddy.app.data.impact.ImpactCheck
 import com.bragbuddy.app.data.prefs.CaptureMode
 import com.bragbuddy.app.ui.common.rememberDiscardGuard
+import com.bragbuddy.app.ui.common.tapHaptic
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BricolageGrotesque
 import com.bragbuddy.app.ui.theme.Radii
@@ -341,6 +342,7 @@ private fun ToggleSegment(
         modifier = modifier
             .clip(RoundedCornerShape(999.dp))
             .background(if (selected) palette.surface else Color.Transparent)
+            .tapHaptic()
             .clickable(onClick = onClick)
             .padding(vertical = 9.dp),
         horizontalArrangement = Arrangement.Center,
@@ -470,6 +472,7 @@ private fun VoiceContent(
                 .size(62.dp)
                 .clip(RoundedCornerShape(999.dp))
                 .background(palette.primary)
+                .tapHaptic()
                 .clickable(onClick = onStopSubmit),
             contentAlignment = Alignment.Center,
         ) {
@@ -696,6 +699,7 @@ private fun ReviewContent(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(999.dp))
                 .background(if (canAdd) palette.primary else palette.primary.copy(alpha = 0.4f))
+                .tapHaptic(enabled = canAdd)
                 .clickable(enabled = canAdd, onClick = onConfirmAdd)
                 .padding(vertical = 14.dp),
             contentAlignment = Alignment.Center,
@@ -990,6 +994,7 @@ private fun TypeContent(
                     .size(40.dp)
                     .clip(RoundedCornerShape(999.dp))
                     .background(if (enabled) palette.primary else palette.text3.copy(alpha = 0.4f))
+                    .tapHaptic(enabled = enabled)
                     .clickable(enabled = enabled, onClick = onSubmitTyped),
                 contentAlignment = Alignment.Center,
             ) {

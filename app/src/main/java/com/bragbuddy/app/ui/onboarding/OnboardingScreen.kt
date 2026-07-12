@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.framework.FrameworkScreen
 import com.bragbuddy.app.ui.legal.PrivacyContent
 import com.bragbuddy.app.ui.role.RoleInput
@@ -57,16 +58,18 @@ import com.bragbuddy.app.ui.theme.Radii
 import com.bragbuddy.app.ui.theme.Spacing
 
 /**
- * First-run onboarding wizard: **Welcome → Privacy (hard gate) → Role → Framework**. Guided but
- * skippable — role and framework can be skipped (framework then keeps `Framework.DEFAULT`); privacy is
- * required. Adopts the Design System §2 tone (warm intro, dot progress, pill CTA, the amber "no company
+ * First-run onboarding wizard: **Welcome → Privacy (hard gate) → Recover → Role → Framework → Rehearse**.
+ * Guided but skippable — role, framework and the rehearsal can be skipped (framework then keeps
+ * `Framework.DEFAULT`); privacy is required. The final **Rehearse** step (M2) has the user log one real
+ * win and watch it file live into the framework they just built, landing on a made-real "YOUR RECORD ·
+ * READY" card — the aha moment. Adopts the Design System §2 tone (warm intro, dot progress, pill CTA, the amber "no company
  * name" reassurance) but replaces the design's AI voice-refine framework step with the real Type + Scan
  * editor ([FrameworkScreen]) per the 2026-07-07 reshape — no AI ever rewrites the framework.
  *
  * When [reacceptOnly] is true the flow collapses to just the privacy card (a material privacy-version
  * bump for an already-onboarded user): accept re-stamps the version and finishes.
  */
-private const val TOTAL_STEPS = 5
+private const val TOTAL_STEPS = 6
 
 @Composable
 fun OnboardingScreen(
@@ -105,7 +108,15 @@ fun OnboardingScreen(
             onContinue = { role -> viewModel.saveRole(role); step = 4 },
             onSkip = { viewModel.skipRole(); step = 4 },
         )
-        else -> FrameworkStep(onFinish = { viewModel.finish() })
+        4 -> FrameworkStep(onNext = { step = 5 })
+        else -> {
+            val rehearsal by viewModel.rehearsal.collectAsStateWithLifecycle()
+            RehearseStep(
+                rehearsal = rehearsal,
+                onBegin = { viewModel.beginRehearsal() },
+                onFinish = { viewModel.finish() },
+            )
+        }
     }
 }
 
@@ -289,10 +300,10 @@ private fun RoleStep(initialRole: String, onContinue: (String) -> Unit, onSkip: 
 }
 
 @Composable
-private fun FrameworkStep(onFinish: () -> Unit) {
+private fun FrameworkStep(onNext: () -> Unit) {
     val palette = BragBuddyTheme.palette
     // Hide the finish bar while a full-screen category/project editor sheet is open, so it can't be
-    // tapped through the sheet (which would finish onboarding and drop unsaved editor text). The sheet
+    // tapped through the sheet (which would advance onboarding and drop unsaved editor text). The sheet
     // then covers the whole step; the bar returns when the sheet closes.
     var editingFramework by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(palette.bg)) {
@@ -300,14 +311,14 @@ private fun FrameworkStep(onFinish: () -> Unit) {
         Box(Modifier.weight(1f)) {
             FrameworkScreen(contentBottomPadding = Spacing.s6, reportEditing = { editingFramework = it })
         }
-        // Pinned finish bar (hidden while editing).
+        // Pinned bar (hidden while editing).
         if (!editingFramework) {
             Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
                 Column(Modifier.padding(horizontal = Spacing.screen, vertical = Spacing.s3)) {
                     DotProgress(index = 4)
                     Spacer(Modifier.height(Spacing.s3))
-                    PrimaryPill("Start logging", palette, onClick = onFinish)
+                    PrimaryPill("Next", palette, onClick = onNext)
                     Spacer(Modifier.height(Spacing.s2))
                     Text(
                         "Optional — refine this now or anytime in the Framework tab. The AI never rewrites it.",
@@ -318,6 +329,149 @@ private fun FrameworkStep(onFinish: () -> Unit) {
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * The aha rehearsal (M2 · final step): log one real win → watch it file live → land on the made-real
+ * "YOUR RECORD · READY" card. Reuses the real capture activity (voice / type / scan) via [CaptureLauncher]
+ * so the first win is genuine, then observes it through [OnboardingViewModel.rehearsal]. Fully skippable.
+ * Degrades honestly when no AI is configured yet (the win is still saved; it files once AI is set up).
+ */
+@Composable
+private fun RehearseStep(
+    rehearsal: OnboardingViewModel.RehearsalUi,
+    onBegin: () -> Unit,
+    onFinish: () -> Unit,
+) {
+    val palette = BragBuddyTheme.palette
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Snapshot the baseline the moment the step opens, so only a win logged from here counts.
+    LaunchedEffect(Unit) { onBegin() }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(palette.bg)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = Spacing.screen),
+    ) {
+        Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Center) {
+            when (val r = rehearsal) {
+                is OnboardingViewModel.RehearsalUi.Ready -> {
+                    RealRecordCard(bullet = r.bullet, goalArea = r.goalArea, filed = true, palette = palette)
+                    Spacer(Modifier.height(Spacing.s5))
+                    Text("That's your record, started.", style = MaterialTheme.typography.displaySmall, color = palette.text1)
+                    Spacer(Modifier.height(Spacing.s3))
+                    Text(
+                        "Every win you log lands here, always review-ready. Do this a few seconds a day and review time takes care of itself.",
+                        style = MaterialTheme.typography.bodyLarge, color = palette.text2,
+                    )
+                }
+                is OnboardingViewModel.RehearsalUi.Saved -> {
+                    RealRecordCard(bullet = r.bullet, goalArea = null, filed = false, palette = palette)
+                    Spacer(Modifier.height(Spacing.s5))
+                    Text("Saved — your record's started.", style = MaterialTheme.typography.displaySmall, color = palette.text1)
+                    Spacer(Modifier.height(Spacing.s3))
+                    Text(
+                        "It'll file itself into a category as soon as AI is set up. Nothing you log is ever lost.",
+                        style = MaterialTheme.typography.bodyLarge, color = palette.text2,
+                    )
+                }
+                OnboardingViewModel.RehearsalUi.Filing -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp, color = palette.primary)
+                        Spacer(Modifier.size(Spacing.s3))
+                        Text("Filing your win…", style = MaterialTheme.typography.headlineLarge, color = palette.text1)
+                    }
+                    Spacer(Modifier.height(Spacing.s3))
+                    Text(
+                        "Watch it drop into your framework — this is what happens every time you log.",
+                        style = MaterialTheme.typography.bodyLarge, color = palette.text2,
+                    )
+                }
+                OnboardingViewModel.RehearsalUi.Prompt -> {
+                    Text("Try it — log your first win.", style = MaterialTheme.typography.headlineLarge, color = palette.text1)
+                    Spacer(Modifier.height(Spacing.s3))
+                    Text(
+                        "Something you did recently — big or small. Speak it, type it, or scan it, and watch BragBuddy file it into your framework.",
+                        style = MaterialTheme.typography.bodyLarge, color = palette.text2,
+                    )
+                    Spacer(Modifier.height(Spacing.s4))
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                        CaptureHintChip(Icons.Outlined.Mic, "Speak", palette)
+                        CaptureHintChip(Icons.Outlined.Keyboard, "Type", palette)
+                        CaptureHintChip(Icons.Outlined.PhotoCamera, "Scan", palette)
+                    }
+                }
+            }
+        }
+
+        DotProgress(index = 5)
+        Spacer(Modifier.height(Spacing.s4))
+        when (rehearsal) {
+            is OnboardingViewModel.RehearsalUi.Ready, is OnboardingViewModel.RehearsalUi.Saved -> {
+                PrimaryPill("Start logging", palette, onClick = onFinish)
+                Spacer(Modifier.height(Spacing.s2))
+                SecondaryText("Log another later", palette, onClick = onFinish)
+            }
+            OnboardingViewModel.RehearsalUi.Filing -> {
+                SecondaryText("Skip for now", palette, onClick = onFinish)
+            }
+            OnboardingViewModel.RehearsalUi.Prompt -> {
+                PrimaryPill("Log a win", palette, onClick = { CaptureLauncher.openChooser(context, null) })
+                Spacer(Modifier.height(Spacing.s2))
+                SecondaryText("Skip for now", palette, onClick = onFinish)
+            }
+        }
+        Spacer(Modifier.height(Spacing.s4))
+    }
+}
+
+/** The made-real "YOUR RECORD · READY" card — the WelcomeStep mock, now filled with the user's real
+ *  first win. [filed] false = the honest degraded state (saved, not yet in a category). */
+@Composable
+private fun RealRecordCard(bullet: String, goalArea: String?, filed: Boolean, palette: BragPalette) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+            .padding(Spacing.card),
+    ) {
+        Text(
+            if (filed) "YOUR RECORD · READY" else "YOUR RECORD · SAVED",
+            style = MaterialTheme.typography.labelSmall,
+            color = palette.text3,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(Spacing.s3))
+        if (filed && goalArea != null) {
+            MockPillarRow(PillarRamp[0].solid, goalArea, palette)
+            Spacer(Modifier.height(Spacing.s2))
+        }
+        Row(verticalAlignment = Alignment.Top) {
+            Text("•", style = MaterialTheme.typography.bodyLarge, color = palette.text2, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.size(Spacing.s2))
+            Text(bullet, style = MaterialTheme.typography.bodyLarge, color = palette.text1)
+        }
+        Spacer(Modifier.height(Spacing.s3))
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(palette.positiveSoft)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.CheckCircle, null, tint = palette.positive, modifier = Modifier.size(13.dp))
+            Spacer(Modifier.size(6.dp))
+            Text(
+                if (filed) "Filed & review-ready" else "Saved & safe",
+                style = MaterialTheme.typography.labelSmall, color = palette.positive, fontWeight = FontWeight.Bold,
+            )
         }
     }
 }

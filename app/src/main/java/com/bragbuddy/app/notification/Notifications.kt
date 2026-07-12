@@ -10,19 +10,30 @@ import androidx.core.app.NotificationManagerCompat
 import com.bragbuddy.app.R
 import com.bragbuddy.app.ui.capture.CaptureLauncher
 
-/** Notification channel + the daily reminder. Voice/tone per the design: warm, brief, never nagging. */
+/** Notification channels + the daily reminder and weekly recap. Voice/tone per the design: warm,
+ *  brief, never nagging. */
 object Notifications {
     const val CHANNEL_REMINDER = "daily_reminder"
+    const val CHANNEL_RECAP = "weekly_recap"
     private const val REMINDER_ID = 1001
+    private const val RECAP_ID = 1002
 
     fun ensureChannels(context: Context) {
         val mgr = context.getSystemService(NotificationManager::class.java) ?: return
-        val channel = NotificationChannel(
-            CHANNEL_REMINDER,
-            "Daily reminder",
-            NotificationManager.IMPORTANCE_DEFAULT,
-        ).apply { description = "Your once-a-day nudge to log a quick update." }
-        mgr.createNotificationChannel(channel)
+        mgr.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_REMINDER,
+                "Daily reminder",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply { description = "Your once-a-day nudge to log a quick update." },
+        )
+        mgr.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_RECAP,
+                "Weekly recap",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply { description = "A quiet Sunday summary of the wins you logged this week." },
+        )
     }
 
     /** Post the reminder. Tapping it opens the capture surface into the user's *Default capture
@@ -46,5 +57,37 @@ object Notifications {
         // On Android 13+ this is a no-op without POST_NOTIFICATIONS; that permission is requested once
         // via the first-run rationale popup on Home (see NotificationPrimer / NotificationPrimerSheet).
         runCatching { NotificationManagerCompat.from(context).notify(REMINDER_ID, notification) }
+    }
+
+    /**
+     * Post the weekly recap (M2) — celebratory, local-data-only ("This week: N wins, M with numbers").
+     * Tapping opens the app (its launcher = Home) to review. Caller decides whether to post (only when
+     * [wins] > 0 and the recap is enabled). No-op without POST_NOTIFICATIONS, like the reminder.
+     */
+    fun postWeeklyRecap(context: Context, wins: Int, withNumbers: Int) {
+        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pending = open?.let {
+            PendingIntent.getActivity(
+                context, 2, it,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        }
+        val winWord = if (wins == 1) "win" else "wins"
+        val text = if (withNumbers > 0) {
+            "$wins $winWord logged — $withNumbers with a number. Tap to review your record."
+        } else {
+            "$wins $winWord logged this week. Tap to review your record."
+        }
+        val builder = NotificationCompat.Builder(context, CHANNEL_RECAP)
+            .setSmallIcon(R.drawable.ic_stat_briefcase)
+            .setContentTitle("This week on BragBuddy")
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+        if (pending != null) builder.setContentIntent(pending)
+        runCatching { NotificationManagerCompat.from(context).notify(RECAP_ID, builder.build()) }
     }
 }

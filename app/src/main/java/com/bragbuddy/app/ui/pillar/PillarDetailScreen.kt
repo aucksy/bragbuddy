@@ -62,6 +62,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.common.EntryBulletRow
+import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.ui.entry.EntryDetailSheet
 import com.bragbuddy.app.ui.home.OUTSIDE_PROJECT_LABEL
 import com.bragbuddy.app.ui.home.exportBehaviourBlock
@@ -89,6 +90,7 @@ fun PillarDetailScreen(
     val palette = BragBuddyTheme.palette
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val snackbar = LocalSnackbarController.current
     val detail by viewModel.detail.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val framework by viewModel.framework.collectAsStateWithLifecycle()
@@ -107,10 +109,10 @@ fun PillarDetailScreen(
         }
         val hasBody = text.contains("•")
         if (!hasBody) {
-            android.widget.Toast.makeText(context, "Nothing to copy yet", android.widget.Toast.LENGTH_SHORT).show()
+            snackbar.show("Nothing to copy yet")
         } else {
             clipboard.setText(AnnotatedString(text))
-            android.widget.Toast.makeText(context, "Copied — paste into Word or Docs", android.widget.Toast.LENGTH_SHORT).show()
+            snackbar.show("Copied — paste into Word or Docs")
         }
     }
 

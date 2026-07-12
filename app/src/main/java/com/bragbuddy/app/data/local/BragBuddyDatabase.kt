@@ -12,12 +12,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *
  * v2 adds `entries.anchorProject` (the folder-tap project anchor). v3 makes the `projects` unique
  * index composite `(name, goalArea)` so the same folder name can exist under different categories.
- * v4 adds `entries.audioPath` (the offline voice-note queue, Phase 7). All migrations keep existing
- * data. exportSchema stays off (no schemaLocation ksp arg wired).
+ * v4 adds `entries.audioPath` (the offline voice-note queue, Phase 7). v5 adds `entries.imagePath`
+ * (the offline image-scan queue, M2). All migrations keep existing data. exportSchema stays off (no
+ * schemaLocation ksp arg wired).
  */
 @Database(
     entities = [EntryEntity::class, ProjectEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -52,6 +53,13 @@ abstract class BragBuddyDatabase : RoomDatabase() {
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE entries ADD COLUMN audioPath TEXT")
+            }
+        }
+
+        /** v4→v5: add the nullable `imagePath` column to `entries` (the offline image-scan queue). */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE entries ADD COLUMN imagePath TEXT")
             }
         }
     }

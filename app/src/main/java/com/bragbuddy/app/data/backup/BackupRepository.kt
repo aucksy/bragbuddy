@@ -51,14 +51,15 @@ class BackupRepository @Inject constructor(
         val s = settingsStore.settings.first()
         BackupCodec.encode(
             BackupSnapshot(
-                // A still-untranscribed offline voice note (PENDING_AUDIO) is device-bound — its
-                // clip never leaves the phone, so the row would be an empty shell on any restore.
-                // It's excluded here and re-included automatically once recovery transcribes it.
-                // audioPath is stripped: it's a transient device-local file path (a drained row can
-                // briefly still carry one before cleanup), and it must never ride into the backup JSON.
+                // A still-untranscribed offline voice note (PENDING_AUDIO) or unread image scan
+                // (PENDING_IMAGE) is device-bound — its clip/image never leaves the phone, so the row
+                // would be an empty shell on any restore. Both are excluded here and re-included
+                // automatically once recovery processes them. audio/imagePath are stripped: transient
+                // device-local file paths (a drained row can briefly still carry one before cleanup)
+                // that must never ride into the backup JSON.
                 entries = entryDao.getAllOnce()
-                    .filter { it.status != EntryStatus.PENDING_AUDIO }
-                    .map { it.copy(audioPath = null) },
+                    .filter { it.status != EntryStatus.PENDING_AUDIO && it.status != EntryStatus.PENDING_IMAGE }
+                    .map { it.copy(audioPath = null, imagePath = null) },
                 projects = projectDao.getAllOnce(),
                 pillars = frameworkStore.framework.first().pillars,
                 settings = BackupSettings(
@@ -85,14 +86,16 @@ class BackupRepository @Inject constructor(
         // failure rolls back rather than leaving the log half-wiped.
         processor.runRestore {
             db.withTransaction {
-                // A queued offline voice note only exists on THIS device (its clip is local and is
-                // never part of a backup) — carry it across the wholesale replace or the spoken
-                // words would be lost. Re-inserted with fresh ids so restored ids can't collide.
+                // A queued offline voice note / image scan only exists on THIS device (its clip/image
+                // is local and never part of a backup) — carry both across the wholesale replace or the
+                // captured words would be lost. Re-inserted with fresh ids so restored ids can't collide.
                 val pendingAudio = entryDao.listByStatus(EntryStatus.PENDING_AUDIO)
+                val pendingImage = entryDao.listByStatus(EntryStatus.PENDING_IMAGE)
                 // Replace the log + folders wholesale (ids preserved so anchors/relationships stay intact).
                 entryDao.deleteAll()
                 entryDao.insertAll(snap.entries)
                 pendingAudio.forEach { entryDao.insert(it.copy(id = 0)) }
+                pendingImage.forEach { entryDao.insert(it.copy(id = 0)) }
                 projectDao.deleteAll()
                 projectDao.insertAll(snap.projects)
             }
@@ -142,7 +145,7 @@ class BackupRepository @Inject constructor(
      *  offline voice note doesn't count — it isn't in any backup, so a reinstall-then-offline-capture
      *  must still auto-restore (and the queued row is preserved across that restore). */
     suspend fun isLocalEmpty(): Boolean = withContext(Dispatchers.IO) {
-        entryDao.countExcluding(EntryStatus.PENDING_AUDIO) == 0
+        entryDao.countExcludingAll(listOf(EntryStatus.PENDING_AUDIO, EntryStatus.PENDING_IMAGE)) == 0
     }
 
     /**
@@ -157,10 +160,11 @@ class BackupRepository @Inject constructor(
         settingsStore.settings,
     ) { entries, folders, fw, s ->
         listOf(
-            // Hash the same surface exportJson backs up — PENDING_AUDIO churn (a queued offline
-            // voice note appearing) must not trigger an upload of a byte-identical backup. audioPath is
-            // nulled so a drained row briefly toggling its transient clip path doesn't fire a re-upload.
-            entries.filter { it.status != EntryStatus.PENDING_AUDIO }.map { it.copy(audioPath = null) },
+            // Hash the same surface exportJson backs up — PENDING_AUDIO/PENDING_IMAGE churn (a queued
+            // offline capture appearing) must not trigger an upload of a byte-identical backup.
+            // audio/imagePath are nulled so a drained row briefly toggling its transient path doesn't fire.
+            entries.filter { it.status != EntryStatus.PENDING_AUDIO && it.status != EntryStatus.PENDING_IMAGE }
+                .map { it.copy(audioPath = null, imagePath = null) },
             folders, fw.pillars,
             s.reminderEnabled, s.reminderHour, s.reminderMinute, s.lastCaptureMode,
             s.jobRole, s.rolePromptDismissed, s.reviewYearStartMonth, s.defaultCaptureMethod,

@@ -73,8 +73,23 @@ current code — that is the context, not chat history.
 > all 5 privacy claims verified true in the Worker; MED/LOW hardening folded in. Detail in
 > `## Status: v0.28.0` below. **OWNER GATES (to light up managed mode): deploy the Worker + create the KV
 > namespace + `wrangler secret put GROQ_API_KEY/APP_SECRET`, then add `PROXY_BASE_URL` + `PROXY_APP_SECRET`
-> repo secrets and re-push the tag** (runbook: `proxy/README.md`). **Exact next step: Phase M2 (v0.29.0) —
-> first-session & polish** (`docs/IMPLEMENTATION-PLAN.md` · M2). Fresh chat pointed at `CONTEXT.md`.
+> repo secrets and re-push the tag** (runbook: `proxy/README.md`).
+>
+> **Phase M2 (v0.29.0) SHIPPED 2026-07-12 — first-session & polish.** Six things: (1) onboarding **aha
+> rehearsal** (a new final onboarding step: log one real win → watch it file live → land on the made-real
+> "YOUR RECORD · READY" card; fully skippable, degrades honestly when AI isn't configured yet — the win is
+> still saved); (2) Home **one-slot nudge queue** (VM-resolved `activeNudge`: at most ONE dismissible card
+> by priority reliability > daily > impact > preview, plus the two auto strips); (3) **haptics** — a shared
+> finger-down `KEYBOARD_TAP` `Modifier.tapHaptic()` on the capture FAB/radial, mode toggles, save/stop;
+> (4) **themed snackbars replace every `Toast`** app-wide (one host at the nav root via
+> `LocalSnackbarController`) + a **"Filed ✓ → <goal area>"** confirmation the moment an entry finishes
+> filing; (5) **weekly recap NOTIFICATION replaces the in-app catch-up sheet** (Sunday 18:00 exact alarm,
+> local counts only, only when wins>0); (6) quick fixes — BYOK key field **masked + reveal eye + tappable
+> console.groq.com link**, reminder default-time comment drift fixed (6 PM), and (owner-chosen) **full
+> image-offline-queue parity** (Room **v4→v5** `PENDING_IMAGE`+`imagePath`, privacy **v2→v3** re-accept).
+> Two adversarial reviews (compile clean; logic = 1 HIGH + 1 MED + 1 latent-gate + 1 LOW, ALL FIXED before
+> tag). Detail in `## Status: v0.29.0` below. **Exact next step: Phase M3 (v0.30.0) — Play Store + Billing +
+> paywall/trial + metering** (`docs/IMPLEMENTATION-PLAN.md` · M3). Fresh chat pointed at `CONTEXT.md`.
 
 ---
 
@@ -273,6 +288,88 @@ was made.** When it resumes, this is the pre-done research:
 - **Capture parity:** no iOS overlay (Apple forbids) — the notification opens the app straight into a
   minimal auto-recording screen + App Intents (Siri/Shortcuts/Action Button/Lock-Screen). Blessed in the
   PRD/Brief.
+
+---
+
+## Status: v0.29.0 — Phase M2 · First-session & polish ✅ SHIPPED (signed · tag-driven CI; compile-green + adversarially reviewed [2 agents]; **NOT a prompt phase → no eval gate**)
+
+> **Phase M2 of the subscription-launch roadmap** (`docs/IMPLEMENTATION-PLAN.md` · M2 + PRODUCT-ASSESSMENT
+> §5 items 1–6). Make the free product feel best-in-class before charging. Decisions locked with the owner
+> (AskUserQuestion 2026-07-12): **image-offline queue = store the image on-device** (true voice-parity, the
+> heavier option — so Room + privacy re-accept); **weekly recap REPLACES the in-app catch-up sheet**; aha
+> rehearsal **always offered, degrades gracefully** when AI isn't live yet (owner confirmed the managed
+> proxy will be deployed before launch, so the live-filing magic is the norm for real users — the degrade
+> only covers pre-deploy/offline edge cases).
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.29.0/BragBuddy-v0.29.0.apk` (signed by tag-driven CI; `.aab` alongside).
+
+### v0.29.0 — what was built (`versionCode 33`)
+1. **Onboarding aha rehearsal** (`ui/onboarding/`). New final step (index 5, `TOTAL_STEPS` 5→6, Recover is
+   still index 2): Welcome → Privacy → Recover → Role → Framework → **Rehearse**. `RehearseStep` launches
+   the **real** `CaptureActivity` (voice/type/scan via `CaptureLauncher.openChooser`) so the first win is
+   genuine, then `OnboardingViewModel.rehearsal` (a `combine(observeAll, baseline)`) drives Prompt →
+   Filing → **Ready** (made-real `RealRecordCard` with the real bullet + goal-area dot) / **Saved** (AI-off
+   degrade: FAILED/INBOX → "files itself once AI is set up"; never lost). Baseline = max entry id at
+   step-open, so only a win logged from here counts. Fully skippable.
+2. **Home one-slot nudge queue** (`ui/home/HomeViewModel.kt` `HomeNudge`/`activeNudge`, `HomeScreen.kt`
+   `HomeNudgeCard`). One VM `combine` resolves at most ONE dismissible card by priority
+   **reliability > daily > impact > preview** (`HomeNudge.None` otherwise); the two status strips (filing /
+   waiting) render independently. The four old separate `if`-cards collapsed to one slot in both the
+   empty-doc and the document branch. (Note: `activeNudge` is declared AFTER the impact flows it reads —
+   Kotlin init-order.)
+3. **Haptics** (`ui/common/Haptics.kt`). `Modifier.tapHaptic()` = `awaitFirstDown(requireUnconsumed=false)`
+   (never consumes → the sibling `.clickable` still fires) → `View.performHapticFeedback(KEYBOARD_TAP)`, the
+   house finger-down rule. Applied to the capture FAB + radial options (MainScaffold), the Speak/Type/Scan
+   mode toggle, the voice stop button, the review **Add**, and the typed **Save**.
+4. **Snackbars replace toasts** (`ui/common/SnackbarController.kt` + `BragNavHost`). One themed
+   `BragSnackbarHost` floated at the nav-root Box, exposed via `LocalSnackbarController` — every `Toast` in
+   Home/Pillar/Summary/Backup/CategoryEditSheet replaced (0 `Toast` left in the app). Plus a **"Filed ✓ →
+   <goal area>"** snackbar the moment an entry flips RAW/INBOX/FAILED/PENDING→PROCESSED (session-seeded so
+   opening the app doesn't replay past wins; a bulk restore is suppressed via a >3-in-one-snapshot guard).
+5. **Weekly recap notification** replaces the in-app catch-up sheet. `Notifications.postWeeklyRecap` (new
+   `weekly_recap` channel, id 1002) + `ReminderScheduler.scheduleWeekly()` (a separate exact alarm, request
+   code 4712 / action `RECAP_FIRE`, next **Sunday 18:00**, re-armed each week incl. a 0-win week) +
+   `ReminderReceiver` weekly branch (counts the last 7 days of PROCESSED wins + those with a metric via new
+   `EntryDao.countByStatusBetween`/`countWithMetricBetween`; posts **only when wins>0**). Boot/time-change
+   re-arms daily + weekly independently. Armed on launch (MainActivity) + on the Settings toggle. The
+   `catchupEnabled` setting → **`weeklyRecapEnabled`** (reuses the legacy `catchup_enabled` DataStore key so
+   the old opt-out carries over); `CatchupSheet.kt` deleted; `RetentionPolicy.catchupDue`/`inCatchupWindow`
+   + their tests removed; Settings row relabelled "Weekly recap".
+6. **Image-offline queue — full parity with voice** (owner-chosen heavier option). `EntryStatus.PENDING_IMAGE`
+   + `EntryEntity.imagePath` (**Room v4→v5**, additive `MIGRATION_4_5`); `ImageInput.compressToFile`/
+   `fileToDataUrl`/`dataUrlToFile`; `EntryRepository.queueImageNote`; `EntryProcessor.commitPendingImage`/
+   `clearDrainedImagePath` (CAS, restore-race-proof); `OfflineRecovery` adopt→drain→cleanup trio mirroring
+   the voice queue, with the image drain gated on `cloudTranscription` and a **bounded online-retry counter**
+   (parks a genuinely-unreadable scan in the Inbox after 3 online failures instead of re-uploading forever).
+   `CaptureViewModel` queues on an offline scan failure AND as an `onCleared` dismiss-mid-read backstop.
+   Backup excludes `PENDING_IMAGE` + strips `imagePath` (export/changeSignal/isLocalEmpty); pending image
+   rows carried across a restore. Home's waiting strip generalised (`HomeDoc.waitingVoice`→`waiting`, now
+   voice+image, modality-aware copy). **Privacy v2→v3** (honest disclosure: an offline scan may wait briefly
+   on-device then is deleted after it's read — re-accept; `docs/privacy.md` mirrored).
+7. **Quick fixes.** BYOK key field (`AdvancedScreen`): **masked by default** (`PasswordVisualTransformation`)
+   + a show/hide **eye** toggle + a **tappable "Open console.groq.com ↗"** link (`LocalUriHandler`).
+   `startVoice`/`onImageChosen` capture gates moved from `groqApiKey.isBlank()` → **`!cloudTranscription`**
+   (proxy-aware — managed-mode keyless installs can capture once the proxy is deployed; zero regression
+   today). Reminder "9 PM" comment drift corrected to the shipped 6 PM default.
+- **Tests:** `HomeDocTest` updated for the `waiting` rename (+ a PENDING_IMAGE case); `RetentionPolicyTest`
+  catch-up cases removed. `PromptSyncTest`/AI eval untouched (not a prompt phase).
+- **REVIEW (2 independent adversarial agents — Kotlin compile; logic/UX):** compile = **no breakers** (all
+  40+ files, migration chain 1→5, Hilt graph, exhaustive `when`s, Compose-BOM API availability, removed-symbol
+  sweep all verified). Logic = **1 HIGH + 1 MED + 1 latent-gate + 1 LOW, all fixed before tag:** (HIGH) the
+  image drain re-uploaded a permanently-failing scan forever + wedged the waiting strip → bounded online-retry
+  counter parks it in the Inbox; (MED) an image dismissed mid-read wasn't queued like voice → `onCleared`
+  backstop added; (latent) capture gated on the raw key not `cloudTranscription` → would block managed-mode
+  keyless capture at launch → fixed; (LOW) `filedConfirmation` could flash on a restore-over-existing-data →
+  bulk-snapshot guard. **Room stays v5**; DataStore flags (theme/recap) not backed up.
+- **Known follow-ups (→ M3):** wire `recordTranscriptionSeconds` + categorize metering; rework the
+  Play-restricted permissions (`USE_EXACT_ALARM`/battery); the image-drain retry cap is in-memory
+  (process-scoped) — fine for M2. Snackbar host is global (floats over onboarding CTAs if one ever posts
+  during onboarding — none do today).
+
+### Fresh chat → Phase M3
+Fresh chat pointed at `CONTEXT.md` → **Phase M3 (v0.30.0) — Play Store + Billing + paywall/trial + metering
+enforcement** (`docs/IMPLEMENTATION-PLAN.md` · M3). **Carried owner gates:** deploy the M1 proxy to light up
+managed mode; Drive OAuth client + release SHA-1 on `gmailapi-491903` (reported created 2026-07-10).
 
 ---
 
