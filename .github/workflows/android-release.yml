@@ -83,6 +83,10 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          # Phase M1 managed proxy — baked into BuildConfig. Absent → BYOK-only build (no regression);
+          # add both once the Cloudflare Worker (proxy/) is deployed to flip keyless installs to managed.
+          PROXY_BASE_URL: ${{ secrets.PROXY_BASE_URL }}
+          PROXY_APP_SECRET: ${{ secrets.PROXY_APP_SECRET }}
         run: |
           if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
             ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace

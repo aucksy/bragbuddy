@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.bragbuddy.app.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -99,13 +100,22 @@ data class AppSettings(
     val autoLightHour: Int = 7,
     val autoLightMinute: Int = 0,
 ) {
-    /** Voice transcription is cloud Whisper (Groq) — the only engine. It runs when a key is set;
-     *  without a key, voice prompts the user to add one (on-device STT was removed — too inaccurate). */
-    val cloudTranscription: Boolean get() = groqApiKey.isNotBlank()
+    /** Voice transcription is cloud Whisper (Groq) — the only engine. It runs when a BYOK key is set
+     *  OR the managed proxy is configured (Phase M1); without either, voice prompts the user to add a
+     *  key (on-device STT was removed — too inaccurate). */
+    val cloudTranscription: Boolean get() = groqApiKey.isNotBlank() || managedAiAvailable
 
-    /** AI categorization only runs when the Groq key is present; otherwise entries wait in the Inbox. */
-    val aiEnabled: Boolean get() = groqApiKey.isNotBlank()
+    /** AI categorization runs when a BYOK key is present OR the managed proxy is configured (Phase M1);
+     *  otherwise entries wait in the Inbox. */
+    val aiEnabled: Boolean get() = groqApiKey.isNotBlank() || managedAiAvailable
 }
+
+/** True once the owner has baked the managed-proxy URL (`PROXY_BASE_URL` secret → [BuildConfig]).
+ *  Empty in local/debug builds and until the owner deploys → keyless installs behave exactly as before.
+ *  Kept here (reading [BuildConfig] directly, not `data.ai`) so `prefs` needn't depend on `data.ai`.
+ *  Normalised (trim + strip trailing slashes) identically to `AiEndpointConfig.proxyBaseUrl` so
+ *  `aiEnabled` can never disagree with the actual route usability. */
+private val managedAiAvailable: Boolean get() = BuildConfig.PROXY_BASE_URL.trim().trimEnd('/').isNotEmpty()
 
 @Singleton
 class SettingsStore @Inject constructor(
@@ -164,6 +174,27 @@ class SettingsStore @Inject constructor(
 
     suspend fun setGroqApiKey(key: String) =
         store.edit { it[KEY_GROQ_KEY] = key.trim() }
+
+    /**
+     * Phase M1 · the per-install anonymous token for the managed proxy — a random UUID minted once and
+     * persisted, used only to key per-device quotas at the relay (never tied to identity). Deliberately
+     * NOT part of [AppSettings] / [com.bragbuddy.app.data.backup.BackupSettings], so it is never backed
+     * up or restored — a restored device mints its own. Read fast-path first; only writes (under the
+     * atomic DataStore edit) if still unset, so concurrent callers converge on one value.
+     */
+    suspend fun installId(): String {
+        store.data.map { it[KEY_INSTALL_ID] }.first()?.takeIf { it.isNotBlank() }?.let { return it }
+        var result = ""
+        store.edit { prefs ->
+            val current = prefs[KEY_INSTALL_ID]
+            result = if (current.isNullOrBlank()) {
+                java.util.UUID.randomUUID().toString().also { prefs[KEY_INSTALL_ID] = it }
+            } else {
+                current
+            }
+        }
+        return result
+    }
 
     /** Setting the role also marks the first-run prompt handled. */
     suspend fun setJobRole(role: String) =
@@ -250,6 +281,7 @@ class SettingsStore @Inject constructor(
         val KEY_LAST_MODE = stringPreferencesKey("last_capture_mode")
         val KEY_DEFAULT_CAPTURE = stringPreferencesKey("default_capture_method")
         val KEY_GROQ_KEY = stringPreferencesKey("groq_api_key")
+        val KEY_INSTALL_ID = stringPreferencesKey("install_id")
         val KEY_JOB_ROLE = stringPreferencesKey("job_role")
         val KEY_ROLE_PROMPT_DISMISSED = booleanPreferencesKey("role_prompt_dismissed")
         val KEY_REVIEW_YEAR_START = intPreferencesKey("review_year_start_month")

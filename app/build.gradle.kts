@@ -32,6 +32,13 @@ val releaseKeyAlias: String = keystorePropOnly("keyAlias") ?: "bragbuddy"
 val releaseKeyPassword: String? = keystorePropOnly("keyPassword") ?: releaseStorePassword
 val hasReleaseSigning: Boolean = releaseStoreFilePath != null && releaseStorePassword != null
 
+// Phase M1 · managed-proxy config, baked in from CI secrets (empty everywhere until the owner deploys
+// the relay + adds these → the app stays BYOK-only, i.e. today's behaviour). Escaped so a `"`/`\` in a
+// value can't break the generated BuildConfig string literal.
+fun bcQuote(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+val proxyBaseUrlField: String = bcQuote(System.getenv("PROXY_BASE_URL")?.trim().orEmpty())
+val proxyAppSecretField: String = bcQuote(System.getenv("PROXY_APP_SECRET")?.trim().orEmpty())
+
 android {
     namespace = "com.bragbuddy.app"
     compileSdk = 35
@@ -40,11 +47,16 @@ android {
         applicationId = "com.bragbuddy.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "0.27.0"
+        versionCode = 32
+        versionName = "0.28.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+
+        // Managed AI proxy (Phase M1). Empty → BYOK-only (no regression); set via the PROXY_BASE_URL /
+        // PROXY_APP_SECRET CI secrets once the relay is deployed. Read by data/ai/AiEndpoint.kt.
+        buildConfigField("String", "PROXY_BASE_URL", proxyBaseUrlField)
+        buildConfigField("String", "PROXY_APP_SECRET", proxyAppSecretField)
     }
 
     signingConfigs {
@@ -153,7 +165,7 @@ dependencies {
     // JSON (AI response parsing — used from Phase 2)
     implementation(libs.kotlinx.serialization.json)
 
-    // HTTP (cloud Whisper transcription; OpenRouter LLM later)
+    // HTTP (Groq LLM + cloud Whisper — direct or via the managed relay, see data/ai/AiEndpoint.kt)
     implementation(libs.okhttp)
 
     // Google Sign-In (Phase 6 Drive backup — Drive v3 REST hit directly with the OAuth token)

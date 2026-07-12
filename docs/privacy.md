@@ -1,6 +1,6 @@
 # BragBuddy — Core Privacy Principles
 
-*Last updated: 8 July 2026 · Version 1*
+*Last updated: 12 July 2026 · Version 2*
 
 BragBuddy is a private, on-device work journal. Here's exactly how it treats your data — in plain
 language, and true to how the app actually works.
@@ -18,13 +18,17 @@ keeping your entries. Your record sits in the app's own private storage. The onl
 your device is one you choose to make — an optional backup to your own Google Drive, or a file you
 export yourself.
 
-### AI runs on Groq — with your own key
+### AI runs on Groq — via our relay or your own key
 
 To transcribe, clean, categorise and summarise your notes, BragBuddy sends the necessary text — and any
-image you scan — to [Groq](https://groq.com), a third-party AI provider, using the Groq API key you add
-yourself. Voice notes are transcribed by Groq's Whisper. This is the one place your content leaves your
-device. Groq processes it under its own terms; BragBuddy keeps no server-side copy. Only send what
-you're comfortable sharing with an AI provider.
+image you scan — to [Groq](https://groq.com), a third-party AI provider. Voice notes are transcribed by
+Groq's Whisper. It reaches Groq one of two ways: through BragBuddy's own relay (the managed default),
+or — if you add your own Groq key under **Settings → AI engine** — straight to Groq with your key. Our
+relay simply forwards each request to Groq and passes the answer back, storing none of your notes,
+images or audio and keeping no log of their contents. To prevent abuse it counts how many requests an
+install makes (tied to a random ID, never to you), never what they contain. Either way, this is the one
+place your content leaves your device, and Groq processes it under its own terms. Only send what you're
+comfortable sharing with an AI provider.
 
 ### Audio and images aren't kept
 
@@ -34,10 +38,10 @@ app's private storage and is deleted as soon as it's transcribed.
 
 ### Encrypted in transit — and honest about at rest
 
-Everything BragBuddy sends to Groq or Google Drive travels over HTTPS/TLS. On your device, your record
-lives in BragBuddy's private, OS-sandboxed storage, protected by Android's device encryption. BragBuddy
-does not add its own separate password or app-level encryption layer — so please keep a screen lock on
-your phone.
+Everything BragBuddy sends to Groq (directly or via our relay) or Google Drive travels over HTTPS/TLS.
+On your device, your record lives in BragBuddy's private, OS-sandboxed storage, protected by Android's
+device encryption. BragBuddy does not add its own separate password or app-level encryption layer — so
+please keep a screen lock on your phone.
 
 ### No ads, no tracking, no selling
 

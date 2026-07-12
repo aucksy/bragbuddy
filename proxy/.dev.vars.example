@@ -1,0 +1,7 @@
+# Copy to `.dev.vars` for local `wrangler dev` (this file is an EXAMPLE; .dev.vars is gitignored).
+# In production these two are set as encrypted secrets via `wrangler secret put …`, not from a file.
+GROQ_API_KEY="gsk_your_real_groq_key"
+APP_SECRET="a-long-random-string-matching-the-app-PROXY_APP_SECRET"
+# Local dev has no KV binding, so the relay would fail closed (503). Allow it to serve without quotas
+# HERE ONLY — never set this in production (it removes the global spend ceiling).
+ALLOW_NO_QUOTA="true"

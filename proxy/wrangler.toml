@@ -1,0 +1,29 @@
+# BragBuddy managed AI relay (Phase M1) — Cloudflare Workers config.
+# Deploy: `npm install && npx wrangler deploy` (see README.md for the full runbook).
+
+name = "bragbuddy-proxy"
+main = "src/index.js"
+compatibility_date = "2024-11-06"
+
+# Non-secret, tunable at any time from the dashboard or here (no app update needed):
+[vars]
+DAILY_LIMIT = "200"          # max relayed requests per install per day (abuse ceiling; M3 sets real tiers)
+MONTHLY_LIMIT = "3000"       # max per install per month
+GLOBAL_DAILY_LIMIT = "5000"  # safety cap across ALL installs per day — bounds your Groq bill
+# MODEL_OVERRIDES = '{"llama-3.3-70b-versatile":"llama-3.3-70b-versatile"}'
+#   ^ optional JSON map to repoint model slugs server-side without shipping an app update.
+
+# Per-install quota counters. REQUIRED — the relay fails closed (503) without it, so the global
+# spend ceiling can never accidentally be off in production. Create it once:
+#   npx wrangler kv namespace create QUOTA
+# then paste the printed id below and uncomment.
+# [[kv_namespaces]]
+# binding = "QUOTA"
+# id = "PASTE_THE_KV_NAMESPACE_ID_HERE"
+
+# ALLOW_NO_QUOTA = "true"   # ONLY for local `wrangler dev` without KV — lets the relay serve with
+#                           # quotas disabled. NEVER set this in production (it removes your spend cap).
+
+# Secrets are NOT stored here. Set them with wrangler (they never touch the repo):
+#   npx wrangler secret put GROQ_API_KEY   # the real Groq key (users never see it)
+#   npx wrangler secret put APP_SECRET     # must equal the app's PROXY_APP_SECRET build secret

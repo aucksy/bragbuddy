@@ -37,3 +37,9 @@ eval/report.json
 eval/golden/from-backup.pending.jsonl
 bragbuddy-backup.json
 *bragbuddy-backup*.json
+
+# Managed AI relay (Phase M1) — never commit local secrets / build artifacts
+proxy/node_modules/
+proxy/.wrangler/
+proxy/.dev.vars
+proxy/package-lock.json

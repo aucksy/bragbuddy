@@ -1,5 +1,6 @@
 package com.bragbuddy.app.data.speech
 
+import com.bragbuddy.app.data.ai.AiEndpoint
 import com.bragbuddy.app.data.local.ProjectDao
 import com.bragbuddy.app.data.prefs.SettingsStore
 import kotlinx.coroutines.Dispatchers
@@ -32,29 +33,30 @@ class TranscriptionHttpException(val code: Int, message: String) : Exception(mes
 }
 
 /**
- * Cloud transcription via **Groq** (free-tier Whisper-large-v3), OpenAI-compatible. The API key is
- * read fresh from [SettingsStore] on each call and lives only on-device — never committed/shipped.
- * Switching to OpenAI later is just the base URL + key.
+ * Cloud transcription via **Groq** (free-tier Whisper-large-v3), OpenAI-compatible. The transport —
+ * direct-Groq with the user's own key, or BragBuddy's managed relay — is resolved per call by
+ * [AiEndpoint] (Phase M1); a BYOK key still lives only on-device. Switching provider is just the seam.
  */
 @Singleton
 class GroqTranscriber @Inject constructor(
     private val settings: SettingsStore,
     private val projectDao: ProjectDao,
+    private val endpoint: AiEndpoint,
     private val client: OkHttpClient,
 ) : Transcriber {
 
     override val label: String = "Groq · Whisper-large-v3"
 
     override suspend fun transcribe(audio: File): Result<String> = withContext(Dispatchers.IO) {
-        val settingsNow = settings.settings.first()
-        val key = settingsNow.groqApiKey.trim()
-        if (key.isBlank()) return@withContext Result.failure(IllegalStateException("No transcription key set"))
+        val route = endpoint.route()
+        if (!route.usable) return@withContext Result.failure(IllegalStateException("No transcription key set"))
         if (!audio.exists() || audio.length() == 0L) return@withContext Result.failure(IllegalStateException("No audio recorded"))
 
         // AI-1 · Whisper vocabulary: a short priming prompt of the user's role + project names so Whisper
         // spells "Raven Migration", "CommXHub" etc. correctly. Resilient — a DB read failure must never
         // block transcription, so it's runCatching to an empty prompt.
-        val vocabPrompt = runCatching { buildVocabPrompt(settingsNow.jobRole) }.getOrDefault("")
+        val role = runCatching { settings.settings.first().jobRole }.getOrDefault("")
+        val vocabPrompt = runCatching { buildVocabPrompt(role) }.getOrDefault("")
 
         runCatching {
             // Build the request INSIDE runCatching: a malformed key character (a stray control/
@@ -68,8 +70,8 @@ class GroqTranscriber @Inject constructor(
                 .addFormDataPart("file", audio.name, audio.asRequestBody("audio/m4a".toMediaType()))
                 .build()
             val request = Request.Builder()
-                .url(ENDPOINT)
-                .header("Authorization", "Bearer $key")
+                .url(route.transcriptionUrl())
+                .apply { route.authHeaders.forEach { (name, value) -> header(name, value) } }
                 .post(body)
                 .build()
             client.newCall(request).execute().use { resp ->
@@ -108,7 +110,6 @@ class GroqTranscriber @Inject constructor(
     }
 
     private companion object {
-        const val ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions"
         const val MODEL = "whisper-large-v3"
 
         /** ~200 tokens for the Whisper priming prompt (≈4 chars/token). */

@@ -1,8 +1,6 @@
 package com.bragbuddy.app.data.ai
 
-import com.bragbuddy.app.data.prefs.SettingsStore
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
@@ -20,9 +18,9 @@ import javax.inject.Singleton
 
 /**
  * The AI brain: **Groq** (OpenAI-compatible LLM inference), reached through the swappable
- * [AiProvider] seam. Reuses the single **Groq key** ([SettingsStore.groqApiKey]) that also powers
- * cloud Whisper transcription — one key for both, read fresh on each call and stored only on-device
- * (never committed, never in the APK).
+ * [AiProvider] seam. The transport — direct-Groq with the user's own key, or BragBuddy's managed
+ * relay — is resolved per call by [AiEndpoint] (Phase M1), so this class never hardcodes a URL or
+ * reads the key itself. A BYOK key is still read fresh on each call and lives only on-device.
  *
  * TWO MODELS BY TASK + FALLBACK (Build Brief § model routing): the categorizer runs the fast
  * [AiConfig.categorizerModel]; on a rate-limit / transient failure — or if the primary returns
@@ -35,7 +33,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class GroqAiProvider @Inject constructor(
-    private val settings: SettingsStore,
+    private val endpoint: AiEndpoint,
     private val client: OkHttpClient,
 ) : AiProvider {
 
@@ -86,13 +84,15 @@ class GroqAiProvider @Inject constructor(
 
     override suspend fun extractFromImage(request: ImageExtractRequest): Result<ImageExtractResult> {
         if (request.imageDataUrl.isBlank()) return Result.failure(IllegalStateException("No image"))
+        val route = endpoint.route()
+        if (!route.usable) return Result.failure(IllegalStateException("No Groq key set"))
         val prompt = AiPrompts.imageExtract(request.role)
         // Try the production vision model, then the fallback slug (in case the primary was retired) —
         // mirrors the categorizer's model routing. Any error/unparseable output drops to the next;
         // exhausting both fails safe so the capture stays on the sheet to retry / type.
         var last: Throwable = IllegalStateException("No vision model responded")
         for (model in listOf(AiConfig.visionModel, AiConfig.visionFallback)) {
-            val parsed = callVision(model, prompt, request.imageDataUrl)
+            val parsed = callVision(model, prompt, request.imageDataUrl, route)
                 .mapCatching { AiJson.parse(it, ImageExtractResult.serializer()) }
             if (parsed.isSuccess) return parsed
             parsed.exceptionOrNull()?.let { last = it }
@@ -102,12 +102,14 @@ class GroqAiProvider @Inject constructor(
 
     override suspend fun readDocumentText(request: ImageExtractRequest): Result<ImageExtractResult> {
         if (request.imageDataUrl.isBlank()) return Result.failure(IllegalStateException("No image"))
+        val route = endpoint.route()
+        if (!route.usable) return Result.failure(IllegalStateException("No Groq key set"))
         // Same vision pipeline + model routing as extractFromImage, but the doc-scan prompt — the
         // scanned image is reference material (a job description / review criteria), not an achievement.
         val prompt = AiPrompts.documentScan(request.role)
         var last: Throwable = IllegalStateException("No vision model responded")
         for (model in listOf(AiConfig.visionModel, AiConfig.visionFallback)) {
-            val parsed = callVision(model, prompt, request.imageDataUrl)
+            val parsed = callVision(model, prompt, request.imageDataUrl, route)
                 .mapCatching { AiJson.parse(it, ImageExtractResult.serializer()) }
             if (parsed.isSuccess) return parsed
             parsed.exceptionOrNull()?.let { last = it }
@@ -143,12 +145,12 @@ class GroqAiProvider @Inject constructor(
         onFallbackUsed: (T) -> T = { it },
         parse: (String) -> T,
     ): Result<T> {
-        val key = settings.settings.first().groqApiKey.trim()
-        if (key.isBlank()) return Result.failure(IllegalStateException("No Groq key set"))
+        val route = endpoint.route()
+        if (!route.usable) return Result.failure(IllegalStateException("No Groq key set"))
 
         var last: Throwable = IllegalStateException("No model responded")
         for ((index, model) in models.withIndex()) {
-            val parsed = callChat(model, system, user, key).mapCatching(parse)
+            val parsed = callChat(model, system, user, route).mapCatching(parse)
             if (parsed.isSuccess) {
                 // A non-primary (fallback) model produced this — let the caller adjust it (e.g. cap the
                 // categorizer's confidence, since the small model is less reliable at placement).
@@ -164,7 +166,7 @@ class GroqAiProvider @Inject constructor(
         model: String,
         system: String,
         user: String,
-        key: String,
+        route: AiRoute,
     ): Result<String> = withContext(Dispatchers.IO) {
         // Everything is inside runCatching — including request/header building — so even a malformed
         // key character (OkHttp validates header values) becomes a failed Result, never a thrown crash.
@@ -182,8 +184,8 @@ class GroqAiProvider @Inject constructor(
             val body = AiJson.json.encodeToString(JsonObject.serializer(), payload)
                 .toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
-                .url(AiConfig.BASE_URL)
-                .header("Authorization", "Bearer $key")
+                .url(route.chatUrl())
+                .apply { route.authHeaders.forEach { (name, value) -> header(name, value) } }
                 .post(body)
                 .build()
 
@@ -208,9 +210,8 @@ class GroqAiProvider @Inject constructor(
         model: String,
         prompt: String,
         imageDataUrl: String,
+        route: AiRoute,
     ): Result<String> = withContext(Dispatchers.IO) {
-        val key = settings.settings.first().groqApiKey.trim()
-        if (key.isBlank()) return@withContext Result.failure(IllegalStateException("No Groq key set"))
         runCatching {
             val payload = buildJsonObject {
                 put("model", model)
@@ -233,8 +234,8 @@ class GroqAiProvider @Inject constructor(
             val body = AiJson.json.encodeToString(JsonObject.serializer(), payload)
                 .toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
-                .url(AiConfig.BASE_URL)
-                .header("Authorization", "Bearer $key")
+                .url(route.chatUrl())
+                .apply { route.authHeaders.forEach { (name, value) -> header(name, value) } }
                 .post(body)
                 .build()
 

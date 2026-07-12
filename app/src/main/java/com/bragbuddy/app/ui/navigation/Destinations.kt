@@ -15,6 +15,9 @@ object Routes {
     /** The Phase C Privacy & terms screen, reached read-only from Settings. */
     const val PRIVACY = "privacy"
 
+    /** The Phase M1 "AI engine" screen (managed vs. your-own-key mode + the BYOK/Advanced key field). */
+    const val ADVANCED = "advanced"
+
     /** The Phase 7 "Reliable reminders" guided screen (OEM battery/alarm wizard). */
     const val RELIABILITY = "reliability"
 

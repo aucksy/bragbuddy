@@ -20,6 +20,7 @@ import com.bragbuddy.app.ui.main.MainScaffold
 import com.bragbuddy.app.ui.onboarding.OnboardingScreen
 import com.bragbuddy.app.ui.pillar.PillarDetailScreen
 import com.bragbuddy.app.ui.reliability.ReliabilityScreen
+import com.bragbuddy.app.ui.settings.AdvancedScreen
 import com.bragbuddy.app.ui.settings.SettingsScreen
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 
@@ -67,7 +68,11 @@ fun BragNavHost(gateViewModel: RootGateViewModel = hiltViewModel()) {
                 onOpenBackup = { navController.navigate(Routes.BACKUP) },
                 onOpenReliability = { navController.navigate(Routes.RELIABILITY) },
                 onOpenPrivacy = { navController.navigate(Routes.PRIVACY) },
+                onOpenAdvanced = { navController.navigate(Routes.ADVANCED) },
             )
+        }
+        composable(Routes.ADVANCED) {
+            AdvancedScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.BACKUP) {
             BackupScreen(onBack = { navController.popBackStack() })

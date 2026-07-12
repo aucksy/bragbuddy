@@ -13,15 +13,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
@@ -49,17 +46,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.BuildConfig
 import com.bragbuddy.app.R
+import com.bragbuddy.app.data.ai.AiEndpointConfig
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.DefaultCaptureMethod
 import com.bragbuddy.app.data.prefs.ThemeMode
@@ -76,6 +71,7 @@ fun SettingsScreen(
     onOpenBackup: () -> Unit = {},
     onOpenReliability: () -> Unit = {},
     onOpenPrivacy: () -> Unit = {},
+    onOpenAdvanced: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val palette = BragBuddyTheme.palette
@@ -263,60 +259,30 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(Spacing.s4))
 
-            // Voice transcription — cloud Whisper only (on-device removed; too inaccurate).
+            // AI engine (Phase M1) — the managed-vs-your-own-key mode summary; the BYOK key field now
+            // lives on the pushed "AI engine" (Advanced) screen. Subtitle reflects the live mode.
             Card(palette) {
-                Text("Voice transcription", style = MaterialTheme.typography.titleMedium, color = palette.text1)
-                Text(
-                    if (settings.groqApiKey.isBlank())
-                        "Voice notes are transcribed by cloud Whisper (Groq). Add your key under “AI brain (Groq)” below to enable voice — until then, typing always works."
-                    else "Powered by cloud Whisper using your Groq key ✓ — accurate and fast.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = palette.text3,
-                )
-            }
-
-            Spacer(Modifier.height(Spacing.s4))
-
-            // AI brain (Groq) — the ONE key, reused for categorizer + framework refine (and Cloud
-            // Whisper above). On-device only.
-            Card(palette) {
-                Text("AI brain (Groq)", style = MaterialTheme.typography.titleMedium, color = palette.text1)
-                Text(
-                    "Cleans and files each entry, and builds your framework by voice. Uses your Groq key — the same one Cloud Whisper uses. Without it, entries just wait in the Inbox.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = palette.text3,
-                )
-                Spacer(Modifier.height(Spacing.s3))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 50.dp)
-                        .clip(RoundedCornerShape(Radii.md))
-                        .border(1.5.dp, palette.primary.copy(alpha = 0.45f), RoundedCornerShape(Radii.md))
-                        .background(palette.surface)
-                        .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
-                    contentAlignment = Alignment.CenterStart,
+                Row(
+                    Modifier.fillMaxWidth().clickable(onClick = onOpenAdvanced),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (settings.groqApiKey.isEmpty()) {
-                        Text("Paste your Groq key (gsk_…)", style = MaterialTheme.typography.bodyMedium, color = palette.text3)
+                    Column(Modifier.weight(1f)) {
+                        Text("AI engine", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+                        Text(
+                            when {
+                                settings.groqApiKey.isNotBlank() ->
+                                    "Using your own Groq key — direct to Groq. Powers voice + AI filing."
+                                AiEndpointConfig.proxyConfigured ->
+                                    "Managed by BragBuddy — nothing to set up. Powers voice + AI filing."
+                                else ->
+                                    "Add your Groq key to turn on voice transcription + AI filing."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.text3,
+                        )
                     }
-                    BasicTextField(
-                        value = settings.groqApiKey,
-                        onValueChange = { viewModel.setGroqApiKey(it) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = LocalTextStyle.current.merge(TextStyle(color = palette.text1, fontSize = 14.sp)),
-                        cursorBrush = SolidColor(palette.primary),
-                    )
+                    Icon(Icons.Outlined.ChevronRight, null, tint = palette.text3, modifier = Modifier.size(20.dp))
                 }
-                Spacer(Modifier.height(Spacing.s2))
-                Text(
-                    if (settings.groqApiKey.isBlank())
-                        "One free key at console.groq.com → API Keys powers both AI and Cloud Whisper. Stored on this device only, never uploaded to us."
-                    else "Key saved on this device — powering AI categorization.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = palette.text3,
-                )
             }
 
             Spacer(Modifier.height(Spacing.s4))
@@ -411,7 +377,7 @@ fun SettingsScreen(
 
             // About
             Card(palette) {
-                InfoRow("AI engine", viewModel.aiProviderLabel, palette)
+                InfoRow("AI model", viewModel.aiProviderLabel, palette)
                 Spacer(Modifier.height(Spacing.s3))
                 InfoRow("Version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", palette)
             }

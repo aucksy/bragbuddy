@@ -10,9 +10,11 @@ import javax.inject.Singleton
 
 /**
  * Binds the active [AiProvider]. As of Phase 2 that is the [GroqAiProvider] (categorizer + framework
- * refine + summary, reusing the on-device Groq key). Swapping to OpenRouter/a proxy-backed provider
- * for public release is a one-line change here — nothing else in the app depends on the concrete
- * type. The old no-network `StubAiProvider` stays in the tree as a fail-safe reference implementation.
+ * refine + summary). As of Phase M1 its transport — direct-Groq with the user's own key, or
+ * BragBuddy's managed relay — is chosen per call by [com.bragbuddy.app.data.ai.AiEndpoint], so the
+ * managed-proxy switch is a config change, not a provider swap. Swapping the provider itself (a
+ * different vendor) is still a one-line change here. The old no-network `StubAiProvider` stays in the
+ * tree as a fail-safe reference implementation.
  */
 @Module
 @InstallIn(SingletonComponent::class)

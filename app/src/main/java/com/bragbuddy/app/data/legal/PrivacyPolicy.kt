@@ -7,7 +7,8 @@ package com.bragbuddy.app.data.legal
  *
  * Style follows the creator's "Core Privacy Principles" reference — rounded grey cards, a bold title
  * and plain body — but the CLAIMS are rewritten for what is actually true of BragBuddy (a local-only,
- * no-account app that sends text/images/audio to **Groq** for processing). Nothing here asserts
+ * no-account app that sends text/images/audio to **Groq** for processing — by default through
+ * BragBuddy's own stateless relay [Phase M1], or direct with a BYOK key). Nothing here asserts
  * app-level at-rest encryption (we don't ship it — [Principle] 4 phrases it honestly) or "our servers"
  * (there are none). See PROGRESS.md for the reshape rationale.
  *
@@ -17,9 +18,11 @@ package com.bragbuddy.app.data.legal
  * NOT legal advice — a lawyer should review this before any public/Play launch.
  */
 object PrivacyPolicy {
-    /** Bump ONLY on a material change → the app re-prompts for acceptance. */
-    const val VERSION = 1
-    const val LAST_UPDATED = "8 July 2026"
+    /** Bump ONLY on a material change → the app re-prompts for acceptance.
+     *  v2 (Phase M1): disclose the managed relay — by default entries pass through BragBuddy's own
+     *  stateless relay to Groq (stores nothing, logs no content); a BYOK key still goes direct. */
+    const val VERSION = 2
+    const val LAST_UPDATED = "12 July 2026"
     const val CONTACT_EMAIL = "simpleapps108@gmail.com"
     const val GOVERNING_LAW = "India"
     /** Groq is the AI processor. Stable site link (kept generic so it can't rot). */
@@ -43,12 +46,18 @@ object PrivacyPolicy {
                 "to your own Google Drive, or a file you export yourself.",
         ),
         Principle(
-            "AI runs on Groq — with your own key",
+            "AI runs on Groq — via our relay or your own key",
             "To transcribe, clean, categorise and summarise your notes, BragBuddy sends the necessary " +
-                "text — and any image you scan — to Groq, a third-party AI provider, using the Groq API " +
-                "key you add yourself. Voice notes are transcribed by Groq's Whisper. This is the one " +
-                "place your content leaves your device. Groq processes it under its own terms; BragBuddy " +
-                "keeps no server-side copy. Only send what you're comfortable sharing with an AI provider.",
+                "text — and any image you scan — to Groq, a third-party AI provider. Voice notes are " +
+                "transcribed by Groq's Whisper. It reaches Groq one of two ways: through BragBuddy's own " +
+                "relay (the managed default), or — if you add your own Groq key under Settings → AI " +
+                "engine — straight to Groq with your key. Our relay simply forwards each request to " +
+                "Groq and passes the answer back, storing none of your notes, images or audio and " +
+                "keeping no log of their contents. To prevent abuse it counts how many " +
+                "requests an install makes (tied to a random ID, never to you), never what they " +
+                "contain. Either way, this is the one place your content leaves your device, and Groq " +
+                "processes it under its own terms. Only send what you're comfortable sharing with an AI " +
+                "provider.",
         ),
         Principle(
             "Audio and images aren't kept",
@@ -59,7 +68,8 @@ object PrivacyPolicy {
         ),
         Principle(
             "Encrypted in transit — and honest about at rest",
-            "Everything BragBuddy sends to Groq or Google Drive travels over HTTPS/TLS. On your device, " +
+            "Everything BragBuddy sends to Groq (directly or via our relay) or Google Drive travels " +
+                "over HTTPS/TLS. On your device, " +
                 "your record lives in BragBuddy's private, OS-sandboxed storage, protected by Android's " +
                 "device encryption. BragBuddy does not add its own separate password or app-level " +
                 "encryption layer — so please keep a screen lock on your phone.",
@@ -124,8 +134,9 @@ object PrivacyPolicy {
         Principle(
             "AI runs on Groq",
             "To clean, categorise and summarise your notes, BragBuddy sends the necessary text — and " +
-                "any image you scan — to Groq, a third-party AI provider. That's the one place your " +
-                "content leaves your device, so only share what you're comfortable sending to an AI.",
+                "any image you scan — to Groq, a third-party AI provider, by default through BragBuddy's " +
+                "own relay, which stores nothing and keeps no log of your content. That's the one place " +
+                "your content leaves your device, so only share what you're comfortable sending to an AI.",
         ),
         Principle(
             "Audio and images aren't kept",

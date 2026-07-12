@@ -279,10 +279,15 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   lives in `PROGRESS.md` (top block); the deep phase spec incl. FINAL verbatim prompt texts is
   `docs/IMPLEMENTATION-PLAN.md`** (authored by Fable 5 for Opus 4.8 — paste, don't re-write), with
   rationale in `docs/PRODUCT-ASSESSMENT.md` + `docs/AI-SYSTEM-ASSESSMENT.md`. New standing rule: **any
-  prompt/model change ships eval-gated** (Phase AI-0 harness). **Phase AI-0 BUILT 2026-07-11**
-  (`eval/` harness + PromptSyncTest + AI-Eval workflow + 34-case synthetic golden seed; repo-only, no
-  tag). Exact next step: **3 owner gates** (add `GROQ_API_KEY` secret · import the real record via
-  `eval/tools/from-backup.mjs` · run AI Eval with `commit_baseline`) → **Phase AI-1 (v0.26.0)**.
+  prompt/model change ships eval-gated** (Phase AI-0 harness). **Phases AI-0 → AI-1 (v0.26.0
+  categorizer magic) → AI-2 (v0.27.0 summary + impact-coach) → M1 (v0.28.0 managed AI proxy) all
+  SHIPPED.** Exact next step: **Phase M2 (v0.29.0) — first-session & polish**. **M1 (v0.28.0):** an
+  injectable `AiEndpoint` seam — BYOK key → direct-Groq, no key → BragBuddy's Cloudflare Worker relay
+  (`proxy/`, holds the server-side Groq key); BYOK demoted to Settings → AI engine (Advanced); privacy
+  v2 (relay disclosure, re-accept). Shipped **proxy-ready but BYOK-effective** (zero regression). **M1
+  owner gates to turn managed mode ON:** deploy `proxy/` (create the QUOTA KV namespace + `wrangler
+  secret put GROQ_API_KEY/APP_SECRET` + deploy) → add `PROXY_BASE_URL` + `PROXY_APP_SECRET` repo secrets
+  → re-push the tag (runbook `proxy/README.md`).
 - **Build reality:** cloud-only (no local Android toolchain). Nothing compiles locally → budget ~2 CI
   round-trips/phase; **the compiler is the only gate** (a static review agent has missed real
   errors). Fix from the CI log via the **public** GitHub API (unauthenticated is enough for run status

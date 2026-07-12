@@ -60,8 +60,21 @@ current code — that is the context, not chat history.
 > sentence, summary rule 2 exempts routine tallies from the length cap. `dense-year`'s pinned test was
 > redesigned to a cap-excluded rollup item after consensus proved gpt-oss-120b injects an *absent*
 > certification-flavoured pinned item only ~1/3 of the time (a summary-model limitation tracked for M4).
-> Full detail in `## Status: v0.27.0` below. **Exact next step: Phase M1 (v0.28.0) — the managed AI
-> proxy** (`docs/IMPLEMENTATION-PLAN.md` · M1). Fresh chat pointed at `CONTEXT.md`.
+> Full detail in `## Status: v0.27.0` below.
+>
+> **Phase M1 (v0.28.0) SHIPPED 2026-07-12 — the managed AI proxy.** The transport is now an injectable
+> `AiEndpoint` (Hilt): a BYOK key → direct-Groq (unchanged); no key → BragBuddy's own **Cloudflare Worker
+> relay** (`proxy/`) that holds the one server-side Groq key. BYOK demoted to **Settings → AI engine**
+> (Advanced); privacy bumped to **v2** (honest new disclosure: entries pass through our relay, which
+> stores/logs nothing → re-accept). **NOT a prompt phase** (AiPrompts/AiConfig/eval untouched → no eval
+> gate). Shipped **proxy-ready but BYOK-effective**: the `PROXY_BASE_URL`/`PROXY_APP_SECRET` build secrets
+> are empty until the owner deploys, so the tagged build is **zero-regression** (keyless installs behave
+> exactly as before). Two adversarial reviews (Kotlin compile+logic; Worker/infra/privacy) = **0 HIGH**;
+> all 5 privacy claims verified true in the Worker; MED/LOW hardening folded in. Detail in
+> `## Status: v0.28.0` below. **OWNER GATES (to light up managed mode): deploy the Worker + create the KV
+> namespace + `wrangler secret put GROQ_API_KEY/APP_SECRET`, then add `PROXY_BASE_URL` + `PROXY_APP_SECRET`
+> repo secrets and re-push the tag** (runbook: `proxy/README.md`). **Exact next step: Phase M2 (v0.29.0) —
+> first-session & polish** (`docs/IMPLEMENTATION-PLAN.md` · M2). Fresh chat pointed at `CONTEXT.md`.
 
 ---
 
@@ -260,6 +273,71 @@ was made.** When it resumes, this is the pre-done research:
 - **Capture parity:** no iOS overlay (Apple forbids) — the notification opens the app straight into a
   minimal auto-recording screen + App Intents (Siri/Shortcuts/Action Button/Lock-Screen). Blessed in the
   PRD/Brief.
+
+---
+
+## Status: v0.28.0 — Phase M1 · Managed AI proxy ✅ SHIPPED (signed · tag-driven CI; compile-green + adversarially reviewed [2 agents, **0 HIGH**]; **NOT a prompt phase → no eval gate**)
+
+> **Phase M1 of the subscription-launch roadmap** (`docs/IMPLEMENTATION-PLAN.md` · M1). Turns "which URL
+> + whose key" into an injectable transport so a **keyless install can use a managed relay** while BYOK
+> stays fully working. Decisions locked with the owner (AskUserQuestion 2026-07-12): **Cloudflare Workers**
+> backend · **baked app-secret + install-token + quotas** gate · **ship proxy-ready now, BYOK-effective
+> until the owner deploys**. The owner also asked "why do we need this?" — answered (a managed key is the
+> basis of the whole subscription; user data still lives on-device/Drive; the relay stores nothing). **Room
+> stays v4** (the install token is a DataStore string, not a schema change; deliberately NOT backed up → a
+> restored device mints its own).
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.28.0/BragBuddy-v0.28.0.apk` (signed by tag-driven CI; `.aab` alongside).
+
+### v0.28.0 — what was built (`versionCode 32`)
+1. **Injectable transport seam** (`data/ai/AiEndpoint.kt`). Pure `AiEndpointResolver` (BYOK key →
+   direct-Groq `…/v1` + `Authorization: Bearer <key>`; no key + configured proxy → relay base + `X-Install-Id`
+   [random-UUID quota token] + `X-App-Key` [baked gate]; else UNCONFIGURED → fail-safe) + `AiEndpointConfig`
+   (BuildConfig-backed) + a Hilt `AiEndpoint` that mints/reads the per-install token **only in proxy mode**.
+   `GroqAiProvider` + `GroqTranscriber` consume it (`route.chatUrl()`/`transcriptionUrl()` + `route.authHeaders`,
+   built **inside `runCatching`** → malformed-key-safe); no more hardcoded `AiConfig.BASE_URL`/`Transcriber.ENDPOINT`.
+   `AppSettings.aiEnabled`/`cloudTranscription` are now proxy-aware (key present OR proxy baked) so managed mode
+   lights up every gated surface with no call-site churn — and `aiEnabled` ⇔ `route().usable` **exactly** (same
+   normalisation).
+2. **BuildConfig secrets + release wiring.** `build.gradle.kts` bakes `PROXY_BASE_URL`/`PROXY_APP_SECRET` from CI
+   env (escaped; empty default → BYOK-only, zero regression). `android-release.yml` forwards both into the Build
+   step. versionCode 31→32, versionName 0.28.0.
+3. **Settings → AI engine (Advanced)** (`ui/settings/AdvancedScreen.kt`, route `advanced`): mode-aware status
+   (Managed ✓ / Your key ✓ / Not set up) + the BYOK key field (moved off the main Settings screen, which now
+   shows a one-line mode-summary nav card) + a "Remove key" affordance. Copy adapts to whether the proxy is baked.
+4. **Privacy v2 (re-accept).** `PrivacyPolicy.VERSION 1→2` (material change → re-prompt). The Groq principle
+   (full + concise onboarding) + `docs/privacy.md` rewritten honestly: entries reach Groq **via our relay by
+   default** (or direct with a BYOK key); the relay forwards + stores none of your notes/images/audio + logs no
+   content + counts requests per **random install id** (never content/identity). Verified TRUE against the Worker.
+5. **The relay — `proxy/` (Cloudflare Worker).** OpenAI-compatible pass-through mirroring `/v1/chat/completions`
+   + `/v1/audio/transcriptions`; injects the real Groq key; **constant-time app-secret gate**; **per-install +
+   global daily/monthly KV quotas** (fail **CLOSED** if KV unbound → protects spend; fail **OPEN** on a transient
+   KV blip; namespaced keys); **optional `MODEL_OVERRIDES`** slug remap (remote-config-able, no app update);
+   **audio streamed never buffered, no request-body logging**. + `wrangler.toml`, `package.json`,
+   `.dev.vars.example`, and a full deploy **runbook** (`proxy/README.md`). gitignored: node_modules/.wrangler/.dev.vars.
+- **Tests:** new `AiEndpointResolverTest` (8 — every routing branch incl. trailing-slash trim, blank-secret/id
+  omission, whitespace-key fallthrough, BYOK precedence). `PromptSyncTest`/`AiPrompts`/`AiConfig`/eval untouched.
+- **REVIEW (2 independent adversarial agents):** Kotlin compile+logic = **0 HIGH** (imports, Hilt graph,
+  buildConfigField DSL, file-private forward ref, all 8 tests traced to PASS, fail-safe + malformed-key +
+  BYOK-precedence invariants verified). Worker/infra/privacy = **0 HIGH** (all 5 privacy claims literally true;
+  streaming/duplex/header-injection/status-passthrough correct; release env zero-regression). MED/LOW hardening
+  folded in before tag: quota fail-closed-when-KV-unbound + fail-open-on-transient + namespaced keys (MED);
+  `aiEnabled`⇔`route` exact consistency + `installId` crash-guard (LOW); dropped imprecise "stateless" wording.
+- **Known M1 limitations (→ M3):** quota counts on **attempt** not success (a failure run burns quota), and the
+  relay's over-quota 429 is indistinguishable from a Groq rate-limit 429 (a queued voice note may retry an
+  exhausted monthly cap). Acceptable for M1; M3 adds exact success-based metering + a distinct cap signal + Play
+  Integrity to harden the soft (APK-extractable) app-secret gate.
+
+### Owner gates (managed mode stays OFF until all done — BYOK works regardless)
+1. **Deploy the Worker** (`proxy/README.md`): `wrangler login` → **create the QUOTA KV namespace + paste its id**
+   (the relay fails closed without it) → `wrangler secret put GROQ_API_KEY` + `APP_SECRET` → `wrangler deploy`.
+2. **Add repo secrets** `PROXY_BASE_URL` (Worker URL **+ `/v1`**) and `PROXY_APP_SECRET` (== the Worker's
+   `APP_SECRET`), then **re-push `v0.28.0`** (or cut the next tag) so the APK bakes them and keyless installs go managed.
+3. (Carried) Drive OAuth client + release SHA-1 on `gmailapi-491903` — owner reported created 2026-07-10.
+
+### Fresh chat → Phase M2
+Fresh chat pointed at `CONTEXT.md` → **Phase M2 (v0.29.0) — first-session & polish** (`docs/IMPLEMENTATION-PLAN.md`
+· M2): onboarding "aha rehearsal", Home one-slot nudge queue, haptics/snackbars, weekly recap, quick wins.
 
 ---
 
