@@ -9,8 +9,11 @@ name: AI Eval
 #       push a tag  eval-run-*       → run suite=all as a gate check (must meet/beat the baseline)
 #   • Manual (Actions → Run workflow): pick the suite + the commit-baseline checkbox by hand.
 #
-# OWNER GATE: add the repository secret GROQ_API_KEY (Settings → Secrets and variables → Actions)
-# — the same Groq key the app uses. Without it the run fails fast with a clear message.
+# OWNER GATE: add the repository secret OPENROUTER_API_KEY (Settings → Secrets and variables →
+# Actions) — an OpenRouter key with credit; the harness reroutes through OpenRouter HARD-PINNED to
+# Groq's own inference (same models/serving the app uses; owner decision 2026-07-12, after Groq
+# closed paid sign-ups and the free-tier daily quota kept throttling full runs). GROQ_API_KEY still
+# works as the direct-Groq fallback when no OpenRouter secret is set. Without either, fail fast.
 #
 # The committed baseline (eval/report-baseline.{md,json}) is what every AI-prompt phase (AI-1,
 # AI-2, …) must meet or beat (docs/IMPLEMENTATION-PLAN.md). A baseline run is allowed to miss
@@ -72,10 +75,16 @@ jobs:
       - name: Check secret
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
-          if [ -z "$GROQ_API_KEY" ]; then
-            echo "::error::Repository secret GROQ_API_KEY is not set — add it under Settings → Secrets and variables → Actions."
+          if [ -z "$OPENROUTER_API_KEY" ] && [ -z "$GROQ_API_KEY" ]; then
+            echo "::error::No API secret set — add OPENROUTER_API_KEY (preferred: OpenRouter pinned to Groq, fits the run in quota) or GROQ_API_KEY (direct Groq) under Settings → Secrets and variables → Actions."
             exit 1
+          fi
+          if [ -n "$OPENROUTER_API_KEY" ]; then
+            echo "Using OpenRouter (provider-pinned to Groq)."
+          else
+            echo "::warning::Using the direct GROQ_API_KEY — the free tier has throttled full runs before; prefer OPENROUTER_API_KEY."
           fi
 
       - name: Run eval
@@ -83,6 +92,7 @@ jobs:
         continue-on-error: true   # the report + artifact must land even on a red gate
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           ONLY=""
           if [ "${{ steps.cfg.outputs.suite }}" != "all" ] && [ -n "${{ steps.cfg.outputs.suite }}" ]; then

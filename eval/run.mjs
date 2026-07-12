@@ -7,7 +7,8 @@
  * writes eval/report.md (+ eval/report.json for machine comparison). Non-zero exit on gate failure.
  *
  * Usage:
- *   GROQ_API_KEY=gsk_… node eval/run.mjs                  # full run, gated
+ *   GROQ_API_KEY=gsk_… node eval/run.mjs                  # full run, gated (direct Groq)
+ *   OPENROUTER_API_KEY=sk-or-… node eval/run.mjs          # full run via OpenRouter PINNED TO GROQ
  *   node eval/run.mjs --dry-run                           # no API calls: validate goldens + prompt build
  *   node eval/run.mjs --only categorizer --limit 5        # smoke a subset
  *   node eval/run.mjs --baseline eval/report-baseline.json  # additionally gate on ≥ baseline (AI-1+)
@@ -95,6 +96,60 @@ function loadAiConfig() {
     // frameworkModel/summaryFallback alias other consts in Kotlin; resolve what the app resolves.
     summary: [grab('summaryModel'), kt.includes('summaryFallback = "') ? grab('summaryFallback') : categorizerModel],
     coach: [categorizerModel, grab('categorizerFallback')], // GroqAiProvider.suggestImpact uses the categorizer pair
+  };
+}
+
+// ---------------------------------------------------------------------------
+// EVAL-ONLY transport reroute — OpenRouter pinned to Groq (owner decision 2026-07-12).
+// Groq's paid tier is closed to new sign-ups and the shared FREE-tier daily token budget can't fit
+// a full run (the AI-1 gate block). OpenRouter serves the SAME open models with **Groq itself as
+// one of its providers at Groq's native prices** — hard-pinning the provider means the eval still
+// measures the exact inference the app's users hit, just billed through OpenRouter credits. The
+// app is untouched (direct-Groq BYOK); this reroute exists only in the harness.
+//
+//   OPENROUTER_API_KEY=sk-or-…  node eval/run.mjs     # reroute via OpenRouter, pinned to Groq
+//
+// Precedence: an explicit GROQ_BASE_URL wins outright (mock-server smoke tests / the M1 proxy
+// hook); otherwise OPENROUTER_API_KEY (if set) reroutes; otherwise the direct-Groq path runs
+// exactly as before with GROQ_API_KEY.
+// ---------------------------------------------------------------------------
+
+// OPENROUTER_BASE_URL override = the reroute's own mock-server test hook (parallel to GROQ_BASE_URL).
+const OPENROUTER_URL = (process.env.OPENROUTER_BASE_URL || '').trim() || 'https://openrouter.ai/api/v1/chat/completions';
+
+/** Groq slug → OpenRouter slug (same underlying model). Unmapped slug = hard error (fail closed —
+ *  never silently measure a different model). Keep in step with AiConfig.kt when slugs move. */
+const OPENROUTER_SLUGS = {
+  'llama-3.3-70b-versatile': 'meta-llama/llama-3.3-70b-instruct',
+  'llama-3.1-8b-instant': 'meta-llama/llama-3.1-8b-instruct',
+  'openai/gpt-oss-120b': 'openai/gpt-oss-120b',
+};
+
+/** Set when rerouting: rides in every request body as OpenRouter's provider pin, so no other host
+ *  can silently serve the call. */
+let PROVIDER_PIN = null;
+
+function applyOpenRouter(config) {
+  const key = (process.env.OPENROUTER_API_KEY || '').trim();
+  if (!key || (process.env.GROQ_BASE_URL || '').trim()) return { config, apiKey: null };
+  const map = (slug) => {
+    const mapped = OPENROUTER_SLUGS[slug];
+    if (!mapped) throw new Error(`OpenRouter reroute: no slug mapping for "${slug}" — add it to OPENROUTER_SLUGS in run.mjs`);
+    return mapped;
+  };
+  PROVIDER_PIN = {
+    only: (process.env.OPENROUTER_PROVIDER || 'groq').split(',').map((s) => s.trim()).filter(Boolean),
+    allow_fallbacks: false,
+  };
+  return {
+    config: {
+      ...config,
+      baseUrl: OPENROUTER_URL,
+      categorizer: config.categorizer.map(map),
+      summary: config.summary.map(map),
+      coach: config.coach.map(map),
+    },
+    apiKey: key,
   };
 }
 
@@ -265,6 +320,9 @@ async function callChat(baseUrl, apiKey, model, messages) {
     temperature: 0.2,
     response_format: { type: 'json_object' },
     messages,
+    // OpenRouter reroute only: hard-pin the serving provider (ignored key on direct Groq is never
+    // sent — PROVIDER_PIN stays null unless applyOpenRouter armed it).
+    ...(PROVIDER_PIN ? { provider: PROVIDER_PIN } : {}),
   });
   const backoffs = [2000, 8000, 20000];
   let lastError = null;
@@ -714,7 +772,9 @@ function sha(file) {
 }
 
 async function main() {
-  const config = loadAiConfig();
+  const reroute = applyOpenRouter(loadAiConfig());
+  const config = reroute.config;
+  const viaOpenRouter = Boolean(reroute.apiKey);
   const templates = {
     categorizer: promptExists('categorizer.txt') ? readPrompt('categorizer.txt') : null,
     categorizerSystem: promptExists('categorizer-system.txt') ? readPrompt('categorizer-system.txt') : null,
@@ -778,13 +838,15 @@ async function main() {
     process.exit(0);
   }
 
-  const apiKey = (process.env.GROQ_API_KEY || '').trim();
+  const apiKey = reroute.apiKey || (process.env.GROQ_API_KEY || '').trim();
   if (!apiKey) {
-    console.error('GROQ_API_KEY is not set. Run: GROQ_API_KEY=gsk_… node eval/run.mjs   (or --dry-run)');
+    console.error('No API key set. Run: OPENROUTER_API_KEY=sk-or-… node eval/run.mjs  (OpenRouter pinned to Groq)\n' +
+      '            or: GROQ_API_KEY=gsk_… node eval/run.mjs   (direct Groq)   (or --dry-run)');
     process.exit(1);
   }
 
-  console.log(`eval: ${catCases.length} categorizer + ${coachCases.length} coach + ${summaryCases.length} summary cases, concurrency 2`);
+  console.log(`eval: ${catCases.length} categorizer + ${coachCases.length} coach + ${summaryCases.length} summary cases, concurrency 2` +
+    (viaOpenRouter ? ` — via OpenRouter pinned to provider [${PROVIDER_PIN.only.join(', ')}]` : ''));
 
   // ---- run categorizer ----
   const catResults = await pool(catCases, async (c) => {
@@ -927,6 +989,7 @@ async function main() {
   md.push('');
   md.push(`- Generated: ${now}`);
   md.push(`- Models: categorizer \`${config.categorizer.join('\` → \`')}\` · summary \`${config.summary.join('\` → \`')}\` (from \`AiConfig.kt\`)`);
+  if (viaOpenRouter) md.push(`- Transport: OpenRouter, provider pinned to \`${PROVIDER_PIN.only.join(', ')}\` (same Groq inference the app uses; eval-only reroute)`);
   md.push(`- Prompts: categorizer \`${sha('categorizer.txt') || sha('categorizer-system.txt')}\` · summary \`${sha('summary.txt')}\` · coach \`${sha('impact-coach.txt')}\` (sha256/12)`);
   md.push(`- Cases: ${catCases.length} categorizer · ${coachCases.length} coach · ${summaryCases.length} summary${OPTS.limit ? ` (LIMITED to ${OPTS.limit}/set — not a shippable run)` : ''}`);
   md.push('');
@@ -970,7 +1033,7 @@ async function main() {
   fs.writeFileSync(
     OPTS.jsonOut,
     JSON.stringify(
-      { generatedAt: now, models: config, thresholds: THRESHOLDS, counts: { categorizer: catCases.length, coach: coachCases.length, summary: summaryCases.length }, limited: OPTS.limit > 0, metrics, gates, gatesPassed, failures },
+      { generatedAt: now, models: config, transport: viaOpenRouter ? `openrouter:${PROVIDER_PIN.only.join(',')}` : 'direct-groq', thresholds: THRESHOLDS, counts: { categorizer: catCases.length, coach: coachCases.length, summary: summaryCases.length }, limited: OPTS.limit > 0, metrics, gates, gatesPassed, failures },
       null,
       2,
     ),

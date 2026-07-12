@@ -43,15 +43,27 @@ limiter.)
 ## Running
 
 ```bash
-GROQ_API_KEY=gsk_…  node eval/run.mjs            # full run, gated (non-zero exit on failure)
+OPENROUTER_API_KEY=sk-or-… node eval/run.mjs      # full run via OpenRouter PINNED TO GROQ (preferred)
+GROQ_API_KEY=gsk_…  node eval/run.mjs             # full run, direct Groq (free tier throttles — see below)
 node eval/run.mjs --dry-run                       # no API calls: validate goldens + prompt build
 node eval/run.mjs --only categorizer --limit 5    # cheap smoke (LIMITED runs are never shippable)
 node eval/run.mjs --baseline eval/report-baseline.json   # AI-1+: also gate on ≥ baseline everywhere
 node eval/run.mjs --no-gate                       # write the report, always exit 0
 ```
 
-In CI (needs the `GROQ_API_KEY` repo secret — owner gate). Two ways, same as every build here it is
-tag-driven; a manual fallback also exists:
+**Transport (decided 2026-07-12, after the AI-1 gate was quota-blocked):** the full run's ~63 live
+calls do not fit Groq's FREE-tier daily token budget, and Groq's paid tier is closed to new
+sign-ups — so the harness can reroute through **OpenRouter with the provider hard-pinned to Groq**
+(`provider: { only: ["groq"], allow_fallbacks: false }`): the *same models on the same Groq
+inference the app's users hit*, billed via OpenRouter credits (~₹9 per full run). Slugs map via
+`OPENROUTER_SLUGS` in `run.mjs` (fail-closed on an unmapped slug — keep it in step with
+`AiConfig.kt`). Precedence: an explicit `GROQ_BASE_URL` wins (mock server / M1 proxy hook), then
+`OPENROUTER_API_KEY`, then direct `GROQ_API_KEY`. The app itself is untouched — this exists only in
+the harness.
+
+In CI (needs the `OPENROUTER_API_KEY` repo secret — owner gate; `GROQ_API_KEY` still works as the
+direct fallback). Two ways, same as every build here it is tag-driven; a manual fallback also
+exists:
 
 - **Push a tag `eval-baseline-*`** → runs suite `all` and commits the result as
   `eval/report-baseline.{md,json}` (do that once per prompt generation — the "before").
