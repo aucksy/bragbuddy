@@ -1,11 +1,11 @@
 # BragBuddy AI eval report
 
-- Generated: 2026-07-12T06:48:21.781Z
+- Generated: 2026-07-15T18:21:48.371Z
 - Models: categorizer `meta-llama/llama-3.3-70b-instruct` → `meta-llama/llama-3.1-8b-instruct` · summary `openai/gpt-oss-120b` → `meta-llama/llama-3.3-70b-instruct` (from `AiConfig.kt`)
 - Transport: OpenRouter, provider pinned to `groq` (same Groq inference the app uses; eval-only reroute)
 - Consensus: each case sampled 3× — a check passes on the majority (de-noises the small golden set; thresholds unchanged)
-- Prompts: categorizer `9ca2ae44cc2b` · summary `1944d77b04ab` · coach `6162b0243f60` (sha256/12)
-- Cases: 47 categorizer · 12 coach · 4 summary
+- Prompts: categorizer `9ca2ae44cc2b` · summary `386f09f30464` · coach `6162b0243f60` (sha256/12)
+- Cases: 47 categorizer · 12 coach · 5 summary
 
 ## Gates — ✅ PASS
 
@@ -41,13 +41,13 @@
 - ❌ **inbox** — expected NOT parked; got [{"project":"Inbox","goalCategory":"Inbox","confidence":0.5}] (passed 0/3)
 
 ### po-extra-mentoring (`meta-llama/llama-3.3-70b-instruct`)
-- ❌ **demonstrates** — missing required tag(s) ["Leadership & Behaviours"], got ["ownership","collaboration"] (passed 1/3)
+- ❌ **demonstrates** — missing required tag(s) ["Leadership & Behaviours"], got ["ownership","collaboration"] (passed 0/3)
 
 ### eng-development-cert (`meta-llama/llama-3.3-70b-instruct`)
 - ❌ **impactBand** — expected [0.2,0.6], got 0.8 (passed 0/3)
 
 ### real-003 (`meta-llama/llama-3.3-70b-instruct`)
-- ❌ **entryCount** — expected 1, got 2 (passed 1/3)
+- ❌ **entryCount** — expected 1, got 2 (passed 0/3)
 - ❌ **metric** — expected metric containing "20 days", got [null,null] (passed 0/3)
 
 ### real-005 (`meta-llama/llama-3.3-70b-instruct`)
@@ -57,18 +57,18 @@
 - ❌ **demonstrates** — missing required tag(s) ["Leadership & Behaviours"], got ["set the agenda","bring others with you","do it the right way"] (passed 0/3)
 
 ### real-007 (`meta-llama/llama-3.3-70b-instruct`)
-- ❌ **demonstrates** — missing required tag(s) ["Leadership & Behaviours"], got ["set the agenda","bring others with you","do it the right way"] (passed 0/3)
+- ❌ **demonstrates** — missing required tag(s) ["Set the Agenda","Do It the Right Way"], got ["leadership & behaviours"] (passed 0/3)
 
 ### real-008 (`meta-llama/llama-3.3-70b-instruct`)
-- ❌ **inbox** — expected NOT parked; got [{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7}] (passed 0/3)
+- ❌ **inbox** — expected NOT parked; got [{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7},{"project":"Inbox","goalCategory":"Performance Goals","confidence":0.7}] (passed 0/3)
 - ❌ **demonstrates** — missing required tag(s) ["Leadership & Behaviours"], got ["set the agenda","bring others with you","do it the right way"] (passed 0/3)
 
 ### real-009 (`meta-llama/llama-3.3-70b-instruct`)
-- ❌ **demonstrates** — missing required tag(s) ["Leadership & Behaviours"], got ["set the agenda","bring others with you","do it the right way"] (passed 0/3)
+- ❌ **demonstrates** — missing required tag(s) ["Leadership & Behaviours"], got ["set the agenda","communicate frequently, candidly and clearly","lead with an external perspective","demonstrate courageous and authentic leadership","build a diverse and inclusive team","seek and provide coaching and feedback","make decisions quickly and effectively","live the blue box values"] (passed 0/3)
 
 ### real-010 (`meta-llama/llama-3.3-70b-instruct`)
 - ❌ **entryCount** — expected 1, got 4 (passed 0/3)
 
 ### real-011 (`meta-llama/llama-3.3-70b-instruct`)
 - ❌ **entryCount** — expected 1, got 4 (passed 0/3)
-- ❌ **demonstrates** — missing required tag(s) ["Leadership & Behaviours"], got ["set the agenda","bring others with you","do it the right way"] (passed 0/3)
+- ❌ **demonstrates** — missing required tag(s) ["Leadership & Behaviours"], got ["set the agenda","communicate frequently, candidly and clear","lead with an external perspective","make decisions quickly and effectively","build a diverse and inclusive team","seek and provide coaching and feedback","demonstrate courageous and authentic leadership","live the blue box values"] (passed 0/3)
