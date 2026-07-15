@@ -317,7 +317,9 @@ was made.** When it resumes, this is the pre-done research:
 
 ---
 
-## Status: v0.30.0 — Summary phase (items 4 + 5) 🚦 BUILT + adversarially reviewed; EVAL-GATED (push `eval-run-summary-v0.30.0` → must be GREEN before the `v0.30.0` release tag)
+## Status: v0.30.0 — Summary phase (items 4 + 5) ✅ SHIPPED (signed · tag-driven CI; compile + all unit tests GREEN; **GREEN live eval gate** — first phase gated for a summary-prompt change)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.30.0/BragBuddy-v0.30.0.apk` (signed by tag-driven CI; `.aab` alongside).
 
 > A dedicated, **eval-gated** phase (split out of the v0.29.1 patch, owner decision 2026-07-15). Item 5 is
 > deterministic/render-only; item 4 is a summary **schema + PART B prompt** change, so it ships through the
@@ -382,12 +384,20 @@ was made.** When it resumes, this is the pre-done research:
   over-nesting (monitor); the flat single-project inline-suffix repeat (pre-existing cosmetic); refresh the
   committed baseline post-ship. **Room stays v5**; no schema/DB change (the summary is a DataStore artefact).
 
-### Ship sequence (this phase)
-Push `eval-run-summary-v0.30.0` → the AI Eval gate runs against the committed AI-2 baseline (`eval/report-
-baseline.json`, summaryChecks 18/18) and must be **GREEN** (summaryChecks 22/22 under consensus 3× AND ≥
-baseline). Only then tag **`v0.30.0`** (signed APK/AAB) and push `eval-baseline-summary-v0.30.0` to commit
-the fresh baseline (denominator 22) for M3. **Carried owner gates:** deploy the M1 proxy to light up managed
-mode; Drive OAuth client + release SHA-1 on `gmailapi-491903` (reported created 2026-07-10).
+### Eval gate result (GREEN)
+The AI Eval gate ran against the committed AI-2 baseline (consensus 3×, 192 calls). **r1 failed on ONE gate,
+`inboxPrecision 88.5%` (< 90%) — a CATEGORIZER metric on an untouched suite** (the categorizer prompt/golden/
+scorer are byte-identical to the baseline; one `inbox` case flipped, 23/26 vs the baseline's 24/26 — the
+known one-case absolute-threshold flake; the ≥-baseline check, which HAS noise tolerance, passed). The new
+**summary suite passed — `competencyGrouping` went green on the real `gpt-oss-120b`**, and no summary/coach
+case failed. **r2 (a straight re-run, no code change) = "eval gates PASS — 192 calls, 0 failed."** — confirming
+r1 was transient categorizer noise, unrelated to this summary-only change. Tagged **`v0.30.0`** (signed APK/AAB)
+on the green r2; pushed `eval-baseline-summary-v0.30.0` to commit the fresh consensus baseline (denominator 22,
+summaryChecks 22/22) as the "before" for M3. **Note for M3:** the categorizer's `inboxPrecision` sits right on
+its 90% floor and flakes ±1 case run-to-run against a fixed absolute threshold — a straight re-run is the
+standard clear (as here); a durable fix (widen the golden or the park-band) is optional future harness work.
+**Carried owner gates:** deploy the M1 proxy to light up managed mode; Drive OAuth client + release SHA-1 on
+`gmailapi-491903` (reported created 2026-07-10).
 
 ---
 
