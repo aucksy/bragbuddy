@@ -7,8 +7,8 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.bragbuddy.app.MainActivity
 import com.bragbuddy.app.R
-import com.bragbuddy.app.ui.capture.CaptureLauncher
 
 /** Notification channels + the daily reminder and weekly recap. Voice/tone per the design: warm,
  *  brief, never nagging. */
@@ -36,11 +36,13 @@ object Notifications {
         )
     }
 
-    /** Post the reminder. Tapping it opens the capture surface into the user's *Default capture
-     *  method* (Voice by default; "Ask each time" shows the 3-choice chooser) — resolved in the VM. */
+    /** Post the reminder. Tapping it opens the app on Home with the **3-input capture radial** already
+     *  fanned out (the same state as tapping "+") — never a fixed mode, never auto-recording. The shell
+     *  (MainScaffold) opens the radial off [MainActivity.EXTRA_OPEN_CAPTURE]. */
     fun postReminder(context: Context) {
-        val intent = CaptureLauncher.intentForDefault(context).apply {
+        val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_OPEN_CAPTURE, true)
         }
         val pending = PendingIntent.getActivity(
             context, 0, intent,

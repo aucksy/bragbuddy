@@ -17,7 +17,6 @@ import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.net.ConnectivityMonitor
 import com.bragbuddy.app.data.prefs.AppSettings
 import com.bragbuddy.app.data.prefs.CaptureMode
-import com.bragbuddy.app.data.prefs.DefaultCaptureMethod
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.speech.AudioRecorder
 import com.bragbuddy.app.data.speech.GroqTranscriber
@@ -159,13 +158,10 @@ class CaptureViewModel @Inject constructor(
     /** Turn the launch's EXTRA_START_MODE into the opening (mode, awaitingChoice). */
     private fun resolveStart(extra: String?, s: AppSettings): Pair<CaptureMode, Boolean> = when (extra) {
         null -> s.lastCaptureMode to false                     // Redo / legacy launch → last-used mode
-        CaptureActivity.START_ASK -> s.lastCaptureMode to true // in-context "+" → the 3-choice chooser
-        CaptureActivity.START_DEFAULT -> when (s.defaultCaptureMethod) { // notification / nudges
-            DefaultCaptureMethod.ASK -> s.lastCaptureMode to true
-            DefaultCaptureMethod.SPEAK -> CaptureMode.SPEAK to false
-            DefaultCaptureMethod.TYPE -> CaptureMode.TYPE to false
-            DefaultCaptureMethod.IMAGE -> CaptureMode.IMAGE to false
-        }
+        // Both the in-context "+" rows and any legacy DEFAULT launch open the 3-choice chooser. The
+        // "default capture method" concept was removed (v0.29.1): the reminder now opens the Home
+        // radial instead of a fixed mode, so nothing silently starts recording.
+        CaptureActivity.START_ASK, CaptureActivity.START_DEFAULT -> s.lastCaptureMode to true
         else -> runCatching { CaptureMode.valueOf(extra) }.getOrDefault(s.lastCaptureMode) to false
     }
 

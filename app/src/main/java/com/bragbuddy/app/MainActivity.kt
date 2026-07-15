@@ -1,9 +1,11 @@
 package com.bragbuddy.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.mutableStateOf
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.bragbuddy.app.data.entry.EntryRepository
@@ -27,11 +29,26 @@ class MainActivity : ComponentActivity() {
      *  stays up so a forced Light/Dark theme never flashes the wrong colours on cold start. */
     private var themeReady = false
 
+    /** Bumped each time we're launched/re-launched with [EXTRA_OPEN_CAPTURE] (the daily reminder tap):
+     *  a monotonically increasing signal the shell observes to open the Home "+" capture radial. A
+     *  counter (not a Boolean) so a fresh tap while the app is already open still triggers it; the shell
+     *  tracks the last value it handled so a plain Home re-composition (e.g. returning from Settings)
+     *  never re-opens it. Snapshot state so the running composition observes [onNewIntent] bumps. */
+    private val openCaptureSignal = mutableStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         splash.setKeepOnScreenCondition { !themeReady }
+        // Bump ONLY on a genuine fresh launch (savedInstanceState == null). A config-change / auto
+        // dark-mode / process-death recreation re-runs onCreate with the same sticky launch intent, so
+        // an unconditional bump would re-derive a stale signal and re-open the radial with no tap; the
+        // shell's rememberSaveable last-handled counter would already be ahead. (onNewIntent handles the
+        // app-already-running tap.)
+        if (savedInstanceState == null && intent?.getBooleanExtra(EXTRA_OPEN_CAPTURE, false) == true) {
+            openCaptureSignal.value++
+        }
 
         // Notification permission (Android 13+) is NO LONGER requested here — the naked OS dialog used
         // to pop over the Welcome screen on a fresh install. It's now asked once via a rationale popup
@@ -54,8 +71,22 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             BragBuddyThemedApp(onReady = { themeReady = true }) {
-                BragNavHost()
+                BragNavHost(openCaptureSignal = openCaptureSignal.value)
             }
         }
+    }
+
+    /** singleTask: a reminder tap while the app is already running arrives here. Bump the signal so the
+     *  shell opens the capture radial (and stash the intent so a later read sees the latest). */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_OPEN_CAPTURE, false)) openCaptureSignal.value++
+    }
+
+    companion object {
+        /** Boolean extra: the daily reminder sets this so the shell opens the Home "+" capture radial
+         *  (the 3-input chooser) instead of any fixed capture mode. */
+        const val EXTRA_OPEN_CAPTURE = "open_capture"
     }
 }

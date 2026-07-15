@@ -4,8 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -33,7 +37,10 @@ import com.bragbuddy.app.ui.theme.BragBuddyTheme
  *  pillar view, and the privacy screen are pushed screens. Capture is its own Activity. The first-run
  *  onboarding wizard gates the start destination via [RootGateViewModel]. */
 @Composable
-fun BragNavHost(gateViewModel: RootGateViewModel = hiltViewModel()) {
+fun BragNavHost(
+    openCaptureSignal: Int = 0,
+    gateViewModel: RootGateViewModel = hiltViewModel(),
+) {
     val gate by gateViewModel.gate.collectAsStateWithLifecycle()
 
     // Still loading the onboarding flag — hold on a blank splash-coloured frame (a frame or two).
@@ -47,6 +54,19 @@ fun BragNavHost(gateViewModel: RootGateViewModel = hiltViewModel()) {
     // start destination must not change under us — we navigate away manually instead.
     val startDestination = remember { if (resolved.showOnboarding) Routes.ONBOARDING else Routes.HOME }
     val reacceptOnly = remember { resolved.reacceptOnly }
+
+    // A daily-reminder tap ([MainActivity.openCaptureSignal]) must open the capture radial regardless of
+    // which pushed route (Settings, a pillar detail, …) is on top — the radial lives in [MainScaffold]
+    // (the HOME destination), so bring HOME to the front here on each NEW signal; MainScaffold's own
+    // effect then fans the radial out. Its own last-handled tracker keeps a plain recomposition from
+    // re-navigating. (A no-op when HOME is already current, or still absent during onboarding.)
+    var lastNavCaptureSignal by rememberSaveable { mutableStateOf(0) }
+    LaunchedEffect(openCaptureSignal) {
+        if (openCaptureSignal > 0 && openCaptureSignal != lastNavCaptureSignal) {
+            lastNavCaptureSignal = openCaptureSignal
+            navController.popBackStack(Routes.HOME, inclusive = false)
+        }
+    }
 
     // M2 · one app-wide themed snackbar host (replaces scattered system toasts), available to every
     // destination via [LocalSnackbarController] and floated above the whole nav graph.
@@ -66,6 +86,7 @@ fun BragNavHost(gateViewModel: RootGateViewModel = hiltViewModel()) {
         }
         composable(Routes.HOME) {
             MainScaffold(
+                openCaptureSignal = openCaptureSignal,
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 onOpenPillar = { pillarId -> navController.navigate(Routes.pillar(pillarId)) },
                 onOpenFolder = { pillarId, folder -> navController.navigate(Routes.folder(pillarId, folder)) },

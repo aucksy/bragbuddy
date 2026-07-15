@@ -88,8 +88,33 @@ current code — that is the context, not chat history.
 > console.groq.com link**, reminder default-time comment drift fixed (6 PM), and (owner-chosen) **full
 > image-offline-queue parity** (Room **v4→v5** `PENDING_IMAGE`+`imagePath`, privacy **v2→v3** re-accept).
 > Two adversarial reviews (compile clean; logic = 1 HIGH + 1 MED + 1 latent-gate + 1 LOW, ALL FIXED before
-> tag). Detail in `## Status: v0.29.0` below. **Exact next step: Phase M3 (v0.30.0) — Play Store + Billing +
-> paywall/trial + metering** (`docs/IMPLEMENTATION-PLAN.md` · M3). Fresh chat pointed at `CONTEXT.md`.
+> tag). Detail in `## Status: v0.29.0` below.
+>
+> **Hardening patch — v0.29.1 SHIPPED 2026-07-15 (on-device fix pass over v0.29.0; not a phase, no eval
+> gate).** Six owner-reported device findings fixed + adversarially reviewed (compile-clean; the review's
+> 2 confirmed logic bugs in the new notification wiring were fixed + re-verified before tag): (1) the daily
+> reminder now opens the app on **Home with the "+" 3-input radial fanned out** — never a fixed mode, never
+> auto-recording — and the "Default capture method" setting was removed; (2) the 3 radial capture options
+> enlarged; (3) the Home/pillar project-card **timestamp no longer stacks one char per line**; (6) stronger
+> project-detail nudge + a "no confidential company data" caution; (7) an accurate, adaptive category-rename
+> confirmation. Detail in `## Status: v0.29.1` below.
+>
+> **⭐ Items 4 & 5 (Summary redesign) were SPLIT OUT of the patch into a dedicated SUMMARY PHASE (owner
+> decision 2026-07-15).** Item 5 (Summary: group a goal area's wins into **project folders** like Home) is
+> deterministic/render-only. Item 4 (Summary: user's **categories as top headers**, with a Leadership
+> category's competencies **nested** under it) needs a **summary schema + PART B prompt change** and is
+> therefore **EVAL-GATED** — do it as its own phase, never a patch. Owner's real setup = ONE "Leadership"
+> category whose free-text detail enumerates the Amex leadership pillars; the summary model already breaks
+> evidence out per pillar (owner likes this), it just renders them as top-level headers instead of nested.
+> Recommended impl (for the Summary phase): extend `SummaryBody.behaviours` with an optional
+> `competencies:[{name,evidence[]}]` level + a PART B rule ("for each BEHAVIOUR category, if its detail names
+> distinct competencies, group evidence under each; never invent one the detail doesn't name"), then render
+> Leadership as parent with competencies nested. Optional robustness follow-on: an explicit "detect
+> competencies from pasted text → Focus areas (user reviews before saving)" action in the framework editor
+> (deterministic, respects the "AI never silently reshapes the framework" invariant).
+>
+> **Exact next step: the SUMMARY PHASE (items 4+5) — eval-gated for item 4's prompt — then Phase M3
+> (v0.30.0) Play Store + Billing + paywall/trial + metering.** Fresh chat pointed at `CONTEXT.md`.
 
 ---
 
@@ -288,6 +313,63 @@ was made.** When it resumes, this is the pre-done research:
 - **Capture parity:** no iOS overlay (Apple forbids) — the notification opens the app straight into a
   minimal auto-recording screen + App Intents (Siri/Shortcuts/Action Button/Lock-Screen). Blessed in the
   PRD/Brief.
+
+---
+
+## Status: v0.29.1 — Hardening patch over v0.29.0 (on-device fix pass) ✅ SHIPPED (signed · tag-driven CI; compile-clean + adversarially reviewed [3-lens workflow, per-finding verified]; **NOT a prompt phase → no eval gate**)
+
+> A fix/hardening pass on v0.29.0 from the owner's on-device testing — six findings, batched into one patch.
+> Two Summary findings (items 4 & 5) were **split out into a dedicated eval-gated Summary phase** (see the
+> top roadmap block) because item 4 requires a summary schema + PART B prompt change. `versionCode 34`.
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.29.1/BragBuddy-v0.29.1.apk` (signed by tag-driven CI; `.aab` alongside).
+
+### v0.29.1 — what was fixed
+1. **Daily-reminder journey → the 3-input radial (item 1).** Tapping the daily reminder no longer opens a
+   fixed capture mode / auto-records. It now opens the app on **Home with the "+" radial fanned out** (the
+   exact state as tapping "+"). Mechanism: `Notifications.postReminder` launches `MainActivity` (manifest
+   `singleTask`) with `EXTRA_OPEN_CAPTURE`; `MainActivity` bumps a snapshot-state `openCaptureSignal` counter
+   (**only on a fresh launch — `savedInstanceState == null` — and in `onNewIntent`**) threaded
+   `BragNavHost → MainScaffold`; **`BragNavHost` brings HOME to the front** (`popBackStack(HOME)`) on each new
+   signal so it works from any pushed route, and `MainScaffold`'s effect fans the radial out (both guarded by
+   their own last-handled trackers → no spurious re-open on recomposition). **The "Default capture method"
+   concept was REMOVED** — Settings card + `SettingsViewModel.setDefaultCaptureMethod` + `CaptureLauncher.
+   intentForDefault/openDefault` deleted; the Home daily-nudge "Add something" now opens the radial via a new
+   `onQuickCapture`. The `DefaultCaptureMethod` enum + `SettingsStore.defaultCaptureMethod` pref + its backup
+   round-trip were **deliberately KEPT (vestigial)** so backup (de)serialisation + `BackupCodecTest` are
+   untouched; `CaptureActivity.START_DEFAULT` const + the `resolveStart` branch (→ the chooser) kept as a
+   defensive fallback for a stale pre-upgrade notification.
+2. **Radial options enlarged (item 2).** `MainScaffold.RadialOption` 52dp→**64dp** (icon 22→27dp), offsets
+   widened in lockstep (Speak −104/−76 · Type 0/−132 · Scan 104/−76) — verified collision-free, no clipping
+   down to ~320dp width.
+3. **Timestamp no longer stacks vertically (item 3).** In the shared `EntryBulletRow` (Home inline folders +
+   pillar view), a long metric chip was devouring the row and starving the date into a one-char-per-line
+   column. The metric chip is now `weight(1f, fill=false)` + `maxLines=1` + ellipsis; the date is
+   `maxLines=1, softWrap=false, overflow=Ellipsis`. (Compose measures the unweighted date first, so it keeps
+   its full width; the weighted metric absorbs the remainder.)
+6. **Project-detail nudge + privacy caution (item 6).** `CategoryEditSheet` project-detail placeholder and
+   helper reworded: encourage measurable detail (for sharper AI impact prompts) **and** caution "keep it
+   generic — skip confidential names, clients, or exact figures."
+7. **Adaptive category-rename confirmation (item 7).** Was "Renaming X → Y; its projects move with it." —
+   misleading when there were no projects. Now adaptive: names the child term (**projects** vs **focus
+   areas**) only when children exist, and conditionally notes that already-filed entries (and their
+   summaries) can move too — "I'll ask about those" phrased so it doesn't over-promise when none are filed.
+- **Tests:** no test changes (the vestigial `defaultCaptureMethod` keeps `BackupCodecTest` valid; the fixes
+  are UI/wiring). `PromptSyncTest`/AI eval untouched (not a prompt phase).
+- **REVIEW (adversarial 3-lens workflow — compile / logic / UI, every finding independently verified):**
+  **compile lens = 0 findings** (the `RowScope.weight` inside `?.let{}`, the Activity state-field read in
+  composition, all new call sites, exhaustive `when`s, removed-symbol sweep all verified). 7 raised, **2
+  confirmed** (both in the new item-1 wiring), 5 dismissed as cosmetic/unreachable: **(a)** `openCaptureSignal`
+  re-derived from the sticky launch intent on a recreation could re-open the radial with no tap → fixed with
+  the `savedInstanceState == null` onCreate guard; **(b)** the signal was only consumed on the HOME route, so a
+  reminder tapped while on Settings/a pillar detail was a no-op → fixed by fronting HOME in `BragNavHost`. A
+  focused re-review of the fix delta returned **COMPILE CLEAN**. **Room stays v5**; DataStore flags not backed up.
+
+### Fresh chat → Summary phase (items 4+5), then M3
+Fresh chat pointed at `CONTEXT.md` → the **Summary phase** (items 4 + 5; **eval-gated** for item 4's PART B /
+schema change — the impl recommendation is in the top roadmap block), then **Phase M3 (v0.30.0) — Play Store +
+Billing + paywall/trial + metering**. **Carried owner gates:** deploy the M1 proxy to light up managed mode;
+Drive OAuth client + release SHA-1 on `gmailapi-491903` (reported created 2026-07-10).
 
 ---
 

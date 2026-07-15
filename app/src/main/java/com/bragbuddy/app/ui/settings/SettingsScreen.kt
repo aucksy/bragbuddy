@@ -56,7 +56,6 @@ import com.bragbuddy.app.BuildConfig
 import com.bragbuddy.app.R
 import com.bragbuddy.app.data.ai.AiEndpointConfig
 import com.bragbuddy.app.data.local.ProjectEntity
-import com.bragbuddy.app.data.prefs.DefaultCaptureMethod
 import com.bragbuddy.app.data.prefs.ThemeMode
 import com.bragbuddy.app.ui.common.ProjectRemapSheet
 import com.bragbuddy.app.ui.role.RoleInput
@@ -181,16 +180,6 @@ fun SettingsScreen(
                 onPickLightTime = {
                     TimePickerDialog(context, { _, h, m -> viewModel.setAutoLightTime(h, m) }, settings.autoLightHour, settings.autoLightMinute, false).show()
                 },
-            )
-
-            Spacer(Modifier.height(Spacing.s4))
-
-            // Default capture method (Phase B) — what the notification & daily nudge open to. The Home
-            // "+" always shows the radial regardless of this.
-            DefaultCaptureCard(
-                current = settings.defaultCaptureMethod,
-                palette = palette,
-                onPick = { viewModel.setDefaultCaptureMethod(it) },
             )
 
             Spacer(Modifier.height(Spacing.s4))
@@ -464,56 +453,6 @@ fun SettingsScreen(
 private fun monthName(month: Int): String =
     java.time.Month.of(month.coerceIn(1, 12))
         .getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
-
-@Composable
-private fun DefaultCaptureCard(
-    current: DefaultCaptureMethod,
-    palette: BragPalette,
-    onPick: (DefaultCaptureMethod) -> Unit,
-) {
-    // Order/labels mirror the capture chooser (Ask · Speak · Type · Scan).
-    val options = listOf(
-        DefaultCaptureMethod.ASK to "Ask",
-        DefaultCaptureMethod.SPEAK to "Voice",
-        DefaultCaptureMethod.TYPE to "Type",
-        DefaultCaptureMethod.IMAGE to "Scan",
-    )
-    Card(palette) {
-        Text("Default capture method", style = MaterialTheme.typography.titleMedium, color = palette.text1)
-        Text(
-            "What the reminder and the daily nudge open to. “Ask” shows the three-choice chooser; the Home “+” always shows it.",
-            style = MaterialTheme.typography.bodySmall,
-            color = palette.text3,
-        )
-        Spacer(Modifier.height(Spacing.s3))
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(999.dp))
-                .background(palette.surface2)
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            options.forEach { (method, label) ->
-                val selected = method == current
-                Text(
-                    label,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = if (selected) palette.primary else palette.text3,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(if (selected) palette.surface else Color.Transparent)
-                        .clickable { onPick(method) }
-                        .padding(vertical = 9.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun AppearanceCard(

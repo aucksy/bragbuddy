@@ -220,8 +220,10 @@ class CaptureActivity : ComponentActivity() {
         /** String extra: a project name to anchor this capture to (Home folder tap). */
         const val EXTRA_PROJECT = "anchor_project"
 
-        /** String extra: how to open (Phase B). A [CaptureMode] name (explicit pick), [START_ASK]
-         *  (show the chooser), or [START_DEFAULT] (resolve the user's default method). Absent = last-used. */
+        /** String extra: how to open (Phase B). A [CaptureMode] name (explicit pick) or [START_ASK]
+         *  (show the 3-choice chooser). Absent = last-used. [START_DEFAULT] is legacy (the "default
+         *  capture method" was removed in v0.29.1) — kept only so a stale pre-upgrade reminder still in
+         *  the tray opens the chooser instead of auto-recording. */
         const val EXTRA_START_MODE = "start_mode"
         const val START_ASK = "ASK"
         const val START_DEFAULT = "DEFAULT"

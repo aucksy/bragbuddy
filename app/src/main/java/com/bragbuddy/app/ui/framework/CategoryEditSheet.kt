@@ -289,7 +289,7 @@ fun CategoryEditSheet(
                         Spacer(Modifier.height(Spacing.s2))
                         ScanField(
                             value = row.summary, onValueChange = { row.summary = it },
-                            placeholder = "Add your performance metrics — type, or scan a doc…",
+                            placeholder = "How is this project judged? e.g. faster processing, adoption %, fewer errors — type or scan.",
                             palette = palette, scanEnabled = scanEnabled,
                             reading = scanState == ScanState.READING && activeScanTarget == target,
                             scanBusy = scanState != ScanState.IDLE,
@@ -297,7 +297,7 @@ fun CategoryEditSheet(
                         )
                         Spacer(Modifier.height(Spacing.s1))
                         Text(
-                            "A line or two is plenty — this rides along every time the AI files an entry.",
+                            "The more you note how success is measured here, the sharper the AI's impact prompts on your future entries. Keep it generic — skip confidential names, clients, or exact figures.",
                             style = MaterialTheme.typography.labelSmall,
                             color = palette.text3,
                         )
@@ -368,9 +368,15 @@ fun CategoryEditSheet(
     if (confirmCategory) {
         val renamed = name.trim() != baseName.trim()
         val detailChanged = detail.trim() != baseDetail.trim()
+        val hasChildren = subFolders.isNotEmpty()
+        val childWord = if (kind == PillarKind.GOAL_AREA) "projects" else "focus areas"
         val msg = buildString {
             if (detailChanged) append("Your next summary will use this updated detail. ")
-            if (renamed) append("Renaming “${baseName}” → “${name.trim()}”; its projects move with it.")
+            if (renamed) {
+                append("Renaming “${baseName}” → “${name.trim()}”.")
+                if (hasChildren) append(" Its $childWord come along.")
+                append(" If entries are already filed under “${baseName}”, I'll ask whether to move them (and their summaries) to “${name.trim()}” too.")
+            }
         }.trim().ifBlank { "Save changes to this category?" }
         AlertDialog(
             onDismissRequest = { confirmCategory = false },

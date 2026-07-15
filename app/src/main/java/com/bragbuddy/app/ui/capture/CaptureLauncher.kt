@@ -10,11 +10,11 @@ import com.bragbuddy.app.data.prefs.CaptureMode
  * pillar view, the shell FAB, the catch-up sheet, the notification).
  *
  * Each launch carries a [CaptureActivity.EXTRA_START_MODE] telling the surface what to open to:
- *  - an explicit [CaptureMode] name — the Home radial's pick (Speak / Type / Scan),
- *  - [CaptureActivity.START_ASK] — the 3-choice chooser (the in-context "+" rows), or
- *  - [CaptureActivity.START_DEFAULT] — the user's *Default capture method* (notification / nudges),
- *    resolved against settings inside the ViewModel.
- * A redo carries no start mode and opens in the last-used mode.
+ *  - an explicit [CaptureMode] name — the Home radial's pick (Speak / Type / Scan), or
+ *  - [CaptureActivity.START_ASK] — the 3-choice chooser (the in-context "+" rows).
+ * A redo carries no start mode and opens in the last-used mode. (The daily reminder no longer routes
+ * here — it opens the Home "+" radial via [com.bragbuddy.app.MainActivity.EXTRA_OPEN_CAPTURE]; the
+ * "default capture method" concept was removed in v0.29.1.)
  */
 object CaptureLauncher {
 
@@ -32,10 +32,6 @@ object CaptureLauncher {
     fun intentForChooser(context: Context, project: String? = null): Intent =
         base(context, project, null).putExtra(CaptureActivity.EXTRA_START_MODE, CaptureActivity.START_ASK)
 
-    /** The user's *Default capture method* — resolved in the VM (notification / daily nudge / catch-up). */
-    fun intentForDefault(context: Context, project: String? = null): Intent =
-        base(context, project, null).putExtra(CaptureActivity.EXTRA_START_MODE, CaptureActivity.START_DEFAULT)
-
     /** Redo an existing entry (no start mode → opens in the last-used mode). */
     fun intentForRedo(context: Context, entryId: Long): Intent = base(context, null, entryId)
 
@@ -44,9 +40,6 @@ object CaptureLauncher {
 
     fun openChooser(context: Context, project: String? = null) =
         context.startActivity(intentForChooser(context, project))
-
-    fun openDefault(context: Context, project: String? = null) =
-        context.startActivity(intentForDefault(context, project))
 
     fun redo(context: Context, entryId: Long) =
         context.startActivity(intentForRedo(context, entryId))

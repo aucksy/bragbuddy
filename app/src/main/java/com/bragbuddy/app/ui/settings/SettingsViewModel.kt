@@ -8,7 +8,6 @@ import com.bragbuddy.app.data.entry.OfflineRecovery
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.AppSettings
-import com.bragbuddy.app.data.prefs.DefaultCaptureMethod
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.prefs.ThemeMode
 import com.bragbuddy.app.data.project.ProjectRepository
@@ -83,9 +82,6 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setJobRole(role: String) = viewModelScope.launch { settingsStore.setJobRole(role) }
-
-    fun setDefaultCaptureMethod(method: DefaultCaptureMethod) =
-        viewModelScope.launch { settingsStore.setDefaultCaptureMethod(method) }
 
     fun setWeeklyRecapEnabled(enabled: Boolean) = viewModelScope.launch {
         settingsStore.setWeeklyRecapEnabled(enabled)

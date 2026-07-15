@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
@@ -143,10 +144,16 @@ fun EntryBulletRow(
                         it,
                         style = MaterialTheme.typography.labelSmall,
                         color = palette.text2,
-                        modifier = Modifier.clip(RoundedCornerShape(Radii.sm)).background(palette.surface2).padding(horizontal = 8.dp, vertical = 3.dp),
+                        // Bound the chip so a long metric can't devour the row and starve the date into a
+                        // one-char-per-line vertical column — it shrinks + ellipsizes; the date stays whole.
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .clip(RoundedCornerShape(Radii.sm)).background(palette.surface2).padding(horizontal = 8.dp, vertical = 3.dp),
                     )
                 }
-                Text(date, style = MaterialTheme.typography.bodySmall, color = palette.text3)
+                Text(date, style = MaterialTheme.typography.bodySmall, color = palette.text3, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
             }
         }
         if (selectionMode) {

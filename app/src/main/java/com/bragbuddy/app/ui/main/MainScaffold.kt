@@ -81,6 +81,7 @@ private enum class HomeTab(val label: String) { HOME("Home"), SUMMARY("Summary")
  */
 @Composable
 fun MainScaffold(
+    openCaptureSignal: Int = 0,
     onOpenSettings: () -> Unit,
     onOpenPillar: (String) -> Unit,
     onOpenFolder: (String, String) -> Unit,
@@ -94,6 +95,17 @@ fun MainScaffold(
     // to close. Always the deliberate chooser — independent of the Default capture method.
     var radialOpen by rememberSaveable { mutableStateOf(false) }
     val fabRotation by animateFloatAsState(if (radialOpen) 45f else 0f, label = "fabRotation")
+    // A daily-reminder tap (MainActivity.openCaptureSignal) opens the capture radial — the same state as
+    // tapping "+". Handle each signal ONCE (track the last handled value) so returning to Home from
+    // Settings, which re-runs this effect, never re-opens the radial.
+    var lastHandledCaptureSignal by rememberSaveable { mutableStateOf(0) }
+    LaunchedEffect(openCaptureSignal) {
+        if (openCaptureSignal > 0 && openCaptureSignal != lastHandledCaptureSignal) {
+            lastHandledCaptureSignal = openCaptureSignal
+            tab = HomeTab.HOME
+            radialOpen = true
+        }
+    }
     // Set by Home's early-preview banner: land on Summary and generate right away (the tap is the
     // consent for the one metered call). Consumed by SummaryScreen once its state is ready.
     var summaryAutoGenerate by rememberSaveable { mutableStateOf(false) }
@@ -137,6 +149,7 @@ fun MainScaffold(
                 onReviewInbox = { tab = HomeTab.INBOX },
                 onOpenSummary = { summaryAutoGenerate = true; tab = HomeTab.SUMMARY },
                 onOpenReliability = onOpenReliability,
+                onQuickCapture = { radialOpen = true },
                 contentBottomPadding = contentBottom,
             )
             HomeTab.SUMMARY -> SummaryScreen(
@@ -271,9 +284,9 @@ private fun BoxScope.CaptureRadial(navInset: androidx.compose.ui.unit.Dp, onPick
             .padding(bottom = navInset + 23.dp)
             .size(52.dp),
     ) {
-        RadialOption(shown, 0, -84f, -66f, Icons.Outlined.Mic, "Speak") { onPick(CaptureMode.SPEAK) }
-        RadialOption(shown, 1, 0f, -112f, Icons.Outlined.Keyboard, "Type") { onPick(CaptureMode.TYPE) }
-        RadialOption(shown, 2, 84f, -66f, Icons.Outlined.PhotoCamera, "Scan") { onPick(CaptureMode.IMAGE) }
+        RadialOption(shown, 0, -104f, -76f, Icons.Outlined.Mic, "Speak") { onPick(CaptureMode.SPEAK) }
+        RadialOption(shown, 1, 0f, -132f, Icons.Outlined.Keyboard, "Type") { onPick(CaptureMode.TYPE) }
+        RadialOption(shown, 2, 104f, -76f, Icons.Outlined.PhotoCamera, "Scan") { onPick(CaptureMode.IMAGE) }
     }
 }
 
@@ -302,14 +315,14 @@ private fun BoxScope.RadialOption(
     ) {
         Box(
             Modifier
-                .size(52.dp)
+                .size(64.dp)
                 .clip(RoundedCornerShape(999.dp))
                 .background(palette.surface)
                 .border(1.dp, palette.border, RoundedCornerShape(999.dp))
                 .tapHaptic()
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
-        ) { Icon(icon, label, tint = palette.primary, modifier = Modifier.size(22.dp)) }
+        ) { Icon(icon, label, tint = palette.primary, modifier = Modifier.size(27.dp)) }
         Spacer(Modifier.height(6.dp))
         Text(
             label,
