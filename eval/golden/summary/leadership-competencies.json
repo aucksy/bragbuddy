@@ -1,0 +1,18 @@
+{
+  "id": "leadership-competencies",
+  "note": "Summary phase · item 4. The owner's real setup: ONE 'Leadership' BEHAVIOUR category whose framework description enumerates named competencies (the three American Express leadership behaviours — Set the Agenda, Bring Others With You, Do It The Right Way). The rollup surfaces the Leadership evidence flat under the category; PART B rule 4 must group it UNDER 'Leadership' with the named competencies nested (behaviours[].competencies[]), NOT surface each pillar as its own top-level behaviour header. The competencyGrouping check (gated via summaryChecks) verifies: 'Leadership' appears once at top level, its named competencies are nested (majority matched), and none of the pillar names leak up as top-level headers — the exact rendering bug this phase fixes. The two goal-area highlights guard against a regression where the behaviour restructure disturbs achievement selection.",
+  "period": "full-year review",
+  "lengthCap": "about one page — at most 5 achievements per goal area",
+  "role": "Product Manager",
+  "frameworkBlock": "GOAL AREAS (results / projects map here):\n- Performance Goals: Product and delivery objectives; projects nest here.\nBEHAVIOURS / COMPETENCIES (tag work that demonstrates these):\n- Leadership: Our leadership behaviours — Set the Agenda (define a clear, bold direction and the priorities to get there), Bring Others With You (build strong, diverse teams and win together), and Do It The Right Way (act with integrity and care for colleagues and community).\nDEVELOPMENT (optional):\n- Learning & Growth: Courses, certifications, new skills.",
+  "pinned": [],
+  "rollup": "GOAL AREA: Performance Goals\n  Highlights (ranked by impact):\n  - [impact 0.85] Shipped the new servicing workflow to all markets, cutting handle time 22% (project: Servicing Revamp) (metric: cut handle time 22%) (standout)\n  - [impact 0.6] Launched the self-serve refunds flow for card members (project: Servicing Revamp)\n\nBEHAVIOUR EVIDENCE (concrete bullets that demonstrated each):\n- Leadership:\n  - Defined the FY26 servicing roadmap and aligned three product teams behind a single north-star metric.\n  - Set clear quarterly priorities that refocused the team on the highest-impact work.\n  - Mentored two junior product managers into owning their own workstreams end to end.\n  - Built a cross-market working group that unblocked four stalled launches.\n  - Flagged and fixed a compliance gap in the refunds flow before it shipped.\n  - Rewrote the incident postmortem process to focus on learning rather than blame.",
+  "expect": {
+    "noDuplicates": true,
+    "metrics": ["22%"],
+    "competencyGrouping": {
+      "category": "Leadership",
+      "competencies": ["Set the Agenda", "Bring Others With You", "Do It The Right Way"]
+    }
+  }
+}

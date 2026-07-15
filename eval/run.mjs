@@ -713,6 +713,7 @@ function scoreSummaryCase(c, record) {
     if (Array.isArray(expect.rolledUp)) checks.rolledUpCounts = { pass: false, detail: why };
     if (expect.setAsideNonEmpty) checks.setAside = { pass: false, detail: why };
     if (Array.isArray(expect.developmentKeys)) checks.developmentPlacement = { pass: false, detail: why };
+    if (expect.competencyGrouping && expect.competencyGrouping.category) checks.competencyGrouping = { pass: false, detail: why };
     return { checks, advisory };
   }
   checks.valid = { pass: true };
@@ -752,7 +753,12 @@ function scoreSummaryCase(c, record) {
   // invariant, and a duplicate anywhere (hits > 1) still fails.
   if (Array.isArray(expect.pinnedKeys)) {
     const development = Array.isArray(body.development) ? body.development : [];
-    const behaviourEvidence = (body.behaviours || []).flatMap((b) => b.evidence || []);
+    // Behaviour evidence lives either flat in evidence[] or (item 4) nested in competencies[].evidence[]
+    // — count both so a pinned item filed under a nested competency isn't mis-scored as dropped.
+    const behaviourEvidence = (body.behaviours || []).flatMap((b) => [
+      ...(b.evidence || []),
+      ...((b.competencies || []).flatMap((c) => c.evidence || [])),
+    ]);
     const pinnedSurfaces = [...achievements, ...development, ...behaviourEvidence];
     // Hyphen/space-tolerant match: a summary that rephrases "PCI-DSS" as "PCI DSS" has NOT dropped
     // the pinned item, so hyphenation must not fail the check (both collapse to "pci dss").
@@ -789,6 +795,38 @@ function scoreSummaryCase(c, record) {
       inDev.length === expect.developmentKeys.length && leaked.length === 0
         ? { pass: true }
         : { pass: false, detail: `in development[]: ${inDev.length}/${expect.developmentKeys.length}; leaked into goalAreas: ${leaked.join('; ') || 'none'}` };
+  }
+
+  // GATED (Summary phase · item 4): when a BEHAVIOUR category's framework description NAMES distinct
+  // competencies, the summary groups the evidence UNDER the category (nested behaviours[].competencies[])
+  // instead of surfacing each competency as its own top-level behaviour header. Checks: the category
+  // appears exactly once at top level, a MAJORITY of its named competencies are nested under it, and
+  // NONE of those competency names leak up as top-level behaviour headers (the exact bug this fixes).
+  // Majority (not all) so a model that legitimately merges/omits one competency for lack of evidence
+  // still passes — the structural change is what's gated, hyphen/space/case-tolerant.
+  if (expect.competencyGrouping && expect.competencyGrouping.category) {
+    const loose = (s) => norm(s).replace(/-/g, ' ').replace(/\s+/g, ' ');
+    // Bidirectional loose-CONTAINS (like pinnedOnce), NOT exact equality: the model legitimately
+    // titles the category "Leadership Behaviours" or carries a parenthetical gloss into a competency
+    // name ("Set the Agenda (define…)") — neither is a structural miss, so exact equality would flake
+    // a systematic (seed-fixed, consensus-immune) fail on the 100% gate. Contains matches both.
+    const contains = (a, b) => a.includes(b) || b.includes(a);
+    const behaviours = Array.isArray(body.behaviours) ? body.behaviours : [];
+    const wantCategory = loose(expect.competencyGrouping.category);
+    const wantComps = expect.competencyGrouping.competencies || [];
+    const topNames = behaviours.map((b) => loose(b.name || ''));
+    const categoryHits = behaviours.filter((b) => contains(loose(b.name || ''), wantCategory));
+    const leaked = wantComps.filter((c) => topNames.some((t) => contains(t, loose(c))));
+    const nested = categoryHits.flatMap((b) => (b.competencies || []).map((c) => loose(c.name || '')));
+    const matched = wantComps.filter((c) => nested.some((n) => contains(n, loose(c))));
+    const need = Math.ceil(wantComps.length / 2); // a majority of the named competencies must be nested
+    const ok = categoryHits.length === 1 && leaked.length === 0 && matched.length >= need;
+    checks.competencyGrouping = ok
+      ? { pass: true }
+      : {
+          pass: false,
+          detail: `category "${wantCategory}" top-level hits=${categoryHits.length}; nested matched ${matched.length}/${wantComps.length} (need ${need}); leaked as top-level: ${leaked.join(', ') || 'none'}; top-level behaviours: ${JSON.stringify(behaviours.map((b) => b.name))}`,
+        };
   }
 
   return { checks, advisory };

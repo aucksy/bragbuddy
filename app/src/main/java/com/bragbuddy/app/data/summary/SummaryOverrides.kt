@@ -118,7 +118,15 @@ fun applyOverrides(result: SummaryResult, overrides: SummaryOverrides): SummaryR
     }
 
     val behaviours = result.summary.behaviours.map { b ->
-        b.copy(evidence = b.evidence.map { edit(it) }.filterNot { dropped(it) })
+        // Apply edits/deletes to the category's own evidence AND to each nested competency's evidence
+        // (Summary phase · item 4). A competency whose evidence is entirely deleted is dropped; the
+        // UI filters a category left with neither evidence nor competencies.
+        b.copy(
+            evidence = b.evidence.map { edit(it) }.filterNot { dropped(it) },
+            competencies = b.competencies
+                .map { comp -> comp.copy(evidence = comp.evidence.map { edit(it) }.filterNot { dropped(it) }) }
+                .filter { it.evidence.isNotEmpty() },
+        )
     }
     val development = result.summary.development.map { edit(it) }.filterNot { dropped(it) }
 

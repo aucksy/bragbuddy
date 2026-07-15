@@ -253,23 +253,24 @@ class SummaryViewModel @Inject constructor(
         }
     }
 
-    /** Reorder an achievement up within its goal area (local edit of the cached draft; no model call). */
-    fun promote(areaName: String, index: Int) = reorder(areaName, index, -1)
-
-    /** Reorder an achievement down within its goal area. */
-    fun demote(areaName: String, index: Int) = reorder(areaName, index, +1)
-
-    private fun reorder(areaName: String, index: Int, delta: Int) = mutateCached { cached ->
+    /**
+     * Swap two achievements within a goal area, addressed by their index in the area's flat
+     * achievements list (local edit of the cached draft; no model call). The Summary screen scopes
+     * the up/down arrows to within a project folder (item 5) by passing the two adjacent-in-folder
+     * flat slots; a flat (un-foldered) area passes i and i±1. Keeps the SAME inputSignature — this
+     * changes the output, not the input, so the summary stays "Up to date".
+     */
+    fun swapAchievements(areaName: String, indexA: Int, indexB: Int) = mutateCached { cached ->
+        if (indexA == indexB) return@mutateCached null
         val areas = cached.result.summary.goalAreas.toMutableList()
         val ai = areas.indexOfFirst { it.name == areaName }
         if (ai < 0) return@mutateCached null
         val achievements = areas[ai].achievements.toMutableList()
-        val target = index + delta
-        if (index !in achievements.indices || target !in achievements.indices) return@mutateCached null
-        val moved = achievements.removeAt(index)
-        achievements.add(target, moved)
+        if (indexA !in achievements.indices || indexB !in achievements.indices) return@mutateCached null
+        val tmp = achievements[indexA]
+        achievements[indexA] = achievements[indexB]
+        achievements[indexB] = tmp
         areas[ai] = areas[ai].copy(achievements = achievements)
-        // Keep the SAME inputSignature — this changes the output, not the input, so it stays fresh.
         cached.copy(result = cached.result.copy(summary = cached.result.summary.copy(goalAreas = areas)))
     }
 

@@ -43,13 +43,30 @@ fun exportGoalArea(area: SummaryGoalArea): String {
     return sb.toString()
 }
 
-/** One behaviour as text: `NAME` heading, then its evidence bullets. */
+/** A nested competency evidence bullet — deeper-indented so it sits under its competency sub-head. */
+private fun nestedEvidenceLine(text: String): String? {
+    val t = text.trim()
+    if (t.isEmpty()) return null
+    return "    • " + t
+}
+
+/**
+ * One behaviour as text: `NAME` heading, then its category-level evidence bullets, then (item 4)
+ * each nested competency as an indented sub-heading with its own bullets. A flat behaviour (no
+ * competencies) exports exactly as before.
+ */
 fun exportBehaviour(b: SummaryBehaviour): String {
-    val lines = b.evidence.mapNotNull { achievementLine(it, null, null) }
     val sb = StringBuilder(b.name.uppercase())
-    if (lines.isNotEmpty()) {
-        sb.append("\n")
-        sb.append(lines.joinToString("\n"))
+    // Category-level bullets + any evidence from an UNNAMED competency (a model glitch) folded up, so
+    // it's never lost and never rendered under an empty sub-heading.
+    val looseEvidence = b.evidence + b.competencies.filter { it.name.isBlank() }.flatMap { it.evidence }
+    looseEvidence.mapNotNull { achievementLine(it, null, null) }.forEach { sb.append("\n").append(it) }
+    b.competencies.filter { it.name.isNotBlank() }.forEach { comp ->
+        val evLines = comp.evidence.mapNotNull { nestedEvidenceLine(it) }
+        if (evLines.isNotEmpty()) {
+            sb.append("\n  ").append(comp.name.trim())
+            evLines.forEach { sb.append("\n").append(it) }
+        }
     }
     return sb.toString()
 }
@@ -69,7 +86,10 @@ fun exportSummary(result: SummaryResult, title: String): String {
         if (area.achievements.isNotEmpty() || area.rolledUp.isNotEmpty()) blocks.add(exportGoalArea(area))
     }
     result.summary.behaviours.forEach { b ->
-        if (b.evidence.isNotEmpty()) blocks.add(exportBehaviour(b))
+        // Mirror the on-screen render guard: a category whose evidence lives ENTIRELY in nested
+        // competencies (item 4's Leadership case) has an empty top-level evidence[] but must still be
+        // exported — otherwise the whole-summary Copy silently drops the section.
+        if (b.evidence.isNotEmpty() || b.competencies.any { it.evidence.isNotEmpty() }) blocks.add(exportBehaviour(b))
     }
     exportDevelopment(result.summary.development)?.let { blocks.add(it) }
     return blocks.joinToString("\n\n")

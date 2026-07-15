@@ -42,6 +42,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Refresh
@@ -64,11 +65,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.ai.SummaryBehaviour
+import com.bragbuddy.app.data.ai.SummaryCompetency
 import com.bragbuddy.app.data.ai.SummaryGoalArea
 import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.ui.common.LocalSnackbarController
@@ -186,8 +189,7 @@ fun SummaryScreen(
                             if (s.isStale) viewModel.generate()
                             else snackbar.show("Already up to date")
                         },
-                        onPromote = { area, i -> viewModel.promote(area, i) },
-                        onDemote = { area, i -> viewModel.demote(area, i) },
+                        onSwap = { area, a, b -> viewModel.swapAchievements(area, a, b) },
                         onLongPressPointer = { raw -> pointerAction = raw },
                         onRestoreRequest = { note -> restoreNote = note },
                     )
@@ -313,8 +315,7 @@ private fun ReadyBlock(
     contentBottomPadding: Dp,
     onCopyText: (String, String) -> Unit,
     onRegenerate: () -> Unit,
-    onPromote: (String, Int) -> Unit,
-    onDemote: (String, Int) -> Unit,
+    onSwap: (String, Int, Int) -> Unit,
     onLongPressPointer: (String) -> Unit,
     onRestoreRequest: (String) -> Unit,
 ) {
@@ -361,15 +362,14 @@ private fun ReadyBlock(
                         expanded = !collapsed.contains(key),
                         onToggle = { toggle(key) },
                         onCopy = { onCopyText(exportGoalArea(area), "Copied section") },
-                        onPromote = onPromote,
-                        onDemote = onDemote,
+                        onSwap = onSwap,
                         onLongPress = onLongPressPointer,
                     )
                     Spacer(Modifier.height(Spacing.s4))
                 }
             }
             result.summary.behaviours.forEach { b ->
-                if (b.evidence.isNotEmpty()) {
+                if (b.evidence.isNotEmpty() || b.competencies.any { it.evidence.isNotEmpty() }) {
                     val key = "beh-${b.name}"
                     BehaviourSection(
                         b = b,
@@ -416,6 +416,11 @@ private fun goalHue(framework: Framework, name: String): PillarColor {
     return pillarColor(if (idx >= 0) idx else framework.pillars.size)
 }
 
+private fun isPinned(pinnedBullets: List<String>, bullet: String): Boolean =
+    pinnedBullets.any {
+        it.equals(bullet, ignoreCase = true) || bullet.contains(it, ignoreCase = true) || it.contains(bullet, ignoreCase = true)
+    }
+
 @Composable
 private fun GoalAreaSection(
     area: SummaryGoalArea,
@@ -424,8 +429,7 @@ private fun GoalAreaSection(
     expanded: Boolean,
     onToggle: () -> Unit,
     onCopy: () -> Unit,
-    onPromote: (String, Int) -> Unit,
-    onDemote: (String, Int) -> Unit,
+    onSwap: (String, Int, Int) -> Unit,
     onLongPress: (String) -> Unit,
 ) {
     val hue = goalHue(state.framework, area.name)
@@ -437,30 +441,110 @@ private fun GoalAreaSection(
     ) {
         Column {
             Spacer(Modifier.height(Spacing.s3))
-            val many = area.achievements.size > 1
-            area.achievements.forEachIndexed { i, ach ->
-                val pinned = state.pinnedBullets.any {
-                    it.equals(ach.bullet, ignoreCase = true) || ach.bullet.contains(it, ignoreCase = true) || it.contains(ach.bullet, ignoreCase = true)
+            // Item 5: group the area's wins into collapsible project folders (mirrors Home). Falls back
+            // to a flat list when there's no structure to show (single project / all loose).
+            val folders = groupAchievementsByProject(area.achievements)
+            if (folders != null) {
+                folders.forEach { folder ->
+                    ProjectFolder(folder, area.name, hue, state, palette, onSwap, onLongPress)
+                    Spacer(Modifier.height(Spacing.s2))
                 }
-                AchievementRow(
-                    text = achievementDisplay(ach.bullet, ach.metric, ach.project),
-                    hue = hue,
-                    palette = palette,
-                    pinned = pinned,
-                    count = ach.count,
-                    showControls = many,
-                    canUp = i > 0,
-                    canDown = i < area.achievements.lastIndex,
-                    onUp = { onPromote(area.name, i) },
-                    onDown = { onDemote(area.name, i) },
-                    onLongPress = { onLongPress(ach.bullet) },
-                )
-                Spacer(Modifier.height(Spacing.s2))
+            } else {
+                val many = area.achievements.size > 1
+                area.achievements.forEachIndexed { i, ach ->
+                    AchievementRow(
+                        text = achievementDisplay(ach.bullet, ach.metric, ach.project),
+                        hue = hue,
+                        palette = palette,
+                        pinned = isPinned(state.pinnedBullets, ach.bullet),
+                        count = ach.count,
+                        showControls = many,
+                        canUp = i > 0,
+                        canDown = i < area.achievements.lastIndex,
+                        onUp = { onSwap(area.name, i, i - 1) },
+                        onDown = { onSwap(area.name, i, i + 1) },
+                        onLongPress = { onLongPress(ach.bullet) },
+                    )
+                    Spacer(Modifier.height(Spacing.s2))
+                }
             }
             area.rolledUp.forEach { r ->
                 val raw = r.bullet.ifBlank { r.routineType }
                 RolledUpRow(raw, r.count, hue, palette, onLongPress = { onLongPress(raw) })
                 Spacer(Modifier.height(Spacing.s2))
+            }
+        }
+    }
+}
+
+/**
+ * One project folder inside a goal-area section (item 5): a collapsible header naming the project +
+ * its achievements (project shown by the header, so not repeated inline). Up/down reorder is scoped
+ * to this folder — the arrows swap the achievement's real slot in the area's flat list.
+ */
+@Composable
+private fun ProjectFolder(
+    folder: SummaryFolder,
+    areaName: String,
+    hue: PillarColor,
+    state: SummaryViewModel.ScreenState,
+    palette: BragPalette,
+    onSwap: (String, Int, Int) -> Unit,
+    onLongPress: (String) -> Unit,
+) {
+    // Default expanded (this is a read-and-copy screen — content visible by default). Keyed by name so
+    // the state survives recomposition/reorder within the folder.
+    var open by remember(folder.name) { mutableStateOf(true) }
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.sm)).clickable { open = !open }.padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.Folder, null, tint = hue.ink, modifier = Modifier.size(15.dp))
+            Spacer(Modifier.width(Spacing.s2))
+            Text(
+                folder.name,
+                style = MaterialTheme.typography.labelMedium,
+                color = hue.ink,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text("${folder.items.size}", style = MaterialTheme.typography.labelSmall, color = palette.text3, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                null, tint = palette.text3, modifier = Modifier.size(16.dp),
+            )
+        }
+        AnimatedVisibility(
+            visible = open,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            Column(Modifier.padding(start = Spacing.s3)) {
+                Spacer(Modifier.height(Spacing.s2))
+                val many = folder.items.size > 1
+                folder.items.forEachIndexed { localIndex, ia ->
+                    val ach = ia.achievement
+                    val prevFlat = folder.items.getOrNull(localIndex - 1)?.flatIndex
+                    val nextFlat = folder.items.getOrNull(localIndex + 1)?.flatIndex
+                    AchievementRow(
+                        text = achievementDisplay(ach.bullet, ach.metric, null),
+                        hue = hue,
+                        palette = palette,
+                        pinned = isPinned(state.pinnedBullets, ach.bullet),
+                        count = ach.count,
+                        showControls = many,
+                        canUp = prevFlat != null,
+                        canDown = nextFlat != null,
+                        onUp = { prevFlat?.let { onSwap(areaName, ia.flatIndex, it) } },
+                        onDown = { nextFlat?.let { onSwap(areaName, ia.flatIndex, it) } },
+                        onLongPress = { onLongPress(ach.bullet) },
+                    )
+                    Spacer(Modifier.height(Spacing.s2))
+                }
             }
         }
     }
@@ -485,10 +569,43 @@ private fun BehaviourSection(
     ) {
         Column {
             Spacer(Modifier.height(Spacing.s3))
-            b.evidence.forEach { ev ->
+            // Category-level evidence — a flat behaviour's bullets, or (item 4) bullets that fit no
+            // named competency. Any evidence from an UNNAMED competency (a model glitch) folds up here
+            // too, so it's never lost or shown under an empty sub-heading.
+            val looseEvidence = b.evidence + b.competencies.filter { it.name.isBlank() }.flatMap { it.evidence }
+            looseEvidence.forEach { ev ->
                 AchievementRow(ev, hue, palette, pinned = false, count = 1, showControls = false, canUp = false, canDown = false, onUp = {}, onDown = {}, onLongPress = { onLongPress(ev) })
                 Spacer(Modifier.height(Spacing.s2))
             }
+            // Nested competencies (item 4): the user's category (e.g. "Leadership") is the header
+            // above; each named competency is a sub-heading with its own evidence, indented.
+            b.competencies.forEach { comp ->
+                if (comp.name.isNotBlank() && comp.evidence.isNotEmpty()) {
+                    CompetencyGroup(comp, hue, palette, onLongPress)
+                    Spacer(Modifier.height(Spacing.s2))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompetencyGroup(
+    comp: SummaryCompetency,
+    hue: PillarColor,
+    palette: BragPalette,
+    onLongPress: (String) -> Unit,
+) {
+    Column(Modifier.padding(start = Spacing.s3)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(6.dp).clip(RoundedCornerShape(2.dp)).background(hue.solid))
+            Spacer(Modifier.width(Spacing.s2))
+            Text(comp.name, style = MaterialTheme.typography.labelMedium, color = hue.ink, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(Spacing.s2))
+        comp.evidence.forEach { ev ->
+            AchievementRow(ev, hue, palette, pinned = false, count = 1, showControls = false, canUp = false, canDown = false, onUp = {}, onDown = {}, onLongPress = { onLongPress(ev) })
+            Spacer(Modifier.height(Spacing.s2))
         }
     }
 }

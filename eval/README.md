@@ -18,7 +18,7 @@ eval/
 ├── golden/
 │   ├── categorizer.jsonl     # one case per line (schema below)
 │   ├── coach.jsonl           # rubric-scored coach cases
-│   └── summary/*.json        # 4 synthetic rollups with structural expectations
+│   └── summary/*.json        # 5 synthetic rollups with structural expectations
 ├── tools/from-backup.mjs     # bootstrap real-record cases from a device backup export
 ├── run.mjs                   # the runner (Node 20+, no deps)
 ├── report.md / report.json   # last run's output (gitignored-by-convention: commit only baselines)
@@ -102,7 +102,7 @@ Baseline runs never fail the job (they are the measurement); gate runs fail on a
 | Routine-label reuse (exact label when context provides one) | 100% |
 | Impact inside the case's band | ≥ 80% |
 | Coach rubric pass (short · concrete measure kind · grounded · **zero invented numbers = hard fail**) | ≥ 90% |
-| Summary structural checks (no dupes · arcs merged · metrics verbatim · pinned once · counts exact · setAside honest) | 100% |
+| Summary structural checks (no dupes · arcs merged · metrics verbatim · pinned once · counts exact · setAside honest · competencies nested under their category) | 100% |
 
 Reported but not gated: entry-count accuracy, demonstrates (required tags present), metric field
 preservation, dateMentioned accuracy, routine false-positive rate. The development-placement check
@@ -148,9 +148,12 @@ mode (the add-impact / add-detail merge path: exactly one entry, follow-up folde
 `CategorizeRequest.combineSingle`.
 
 `coach.jsonl`: `{ "id", "bullet", "project", "projectDetail", "goalArea", "role" }` — no expected
-string; scored by the rubric. `summary/*.json`: see the four files — `expect` supports
+string; scored by the rubric. `summary/*.json`: see the five files — `expect` supports
 `noDuplicates`, `arcKeys`, `metrics`, `pinnedKeys`, `rolledUp`, `setAsideNonEmpty`,
-`developmentKeys` (gated since AI-2).
+`developmentKeys` (gated since AI-2), and `competencyGrouping` (gated since the Summary phase:
+`{ "category": "Leadership", "competencies": [...] }` — a BEHAVIOUR category whose framework
+description names competencies must group its evidence UNDER the category, nested, not surface each
+competency as its own top-level header).
 
 ## Growing the set with the real record
 

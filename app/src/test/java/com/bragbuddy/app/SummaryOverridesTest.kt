@@ -3,6 +3,7 @@ package com.bragbuddy.app
 import com.bragbuddy.app.data.ai.SetAsideNote
 import com.bragbuddy.app.data.ai.SummaryAchievement
 import com.bragbuddy.app.data.ai.SummaryBehaviour
+import com.bragbuddy.app.data.ai.SummaryCompetency
 import com.bragbuddy.app.data.ai.SummaryBody
 import com.bragbuddy.app.data.ai.SummaryGoalArea
 import com.bragbuddy.app.data.ai.SummaryResult
@@ -164,5 +165,30 @@ class SummaryOverridesTest {
         val out = applyOverrides(r, ov)
         assertThat(out.summary.behaviours.single().evidence).containsExactly("Coached 3 peers")
         assertThat(out.summary.development).containsExactly("Learned Kotlin & coroutines")
+    }
+
+    @Test
+    fun `edit and delete apply to nested competency evidence and drop an emptied competency`() {
+        val r = SummaryResult(
+            summary = SummaryBody(
+                behaviours = listOf(
+                    SummaryBehaviour(
+                        name = "Leadership",
+                        competencies = listOf(
+                            SummaryCompetency("Set the Agenda", listOf("Defined the roadmap", "Set priorities")),
+                            SummaryCompetency("Do It The Right Way", listOf("Fixed a compliance gap")),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val ov = SummaryOverrides(
+            deleted = listOf(summaryKey("Fixed a compliance gap")),
+            edits = listOf(BulletEdit("Set priorities", "Set clear quarterly priorities")),
+        )
+        val out = applyOverrides(r, ov).summary.behaviours.single()
+        // "Do It The Right Way" lost its only evidence → the competency is dropped entirely.
+        assertThat(out.competencies.map { it.name }).containsExactly("Set the Agenda")
+        assertThat(out.competencies.single().evidence).containsExactly("Defined the roadmap", "Set clear quarterly priorities")
     }
 }

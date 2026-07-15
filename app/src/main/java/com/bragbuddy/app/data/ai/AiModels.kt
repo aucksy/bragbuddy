@@ -105,10 +105,34 @@ data class SummaryGoalArea(
     val rolledUp: List<SummaryRolledUp> = emptyList(),
 )
 
+/**
+ * One named competency (a leadership behaviour / value / pillar) nested under a BEHAVIOUR category
+ * (Summary phase · item 4). Populated only when the category's framework description ENUMERATES
+ * distinct competencies (e.g. a "Leadership" category whose detail lists the review's leadership
+ * pillars) — the model groups the evidence under each named one instead of surfacing each pillar as
+ * its own top-level header. Defaulted so older cached summaries (no competencies) still decode.
+ */
+@Serializable
+data class SummaryCompetency(
+    // Defaulted so a model reply that emits a competency object WITHOUT a name (a rare glitch) decodes
+    // (→ its evidence is folded up to the category level by the renderer/exporter) instead of throwing
+    // MissingFieldException and sinking the whole summary generation.
+    val name: String = "",
+    val evidence: List<String> = emptyList(),
+)
+
 @Serializable
 data class SummaryBehaviour(
     val name: String,
     val evidence: List<String> = emptyList(),
+    /**
+     * Optional nested grouping (Summary phase · item 4). When present, [name] is the user's own
+     * CATEGORY name (the top-level header) and each [SummaryCompetency] is a sub-heading; [evidence]
+     * then holds only bullets that fit the category but no named competency. When empty, this is a
+     * flat behaviour — all its bullets live in [evidence]. Defaulted so pre-item-4 cached summaries
+     * decode unchanged.
+     */
+    val competencies: List<SummaryCompetency> = emptyList(),
 )
 
 @Serializable

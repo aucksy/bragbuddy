@@ -281,8 +281,14 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   rationale in `docs/PRODUCT-ASSESSMENT.md` + `docs/AI-SYSTEM-ASSESSMENT.md`. New standing rule: **any
   prompt/model change ships eval-gated** (Phase AI-0 harness). **Phases AI-0 → AI-1 (v0.26.0
   categorizer magic) → AI-2 (v0.27.0 summary + impact-coach) → M1 (v0.28.0 managed AI proxy) →
-  **M2 (v0.29.0 first-session & polish)** all SHIPPED.** Exact next step: **Phase M3 (v0.30.0) — Play
-  Store + Billing + paywall/trial + metering**. **M2 (v0.29.0):** onboarding aha rehearsal · Home
+  **M2 (v0.29.0 first-session & polish)** → v0.29.1 hardening patch → **Summary phase (items 4+5)
+  v0.30.0** all SHIPPED.** Exact next step: **Phase M3 (v0.31.0) — Play Store + Billing + paywall/trial
+  + metering** (M3 moved from v0.30.0, which the Summary phase took). **Summary phase (v0.30.0):** item 5 =
+  collapsible **project folders** in the Summary tab (mirror Home; reorder scoped within a folder); item 4
+  (**eval-gated**) = user's BEHAVIOUR **categories as top headers** with a Leadership category's competencies
+  **nested** under it (`SummaryBehaviour.competencies:[{name,evidence[]}]` + a PART B rule-4 rewrite +
+  a gated `competencyGrouping` golden/scorer); adversarial 4-lens review (0 compile findings; a HIGH
+  export-drop + a MED scorer-flake + 2 LOWs fixed pre-gate). Full detail in `PROGRESS.md` `## Status: v0.30.0`. **M2 (v0.29.0):** onboarding aha rehearsal · Home
   one-slot nudge queue · finger-down haptics · themed snackbars replacing all Toasts (+ "Filed ✓ →
   category") · weekly recap notification (replaced the in-app catch-up sheet) · full image-offline-queue
   parity (**Room v5**, `PENDING_IMAGE`) · BYOK key mask/link + capture gates → `cloudTranscription` ·

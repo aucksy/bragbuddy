@@ -301,8 +301,16 @@ WHAT TO DO
    wording and key terms (project names, IDs, certifications, compliance standards)
    verbatim. Include each pinned item exactly ONCE, in its strongest phrasing; never
    drop a pinned item to fit the cap (drop an unpinned achievement instead).
-4. For each BEHAVIOUR/COMPETENCY, give 1-3 concrete evidence bullets; omit ones with
-   no genuine evidence.
+4. For each BEHAVIOUR/COMPETENCY category, give concrete evidence of it. If that
+   category's framework description NAMES distinct competencies (a list of leadership
+   behaviours, values or pillars), keep the category's OWN name as the single header
+   and GROUP the evidence under each named competency in "competencies" (each: the
+   competency's exact name from the description + 1-3 evidence bullets). Use ONLY
+   competency names the description lists — never invent one — and drop a competency
+   with no genuine evidence. Evidence that fits the category but no named competency
+   goes in that category's top-level "evidence". If the description names NO distinct
+   competencies, leave "competencies" empty and put the 1-3 bullets in "evidence".
+   Omit a category with no genuine evidence at all.
 5. Items listed under a DEVELOPMENT AREA belong in "development", never in
    "goalAreas". Fill "development" only if the framework has such an area and there
    is real material.
@@ -320,7 +328,7 @@ OUTPUT (JSON only — no prose, no markdown, no code fences)
         "achievements": [ { "bullet": "string", "project": "string or null", "metric": "string or null", "count": 1 } ],
         "rolledUp": [ { "bullet": "string", "routineType": "string", "count": 0 } ] }
     ],
-    "behaviours": [ { "name": "string", "evidence": ["string"] } ],
+    "behaviours": [ { "name": "string", "evidence": ["string"], "competencies": [ { "name": "string", "evidence": ["string"] } ] } ],
     "development": ["string"]
   },
   "setAside": [ { "what": "string", "why": "string" } ]
