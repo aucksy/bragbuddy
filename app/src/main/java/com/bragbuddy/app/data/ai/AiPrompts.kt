@@ -284,9 +284,11 @@ CONTEXT
 
 WHAT TO DO
 1. For each GOAL AREA, select the strongest achievements — as many as the Length
-   target above allows, and when it names no number, every achievement that genuinely
-   earns a place. Rank by impact, outcome/metrics, scale, difficulty, visibility, goal
-   alignment.
+   target above allows. When the Length target names no number, include EVERY
+   achievement in that area's rollup that a manager would count as real delivered
+   work; do NOT thin a rich area down to two or three lines when more genuine
+   achievements are present — a detailed review is expected to be thorough. Rank by
+   impact, outcome/metrics, scale, difficulty, visibility, goal alignment.
    Never list the same accomplishment twice: if several highlights describe the SAME
    work (they may read near-identically or be marked "(logged N×)"), output ONE bullet
    with the strongest phrasing and set its "count". A sequence of PROGRESS updates on
