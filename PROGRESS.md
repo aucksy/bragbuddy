@@ -121,8 +121,113 @@ current code — that is the context, not chat history.
 > surface's trailing spacer is `<gap> + <systemNavInset> + LocalBottomBarInset.current`.** Detail in
 > `## Status: v0.30.1` below.
 >
-> **Exact next step: Phase M3 (v0.31.0) — Play Store + Billing + paywall/trial + metering** (was v0.30.0;
-> the Summary phase took v0.30.0). Fresh chat pointed at `CONTEXT.md`.
+> **v0.31.0 = a Summary-correction fix batch** (owner on-device testing of v0.30.1; NOT an M-phase). Four
+> findings: (F1) a **⋮ menu on summary cards → "Change category or project"** that RESOLVES the AI-written
+> line back to its source entry ids and **corrects the actual record** (not just the page), retagging to
+> ANY existing project incl. ones no summary/framework mentions; (F2) **derived Set-aside** (real dropped
+> wins with full text, per-item Restore + **Restore all**) replacing the un-restorable categorical notes;
+> (F3, **EVAL-GATED**) the summary was **shortening too much** because rule 1 hardcoded "at most 5" while
+> the length picker only whispered "detailed" in a header — Detailed was inert; (F4) the screenshot's
+> "Outside project under Learning & Growth" was a **structural forcing** (the AI could file INTO a
+> development area but was never offered a folder there) PLUS two real durability bugs (a manual tag didn't
+> survive an edit; the Inbox chip silently kept the AI's category). **Room v5→v6** (`anchorGoalArea`).
+> **M3 (Play Store + Billing) moves to v0.32.0** (owner-confirmed 2026-07-16). Full detail in
+> `## Status: v0.31.0` below.
+>
+> **Exact next step: Phase M3 (v0.32.0) — Play Store + Billing + paywall/trial + metering.** Fresh chat
+> pointed at `CONTEXT.md`.
+
+---
+
+## Status: v0.31.0 — Summary-correction fix batch (F1–F4) ✅ SHIPPED (signed · tag-driven CI; **GREEN live eval gate** for the F3 length-prompt change; three adversarial review rounds, every finding independently verified)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.31.0/BragBuddy-v0.31.0.apk` (signed by tag-driven CI; `.aab` alongside). `versionCode 37`.
+
+> A fix/hardening batch from the owner's on-device testing of v0.30.1 — bigger than a patch (Room migration
+> + a prompt change + new correction capability), so shipped as the minor **v0.31.0** and **M3 moved to
+> v0.32.0** (owner decision via AskUserQuestion 2026-07-16, all recommended). The whole batch turned on one
+> missing architectural piece: **a summary line has NO back-reference to its source entry** at any layer
+> (the entry id is dropped before the model ever runs, and the model never sees or returns one). F1 and F2
+> both needed that link, so it was rebuilt **client-side** (`AggHighlight.ids` carries the ids through the
+> aggregate; `SummaryResolver` re-derives the link by content-word Jaccard) — **no prompt change, no eval
+> gate** for F1/F2. Only F3 touched `AiPrompts`.
+
+### v0.31.0 — what was built
+- **F1 · retag a summary card, fixing the RECORD** (owner: "AI is not doing correct classification all the
+  time, so the user needs to correct any level of classification"). A **⋮ `DropdownMenu`** on every
+  goal-area / project-folder / development achievement row (modelled on `EntryBulletRow.BulletMenu` — the
+  Design System specs NO menu anywhere, flagged; matched to code precedent) hosting **Change category or
+  project · Edit line · Delete line**; long-press retained. `RetagSheet` (custom-scrim, per the
+  no-Material-sheet rule) = a placement-category radio × folder chips, offering **every** project
+  (`ScreenState.allFolders`, unfiltered by the card's area — the whole point) + "No specific project",
+  preselecting the line's CURRENT category **and project**. `SummaryViewModel.retagAchievement`:
+  `SummaryResolver.resolve` (content-word Jaccard, MIN_SCORE 0.5 + MIN_MARGIN 0.15 so an ambiguous line
+  resolves to nothing, not a wrong entry) → `EntryRepository.recategorizeNow` (a new **suspending**
+  recategorize that anchors BOTH axes) → mirror the move into the cached summary + **re-stamp
+  `inputSignature` from the FRESH rollup** so the correction shows immediately and doesn't force a metered
+  Regenerate. A merged card re-files every source entry; the snackbar states whether the record was fixed
+  ("Re-filed N in your record") or only the page ("Moved in this summary only — couldn't match…"). Falls
+  back to a summary-only `PlacementOverride` when unresolved.
+- **F2 · Set-aside you can see completely and restore all/parts** (owner). The AI's `setAside` notes are
+  **categorical** ("Routine check-ins · condensed to keep to one page") — nothing behind them; restoring one
+  literally injected a bullet reading "Routine check-ins" (a v0.13.0 objection overridden in v0.22.0, now
+  resolved). Replaced with a **derived** list — `SummaryViewModel.deriveSetAside` = rollup candidates MINUS
+  what was rendered (via `SummaryResolver.dropped`), each carrying full text, its real goal area and entry
+  ids → per-item **Restore** (no destination picker; it knows its area) + **Restore all**. The notes stay as
+  the panel's explanation prose. The legacy per-note Restore + `RestorePickerSheet` were **deleted**. Gated
+  on real dropped items, and **blanked when the summary is stale** (a stale summary was built from a different
+  aggregate → deriving would surface brand-new entries as "set aside").
+- **F3 · summary shortening too much (EVAL-GATED).** Root cause: `AiPrompts.SUMMARY` rule 1 hardcoded
+  "select the few strongest achievements (default at most 5)" INSIDE the numbered rules, while the length
+  picker only set a vague "detailed" in the CONTEXT header ~12 lines above — the concrete numeral won, so
+  **Detailed was inert**. Rule 1 now **defers to the Length target** ("as many as the Length target allows,
+  and when it names no number, every achievement that genuinely earns a place"); rule 6's per-line terseness
+  relaxed to "enough substance to stand on its own to a manager who wasn't there". Byte-synced to
+  `eval/prompts/summary.txt` (PromptSyncTest, 4425 chars). Rule 4 / `EVIDENCE_CAP` **deliberately untouched**
+  (owner didn't report thin behaviour sections; relaxing rule 4 risks regressing the v0.30.0 competency
+  nesting). Owner confirmed (AskUserQuestion) the shortening was "too few achievements + too-terse bullets +
+  too much set aside" — all addressed by these two.
+- **F4 · "Outside project under Learning & Growth" — a structural forcing + two durability bugs.** "Outside
+  project" is **not a place**: it's a synthetic per-category "no project" bucket, so each category renders its
+  own. `Learning & Growth` is a `DEVELOPMENT` pillar, and `EntryProcessor.prepare`'s placement universe was
+  **GOAL_AREA folders only** while the AI was still allowed to FILE into a development area — so **every**
+  entry it filed under Learning & Growth was forced to "Outside-project" (the AI was never offered a folder
+  there; the manual Recategorize sheet already offered `!= BEHAVIOUR`). Widened the AI's universe to match
+  (`!= BEHAVIOUR`, mirrored in `eval/run.mjs` + `FrameworkPrompt` labels dev folders "projects"). Plus:
+  (a) a manual placement **didn't survive an edit** — `replace()` re-ran the categorizer and only `isExtra`
+  was protected; added **`EntryEntity.anchorGoalArea` (Room v5→v6, `MIGRATION_5_6`)** so `resolve`/
+  `recategorize` anchor BOTH axes (incl. the `OUTSIDE_PROJECT` sentinel), honoured in `applyCategorized`;
+  (b) the Inbox "Outside project" chip **silently kept the AI's category** at confidence 1.0 → it now NAMES
+  the category it inherits (`No specific project · <category>`). Relabelled "Outside project" → **"No specific
+  project"** via one shared `NO_PROJECT_LABEL` + an `isNamedProject()` helper (six hand-rolled sentinel tests
+  collapsed onto it). Category **rename** and **delete** now follow/clear `anchorGoalArea`; the project
+  rename-remap anchor update was reordered BEFORE the project update (its WHERE read the goalCategory the
+  other query rewrites); `BackupCodec` carries `anchorGoalArea` (a restore would otherwise drop every anchor).
+- **Tests:** new `SummaryResolverTest` (resolve fuzzy match / ambiguity margin / no-id / stop-words / numbers;
+  dropped leniency), `RollupDedupTest` id-carrying + "serialized rollup never leaks an id", `SummaryOverridesTest`
+  placement-move + development-move + restore-all-distinct + model-rewording-dedup cases, `FrameworkPromptTest`
+  dev-folders-as-projects. `eval` gains **`detailed-length.json`** (the only DETAILED golden) + a gated
+  **`lengthHonoured`** floor check (the suite was structurally blind to over-shortening — 22/22 green while it
+  happened). `eval --dry-run` green (6 summary cases).
+- **REVIEW — three adversarial rounds (compile / logic / UI / eval / Room-SQL / durability lenses, ~100 agents,
+  every finding refute-verified by independent skeptics).** Round 1 (21 confirmed): **3 HIGH compile errors**
+  (AchievementRow's 3 new params missing at 3 call sites; `ScreenState.FolderRef` non-existent nesting ×2), a
+  **HIGH silent un-file** (RetagSheet never preselected the current project → Apply wrote OUTSIDE_PROJECT), a
+  **HIGH backup drop** (`anchorGoalArea` not serialized), + the rename/remap anchor bugs + the eval mirror
+  drift. Round 2 (6 confirmed): another **HIGH compile** (`retargetRestored` used without import), development
+  lines couldn't retag / a retag INTO development made a duplicate header (both fixed by teaching
+  `applyOverrides` about `developmentAreas`), a restore-all fuzzy-collapse, a stale set-aside leak. Round 3
+  (2 confirmed): the round-2 fuzzy-dedup snapshot was computed live-in-loop (re-collapsed) → snapshot once
+  before the loop; a self-inflicted failing test fixture. All fixed + re-verified; brace/paren balanced;
+  eval byte-sync + dry-run re-checked. **Room stays… v6 now.**
+
+### Eval gate (F3)
+The summary-prompt change ships EVAL-GATED. Required sequence: push `eval-run-v0.31.0` against the committed
+AI-2/v0.30.0 baseline → expect the existing 22 summary checks to hold (the DETAILED case adds `lengthHonoured`
++ a few, denominator ~27; the gate compares RATES so a larger denominator doesn't spuriously fail) → on green,
+tag `v0.31.0` → push `eval-baseline-v0.31.0` to commit the fresh baseline as the "before" for M3. **Note:** the
+categorizer `inboxPrecision` sits on its 90% floor and flakes ±1 case run-to-run — a straight re-run is the
+standard clear. Owner gates unchanged (M1 proxy deploy; Drive OAuth client + release SHA-1 on gmailapi-491903).
 
 ---
 

@@ -100,6 +100,11 @@ class EntryProcessor @Inject constructor(
             // A manually-set ★ Standout is the user's call and must survive an edit (mirrors isPinned,
             // which is already preserved). Re-apply it after the AI re-file, which would otherwise reset it.
             val keepExtra = e.isExtra
+            // NOTE: `anchorProject` / `anchorGoalArea` are deliberately NOT reset below. A manual
+            // placement is the user's call and must survive an edit for exactly the same reason ★ does —
+            // prepare() re-reads them and applyCategorized() re-applies them, so the AI's fresh guess is
+            // overridden rather than allowed to revert the correction. Behaviours (`demonstrates`) DO
+            // re-derive: they are a property of the TEXT, which just changed. Placement is structural.
             val reset = e.copy(
                 rawTranscript = clean,
                 status = EntryStatus.RAW,
@@ -199,9 +204,12 @@ class EntryProcessor @Inject constructor(
                 bullet = e.bullet?.takeIf { it.isNotBlank() } ?: e.rawTranscript.trim().ifBlank { null },
                 project = if (isOutside) OUTSIDE_PROJECT else clean,
                 goalCategory = area,
-                // A named project becomes the deterministic anchor (edit re-files here); Outside
-                // keeps whatever anchor it had (usually none).
-                anchorProject = if (isOutside) e.anchorProject else clean,
+                // The user's resolve is a DECISION and must survive a later edit/redo (which resets the
+                // row to RAW and re-runs the categorizer). Anchor BOTH axes — including the Outside
+                // sentinel, which previously anchored nothing and so let the AI silently re-guess a
+                // placement the user had already corrected (v0.31.0).
+                anchorProject = if (isOutside) OUTSIDE_PROJECT else clean,
+                anchorGoalArea = area,
                 confidence = 1.0,
                 suggestedProjects = emptyList(),
             )
@@ -247,7 +255,9 @@ class EntryProcessor @Inject constructor(
                 bullet = e.bullet?.takeIf { it.isNotBlank() } ?: e.rawTranscript.trim().ifBlank { null },
                 project = if (isOutside) OUTSIDE_PROJECT else clean,
                 goalCategory = area,
-                anchorProject = if (isOutside) e.anchorProject else clean,
+                // Anchor BOTH axes so this correction survives a later edit/redo — see resolve() above.
+                anchorProject = if (isOutside) OUTSIDE_PROJECT else clean,
+                anchorGoalArea = area,
                 demonstrates = cleanDemos,
                 confidence = 1.0,
                 suggestedProjects = emptyList(),
@@ -400,6 +410,10 @@ class EntryProcessor @Inject constructor(
         runCatching {
             // Goal-area label (SQL, case-insensitive on the old name).
             entryDao.updateGoalCategory(o, nw)
+            // The MANUAL category anchor must follow the rename too (v0.31.0) — otherwise the entry's
+            // next edit re-files it under the OLD category name, resurrecting a category the user
+            // renamed and orphaning the record from the framework.
+            entryDao.updateAnchorGoalArea(o, nw)
             // Behaviour tags — re-read fresh rows (goalCategory already updated) and rewrite any
             // `demonstrates` list containing the old name; dedupe in case the new name was already present.
             entryDao.getAllOnce().forEach { e ->
@@ -408,6 +422,21 @@ class EntryProcessor @Inject constructor(
                     entryDao.update(e.copy(demonstrates = rewritten))
                 }
             }
+            reconcileLocked()
+        }
+        Unit
+    }
+
+    /**
+     * A deleted category must not stay pinned in any entry's manual category anchor (v0.31.0) —
+     * otherwise a later edit re-files the entry under a category that no longer exists. Clears the
+     * anchor under the [mutex] so it can't race a categorization, then rebuilds the rollup.
+     */
+    suspend fun clearCategoryAnchor(area: String) = mutex.withLock {
+        val a = area.trim()
+        if (a.isEmpty()) return@withLock
+        runCatching {
+            entryDao.clearAnchorGoalArea(a)
             reconcileLocked()
         }
         Unit
@@ -457,8 +486,12 @@ class EntryProcessor @Inject constructor(
             }
             // Skip the row rewrite only when nothing actually changes (same name AND same goal area).
             if (!(o.equals(t, ignoreCase = true) && oa.equals(ta, ignoreCase = true))) {
+                // ORDER MATTERS: the anchor update's WHERE reads `goalCategory`, which remapProjectScoped
+                // rewrites to the new area. Running it second meant the clause never matched whenever the
+                // goal area changed, leaving anchorProject on the old folder — so a later edit re-filed
+                // the entry back into a folder that no longer exists there (fixed v0.31.0).
+                entryDao.remapAnchorScoped(o, oa, t, ta)
                 entryDao.remapProjectScoped(o, oa, t, ta)
-                entryDao.remapAnchorScoped(o, oa, t)
             }
             reconcileLocked()
         }
@@ -489,9 +522,16 @@ class EntryProcessor @Inject constructor(
         val role = settings.settings.first().jobRole
         val fw = frameworkStore.framework.first()
         val activeProjects = projectDao.observeActive().first()
-        // Placement universe = sub-folders under GOAL_AREA categories only (what an entry's "project"
-        // can be). Behaviour/growth sub-folders are context, not a placement slot.
-        val goalNames = fw.pillars.filter { it.kind == PillarKind.GOAL_AREA }.map { it.name }
+        // Placement universe = sub-folders under any NON-BEHAVIOUR category (what an entry's "project"
+        // can be) — goal areas AND development areas. Behaviour sub-folders stay context, not a
+        // placement slot: they're tagged via `demonstrates`, not filed into.
+        //
+        // v0.31.0: this deliberately matches [Recategorize.placementCategories] (`!= BEHAVIOUR`), which
+        // the manual Recategorize sheet has always used. Previously the AI got GOAL_AREA folders only
+        // while still being allowed to FILE into a development area — so every entry it filed under
+        // e.g. "Learning & Growth" was structurally forced to "Outside-project", because it was never
+        // offered a single folder there. The AI and the manual UI now agree on one placement universe.
+        val goalNames = fw.pillars.filter { it.kind != PillarKind.BEHAVIOUR }.map { it.name }
         val placement = activeProjects.filter { p -> goalNames.any { it.equals(p.goalArea, ignoreCase = true) } }
         val projects = placement.map { p ->
             buildString {
@@ -506,9 +546,17 @@ class EntryProcessor @Inject constructor(
         // The categorizer framework block = category NAMES (goal areas) + behaviour/development blurbs
         // (AI-1) + each category's sub-folder names. Full project details ride below in {{PROJECTS}}.
         val framework = FrameworkPrompt.categorizerBlock(fw, activeProjects)
-        // Folder-tap anchor: fixes the project for this whole capture (and its split siblings).
+        // Anchors: a folder tap at capture time, or a manual correction (Inbox resolve / Recategorize).
+        // Both fix this capture's placement (and its split siblings') deterministically.
         val anchor = entry.anchorProject?.takeIf { it.isNotBlank() }
-        val anchorGoalArea = anchor?.let { name -> activeProjects.firstOrNull { it.name.equals(name, ignoreCase = true) }?.goalArea }
+        // The Outside sentinel is the ABSENCE of a project, not a project — it must never be handed to
+        // the model as an anchor to "use verbatim" (categorizer rule 4). It still binds deterministically
+        // below, in applyCategorized; the model's project guess is simply discarded.
+        val namedAnchor = anchor?.takeUnless { it.equals(OUTSIDE_PROJECT, ignoreCase = true) }
+        // An explicit manual category anchor wins; otherwise derive the category from the anchored
+        // folder (the long-standing folder-tap behaviour).
+        val anchorGoalArea = entry.anchorGoalArea?.takeIf { it.isNotBlank() }
+            ?: namedAnchor?.let { name -> activeProjects.firstOrNull { it.name.equals(name, ignoreCase = true) }?.goalArea }
         return Prep(
             CategorizeRequest(
                 transcript = entry.rawTranscript,
@@ -517,7 +565,7 @@ class EntryProcessor @Inject constructor(
                 projects = projects,
                 routineTypes = routineTypes,
                 role = role,
-                projectAnchor = anchor,
+                projectAnchor = namedAnchor,
                 combineSingle = combineSingle,
             ),
             anchor,
@@ -588,21 +636,26 @@ class EntryProcessor @Inject constructor(
     }
 
     /**
-     * Map one categorizer result onto this row. When the capture is anchored to a folder, the
-     * project (and its goal area) are fixed deterministically — the folder tap wins even if the
-     * model drifts — and the entry is PROCESSED (the project is certain, so no Inbox for placement
+     * Map one categorizer result onto this row. When the capture is anchored — by a folder tap OR by a
+     * manual correction — the placement is fixed deterministically (the user's call wins even if the
+     * model drifts) and the entry is PROCESSED (the placement is certain, so no Inbox for placement
      * uncertainty). Behaviours / impact / isExtra always come from the AI.
+     *
+     * [anchor] may be the [OUTSIDE_PROJECT] sentinel — a deliberate "no specific project" is a decision
+     * and binds exactly like a named folder. [anchorGoalArea] binds INDEPENDENTLY of the project: it is
+     * the whole point of the v0.31.0 column, since a manual category chosen alongside "no specific
+     * project" has no folder to derive a category from.
      */
     private fun EntryEntity.applyCategorized(
         c: CategorizedEntry,
         anchor: String?,
         anchorGoalArea: String?,
     ): EntryEntity = copy(
-        status = statusFor(c, anchored = anchor != null),
+        status = statusFor(c, anchored = anchor != null || anchorGoalArea != null),
         occurredAt = c.dateMentioned.toEpochMillisOrNull() ?: occurredAt,
         bullet = c.bullet.ifBlank { null },
         project = anchor ?: c.project,
-        goalCategory = if (anchor != null) (anchorGoalArea ?: c.goalCategory) else c.goalCategory,
+        goalCategory = anchorGoalArea ?: c.goalCategory,
         demonstrates = c.demonstrates,
         isExtra = c.isExtra,
         impact = c.impact,

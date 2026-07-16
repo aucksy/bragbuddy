@@ -13,12 +13,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v2 adds `entries.anchorProject` (the folder-tap project anchor). v3 makes the `projects` unique
  * index composite `(name, goalArea)` so the same folder name can exist under different categories.
  * v4 adds `entries.audioPath` (the offline voice-note queue, Phase 7). v5 adds `entries.imagePath`
- * (the offline image-scan queue, M2). All migrations keep existing data. exportSchema stays off (no
- * schemaLocation ksp arg wired).
+ * (the offline image-scan queue, M2). v6 adds `entries.anchorGoalArea` (the manual category anchor,
+ * v0.31.0 — so a user's correction survives a re-file). All migrations keep existing data.
+ * exportSchema stays off (no schemaLocation ksp arg wired).
  */
 @Database(
     entities = [EntryEntity::class, ProjectEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -60,6 +61,18 @@ abstract class BragBuddyDatabase : RoomDatabase() {
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE entries ADD COLUMN imagePath TEXT")
+            }
+        }
+
+        /**
+         * v5→v6: add the nullable `anchorGoalArea` column to `entries` — the manual category anchor.
+         * Existing rows migrate to NULL, which is exactly right: nobody's placement was ever pinned
+         * before, so nothing is retroactively claimed as a user decision. Anchors accrue as the user
+         * corrects entries from here on.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE entries ADD COLUMN anchorGoalArea TEXT")
             }
         }
     }

@@ -57,6 +57,17 @@ data class AggHighlight(
     val demonstrates: List<String>,
     /** How many exact/normalized-identical entries were merged into this highlight (de-dup, Phase 1). */
     val count: Int = 1,
+    /**
+     * The source [RollupItem.id]s this candidate was built from — every entry merged into it (so a
+     * `count > 1` highlight carries them all). Carried CLIENT-SIDE ONLY: [RollupAggregator.serialize]
+     * never emits an id, so the model neither sees nor echoes one and the prompt is unchanged.
+     *
+     * This is what makes a generated summary line reversible back to the record: the summary schema has
+     * no id (the model can't be trusted to echo one), so the UI re-derives the link by matching a card's
+     * bullet against these candidates ([com.bragbuddy.app.data.summary.SummaryResolver]) — the basis of
+     * Summary-tab retag and the derived Set-aside list.
+     */
+    val ids: List<Long> = emptyList(),
 )
 
 /** A routine-work tally within a goal area (type → count, with any cumulative metrics). */

@@ -6,6 +6,7 @@ import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.INBOX_PLACEMENT
+import com.bragbuddy.app.data.local.NO_PROJECT_LABEL
 import com.bragbuddy.app.data.local.OUTSIDE_PROJECT
 import com.bragbuddy.app.data.local.ProjectEntity
 
@@ -20,8 +21,13 @@ import com.bragbuddy.app.data.local.ProjectEntity
  * behaviour it demonstrates — never a duplicated row, just two computed views of one entry.
  */
 
-/** Label shown for entries that belong to no named project (placement [OUTSIDE_PROJECT]). */
-const val OUTSIDE_PROJECT_LABEL = "Outside project"
+/**
+ * Label shown for entries that belong to no named project (placement [OUTSIDE_PROJECT]).
+ *
+ * Aliases the single definition in the data layer ([NO_PROJECT_LABEL]) — kept as a name so the many
+ * existing UI call sites read unchanged. This is a *label for the sentinel*, not a folder that exists.
+ */
+const val OUTSIDE_PROJECT_LABEL = NO_PROJECT_LABEL
 
 /** Reserved id/label for the catch-all section that holds already-filed entries no current pillar
  *  claims (e.g. after the framework was renamed or refined). Guarantees nothing is ever hidden. */

@@ -102,7 +102,7 @@ Baseline runs never fail the job (they are the measurement); gate runs fail on a
 | Routine-label reuse (exact label when context provides one) | 100% |
 | Impact inside the case's band | ≥ 80% |
 | Coach rubric pass (short · concrete measure kind · grounded · **zero invented numbers = hard fail**) | ≥ 90% |
-| Summary structural checks (no dupes · arcs merged · metrics verbatim · pinned once · counts exact · setAside honest · competencies nested under their category) | 100% |
+| Summary structural checks (no dupes · arcs merged · metrics verbatim · pinned once · counts exact · setAside honest · competencies nested under their category · length target honoured) | 100% |
 
 Reported but not gated: entry-count accuracy, demonstrates (required tags present), metric field
 preservation, dateMentioned accuracy, routine false-positive rate. The development-placement check
@@ -148,12 +148,21 @@ mode (the add-impact / add-detail merge path: exactly one entry, follow-up folde
 `CategorizeRequest.combineSingle`.
 
 `coach.jsonl`: `{ "id", "bullet", "project", "projectDetail", "goalArea", "role" }` — no expected
-string; scored by the rubric. `summary/*.json`: see the five files — `expect` supports
+string; scored by the rubric. `summary/*.json`: see the six files — `expect` supports
 `noDuplicates`, `arcKeys`, `metrics`, `pinnedKeys`, `rolledUp`, `setAsideNonEmpty`,
-`developmentKeys` (gated since AI-2), and `competencyGrouping` (gated since the Summary phase:
+`developmentKeys` (gated since AI-2), `competencyGrouping` (gated since the Summary phase:
 `{ "category": "Leadership", "competencies": [...] }` — a BEHAVIOUR category whose framework
 description names competencies must group its evidence UNDER the category, nested, not surface each
-competency as its own top-level header).
+competency as its own top-level header), and `minAchievements` (gated since v0.31.0:
+`{ "Delivery": 6 }` — a per-goal-area FLOOR on how many achievements survive).
+
+**On `minAchievements`.** Every other summary check scores whether the CONTENT is correct; none
+measured how MUCH survived. So when the owner reported "AI is shortening everything too much", the
+suite was scoring 22/22 green — it was structurally blind to over-shortening, which is exactly how a
+prompt defect (rule 1 hardcoding "at most 5" while the Length target said "detailed") shipped
+unnoticed. It is deliberately a floor and never a ceiling: the cap direction is already covered from
+several angles (`setAsideNonEmpty`, `pinnedOnce`, `arcsMerged` all lean on it). `detailed-length.json`
+is the case that exercises it — the only golden that uses the DETAILED length target.
 
 ## Growing the set with the real record
 

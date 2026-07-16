@@ -129,6 +129,12 @@ class EntryRepository @Inject constructor(
         appScope.launch { processor.renameCategoryEverywhere(old, new) }
     }
 
+    /** Clear the manual category anchor of every entry pinned to a now-DELETED category (v0.31.0), so a
+     *  later edit re-files it into a live category instead of freezing it in the deleted one. */
+    fun clearCategoryAnchor(area: String) {
+        appScope.launch { processor.clearCategoryAnchor(area) }
+    }
+
     /** How many filed records are tagged to this project name under [area] — decides whether to offer
      *  the project rename-remap prompt (Phase B2b). Scoped by goal area (folders are unique by name+area). */
     suspend fun countProjectReferences(name: String, area: String): Int =
@@ -162,6 +168,21 @@ class EntryRepository @Inject constructor(
     fun recategorize(id: Long, goalArea: String, project: String, demonstrates: List<String>) {
         appScope.launch { processor.recategorize(id, goalArea, project, demonstrates) }
     }
+
+    /**
+     * Recategorize and **await completion** — the same processor call as [recategorize], just not
+     * fire-and-forget. The Summary-tab retag (v0.31.0) needs to know the record has actually settled
+     * before it re-derives the rollup signature; a fire-and-forget write would race the re-stamp and
+     * leave the corrected summary looking stale (or, worse, stamp a signature for a rollup that hadn't
+     * been written yet). Runs on the CALLER's scope, so a cancelled caller cancels the write — only
+     * use it where the caller owns the outcome.
+     */
+    suspend fun recategorizeNow(id: Long, goalArea: String, project: String, demonstrates: List<String>) {
+        processor.recategorize(id, goalArea, project, demonstrates)
+    }
+
+    /** One entry by id, or null. */
+    suspend fun getById(id: Long): EntryEntity? = entryDao.getById(id)
 
     /** Toggle the ★ Standout flag on an entry (Phase 4 entry detail). Serialised in the processor. */
     fun setExtra(id: Long, value: Boolean) {

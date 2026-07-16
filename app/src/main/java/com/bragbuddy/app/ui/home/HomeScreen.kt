@@ -65,6 +65,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.R
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
+import com.bragbuddy.app.data.local.isNamedProject
 import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.common.EntryBulletRow
@@ -587,7 +588,7 @@ private fun BehaviourSectionView(
                         style = MaterialTheme.typography.bodyMedium,
                         color = palette.text1,
                     )
-                    val from = sample.project?.takeIf { it.isNotBlank() && !it.equals("Outside-project", true) && !it.equals("Inbox", true) }
+                    val from = sample.project?.takeIf { it.isNamedProject() }
                     if (from != null) {
                         Spacer(Modifier.height(2.dp))
                         Text("from $from", style = MaterialTheme.typography.bodySmall, color = palette.text3)

@@ -32,6 +32,41 @@ class RollupDedupTest {
         assertThat(hi.single().count).isEqualTo(3)
     }
 
+    /**
+     * v0.31.0: the aggregate carries every merged row's entry id CLIENT-SIDE, so a summary line can be
+     * traced back to the record ([SummaryResolver]). Previously the id died here, in the map to
+     * AggHighlight — which is the only reason a Summary-tab correction was impossible.
+     */
+    @Test
+    fun `a merged highlight carries every source entry id, representative first`() {
+        val items = listOf(
+            item(1, 1100, "Ran the weekly report", impact = 0.4),
+            item(2, 1200, "Ran the weekly report.", impact = 0.9), // highest impact = the representative
+            item(3, 1300, "ran the WEEKLY report", impact = 0.5),
+        )
+        val hi = RollupAggregator.aggregate(items, 1000, 2000, fw).goalAreas.single().highlights.single()
+        assertThat(hi.count).isEqualTo(3)
+        assertThat(hi.ids).containsExactly(2L, 1L, 3L).inOrder()
+    }
+
+    @Test
+    fun `an unmerged highlight carries its single id`() {
+        val hi = RollupAggregator.aggregate(listOf(item(42, 1100, "Shipped the thing")), 1000, 2000, fw)
+            .goalAreas.single().highlights.single()
+        assertThat(hi.ids).containsExactly(42L)
+    }
+
+    /** The ids must never reach the model: they'd change the prompt (→ an eval gate) for no gain, and
+     *  id-echo is a known LLM failure mode. The signature is taken over serialize(), so this also keeps
+     *  every cached summary from being invalidated by the new field. */
+    @Test
+    fun `serialized rollup never leaks an entry id`() {
+        val agg = RollupAggregator.aggregate(
+            listOf(item(987654321, 1100, "Shipped the thing", metric = "cut 18%")), 1000, 2000, fw,
+        )
+        assertThat(RollupAggregator.serialize(agg)).doesNotContain("987654321")
+    }
+
     @Test
     fun `a different project keeps duplicate bullets separate`() {
         val items = listOf(

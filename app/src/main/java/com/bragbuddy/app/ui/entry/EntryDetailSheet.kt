@@ -50,6 +50,7 @@ import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.OUTSIDE_PROJECT
 import com.bragbuddy.app.data.local.ProjectEntity
+import com.bragbuddy.app.data.local.isNamedProject
 import com.bragbuddy.app.ui.common.rememberDiscardGuard
 import com.bragbuddy.app.ui.home.OUTSIDE_PROJECT_LABEL
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
@@ -122,8 +123,7 @@ fun EntryDetailSheet(
     val date = DateUtils.getRelativeTimeSpanString(
         entry.occurredAt ?: entry.createdAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
     ).toString()
-    val projectName = entry.project
-        ?.takeIf { it.isNotBlank() && !it.equals("Outside-project", true) && !it.equals("Inbox", true) }
+    val projectName = entry.project?.takeIf { it.isNamedProject() }
 
     Box(Modifier.fillMaxSize()) {
         Box(

@@ -53,6 +53,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
+import com.bragbuddy.app.data.local.NO_PROJECT_LABEL
 import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
@@ -62,7 +63,7 @@ import com.bragbuddy.app.ui.theme.Spacing
 /**
  * The Inbox tab (Design System §1 · "Inbox waits at the end"). Phase 3 adds **tap-to-resolve**: an
  * entry the AI wasn't sure about can be filed in one tap — a suggested project, any folder, or
- * "Outside project". FAILED entries can also be retried. Nothing is ever lost; the raw transcript
+ * "no specific project". FAILED entries can also be retried. Nothing is ever lost; the raw transcript
  * rides along until it's resolved.
  */
 @Composable
@@ -74,6 +75,7 @@ fun InboxScreen(
     val entries by viewModel.entries.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
+    val placementAreas by viewModel.placementAreas.collectAsStateWithLifecycle()
 
     val selected = remember { mutableStateListOf<Long>() }
     var selectionMode by remember { mutableStateOf(false) }
@@ -144,6 +146,7 @@ fun InboxScreen(
                     InboxCard(
                         entry = entry,
                         folders = folders,
+                        noProjectArea = InboxViewModel.bestGoalAreaOf(entry.goalCategory, placementAreas),
                         palette = palette,
                         selectionMode = selectionMode,
                         isSelected = selected.contains(entry.id),
@@ -183,6 +186,9 @@ fun InboxScreen(
 private fun InboxCard(
     entry: EntryEntity,
     folders: List<ProjectEntity>,
+    /** The category a "no specific project" resolve will inherit — NAMED on the chip so the user
+     *  knows what they're accepting. Null only when the framework has no placement pillars. */
+    noProjectArea: String?,
     palette: BragPalette,
     selectionMode: Boolean,
     isSelected: Boolean,
@@ -248,7 +254,16 @@ private fun InboxCard(
                 if (folders.isNotEmpty()) {
                     FolderPickerChip(folders = folders, palette = palette, onPick = onAssign)
                 }
-                ActionChip("Outside project", palette.surface2, palette.text2, onClick = onOutside)
+                // Names the category this lands in. Tapping it says "no project" — it says nothing
+                // about the CATEGORY, which is silently inherited from the AI's guess and then stamped
+                // confidence 1.0 (unreturnable to the Inbox). Showing it is the difference between the
+                // user accepting a category and never knowing one was chosen for them (v0.31.0).
+                ActionChip(
+                    if (noProjectArea != null) "$NO_PROJECT_LABEL · $noProjectArea" else NO_PROJECT_LABEL,
+                    palette.surface2,
+                    palette.text2,
+                    onClick = onOutside,
+                )
             }
 
             if (failed) {

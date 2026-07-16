@@ -78,12 +78,34 @@ interface EntryDao {
     suspend fun remapProjectScoped(old: String, oldArea: String, newName: String, newArea: String)
 
     /** Follow the rename in the deterministic anchor too, scoped to the same (old name, old goal area)
-     *  so a later edit re-files back into the new folder (Phase B2b). Case-insensitive. */
+     *  so a later edit re-files back into the new folder (Phase B2b). Case-insensitive.
+     *
+     *  MUST run BEFORE [remapProjectScoped]: this WHERE reads `goalCategory`, which that query rewrites
+     *  to the new area — so running it second means the clause never matches whenever the goal area
+     *  actually changes, silently leaving the anchor pointing at the old folder (fixed v0.31.0).
+     *
+     *  [anchorGoalArea] follows only when it was ALREADY set: a null there means "the user never pinned
+     *  a category", and a remap must not invent a pin they didn't ask for. */
     @Query(
-        "UPDATE entries SET anchorProject = :newName " +
+        "UPDATE entries SET anchorProject = :newName, " +
+            "anchorGoalArea = CASE WHEN anchorGoalArea IS NOT NULL THEN :newArea ELSE NULL END " +
             "WHERE LOWER(anchorProject) = LOWER(:old) AND LOWER(goalCategory) = LOWER(:oldArea)",
     )
-    suspend fun remapAnchorScoped(old: String, oldArea: String, newName: String)
+    suspend fun remapAnchorScoped(old: String, oldArea: String, newName: String, newArea: String)
+
+    /** Follow a CATEGORY rename in the manual category anchor (v0.31.0). Without this, a renamed
+     *  category lives on in `anchorGoalArea` and the entry's next edit re-files it under the OLD name —
+     *  orphaning it from the framework (it would surface only in the "Uncategorized" catch-all).
+     *  Mirrors [updateGoalCategory]. Case-insensitive. */
+    @Query("UPDATE entries SET anchorGoalArea = :newName WHERE LOWER(anchorGoalArea) = LOWER(:old)")
+    suspend fun updateAnchorGoalArea(old: String, newName: String)
+
+    /** A DELETED category can't stay pinned: null the manual category anchor so a later edit re-files
+     *  the entry into a live category (via the AI) instead of freezing it in one that no longer exists
+     *  (v0.31.0). The filed `goalCategory` label is deliberately left as-is — the "Uncategorized"
+     *  catch-all still surfaces it, matching the existing folder-delete behaviour. Case-insensitive. */
+    @Query("UPDATE entries SET anchorGoalArea = NULL WHERE LOWER(anchorGoalArea) = LOWER(:area)")
+    suspend fun clearAnchorGoalArea(area: String)
 
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteById(id: Long)

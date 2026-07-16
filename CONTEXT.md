@@ -282,8 +282,15 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   prompt/model change ships eval-gated** (Phase AI-0 harness). **Phases AI-0 → AI-1 (v0.26.0
   categorizer magic) → AI-2 (v0.27.0 summary + impact-coach) → M1 (v0.28.0 managed AI proxy) →
   **M2 (v0.29.0 first-session & polish)** → v0.29.1 hardening patch → **Summary phase (items 4+5)
-  v0.30.0** all SHIPPED.** Exact next step: **Phase M3 (v0.31.0) — Play Store + Billing + paywall/trial
-  + metering** (M3 moved from v0.30.0, which the Summary phase took). **Summary phase (v0.30.0):** item 5 =
+  v0.30.0** → v0.30.1 bottom-bar fix → **v0.31.0 Summary-correction fix batch (F1–F4)** all SHIPPED.**
+  Exact next step: **Phase M3 (v0.32.0) — Play Store + Billing + paywall/trial + metering** (M3 moved
+  from v0.31.0, which the fix batch took). **v0.31.0 (fix batch):** a **⋮ retag on summary cards** that
+  corrects the RECORD via a client-side resolver (`AggHighlight.ids` + `SummaryResolver`, no prompt change);
+  **derived Set-aside** (real dropped wins, Restore all); **EVAL-GATED** length-prompt fix (rule 1 was
+  hardcoding "at most 5" so Detailed was inert); and the **"Outside project under Learning & Growth"**
+  structural forcing (the AI could file into a DEVELOPMENT area but was offered no folder there) + durable
+  manual anchors (**Room v5→v6 `anchorGoalArea`**). Three adversarial review rounds (compile/logic/UI/eval/
+  Room-SQL); full detail in `PROGRESS.md` `## Status: v0.31.0`. **Summary phase (v0.30.0):** item 5 =
   collapsible **project folders** in the Summary tab (mirror Home; reorder scoped within a folder); item 4
   (**eval-gated**) = user's BEHAVIOUR **categories as top headers** with a Leadership category's competencies
   **nested** under it (`SummaryBehaviour.competencies:[{name,evidence[]}]` + a PART B rule-4 rewrite +

@@ -1,0 +1,26 @@
+{
+  "id": "detailed-length",
+  "note": "DETAILED length target, on dense-year's exact rollup (same frameworkBlock/rollup, different lengthCap). Added v0.31.0 because NO golden case exercised the Detailed option — which is precisely why a live defect shipped unnoticed: rule 1 hardcoded \"the few strongest achievements (default at most 5)\" INSIDE the rules while the Length target only appeared in the CONTEXT header ~12 lines above, so the concrete numeral won and Detailed was effectively inert (owner report: \"AI is shortening everything too much\"). Rule 1 now defers to the Length target; this case is what proves it. The suite was structurally blind to over-shortening — every other check scores CONTENT correctness, none measured how much survived — so this case carries the new lengthHonoured check (a FLOOR per goal area, never a ceiling). Delivery offers 9 highlights of which the two \"traffic\" bullets are one arc => 8 distinct; a floor of 6 fails the pre-fix behaviour (capped at 5) with headroom for model variance. Deliberately OMITS setAsideNonEmpty (uncapped => nothing need be dropped) and pinnedOnce (that test exists to prove a pin overrides the LENGTH CAP — meaningless with no cap to override; dense-year still gates it on ONE_PAGE). Keeps noDuplicates + arcsMerged: with more bullets allowed, splitting an arc or repeating work is the real Detailed regression.",
+  "period": "full-year review",
+  "lengthCap": "detailed — include every strong achievement per goal area",
+  "role": "Software Engineer",
+  "frameworkBlock": "GOAL AREAS (results / projects map here):\n- Delivery: Shipping planned product work on time and to spec.\n- Quality & Craft: Reliability, code health, incident reduction.\nBEHAVIOURS / COMPETENCIES (tag work that demonstrates these):\n- Collaboration: Working across the team and beyond it.\n- Ownership: Seeing problems through end to end without being asked.\nDEVELOPMENT (optional):\n- Learning & Growth: Courses, certifications, new skills.",
+  "pinned": [
+    "Shipped address autocomplete for guest checkout [Delivery]"
+  ],
+  "rollup": "GOAL AREA: Delivery\n  Highlights (ranked by impact):\n  - [impact 0.9] Shipped the checkout redesign to 100% of traffic, cutting drop-off 18% (project: Checkout Redesign) (metric: cut drop-off 18%) (standout) (evidences: Ownership)\n  - [impact 0.75] Launched the saved-cards feature ahead of the holiday freeze (project: Checkout Redesign)\n  - [impact 0.7] Started the checkout redesign rollout with the first 10% traffic experiment (project: Checkout Redesign)\n  - [impact 0.7] Delivered the onboarding analytics dashboard for product (project: Onboarding v2) (metric: 12 events instrumented)\n  - [impact 0.6] Migrated the promo-code service to the new platform (project: Checkout Redesign)\n  - [impact 0.6] Built the A/B experiment harness for the funnel tests (project: Checkout Redesign)\n  - [impact 0.55] Shipped address autocomplete for guest checkout (project: Checkout Redesign)\n  - [impact 0.5] Refactored the cart state handling to remove a class of double-charge bugs (project: Checkout Redesign)\n  - [impact 0.45] Wrote the missing API documentation for the checkout endpoints (logged 3×)\n  Routine tallies:\n  - code reviews: 84×\n  Cumulative metrics: cut drop-off 18%\n\nGOAL AREA: Quality & Craft\n  Highlights (ranked by impact):\n  - [impact 0.85] Cut payment failures 40% week-over-week after the incident fix (project: Payments Reliability) (metric: cut payment failures 40%) (standout)\n  - [impact 0.6] Halved the flaky-test rate in the payments integration suite (project: Payments Reliability) (metric: flaky rate 9% to 4%)\n  - [impact 0.5] Introduced structured logging across the payment services (project: Payments Reliability)\n  Routine tallies:\n  - support tickets: 57×\n\nBEHAVIOUR EVIDENCE (concrete bullets that demonstrated each):\n- Collaboration:\n  - Unblocked the mobile team by writing the missing checkout API docs.\n  - Paired with the design team on the onboarding analytics spec.\n- Ownership:\n  - Shipped the checkout redesign to 100% of traffic, cutting drop-off 18%.\n  - Led the incident retro after the payments outage and drove the follow-up actions.",
+  "expect": {
+    "noDuplicates": true,
+    "arcKeys": [
+      "traffic"
+    ],
+    "metrics": [
+      "18%",
+      "40%"
+    ],
+    "minAchievements": {
+      "Delivery": 6,
+      "Quality & Craft": 3
+    }
+  }
+}

@@ -58,6 +58,27 @@ class FrameworkPromptTest {
         assertThat(block).contains("projects:")
     }
 
+    /**
+     * v0.31.0: a DEVELOPMENT area's sub-folders are real placement slots, so they must read as
+     * "projects" — matching [EntryProcessor.prepare], which now offers them in `{{PROJECTS}}`. Labelling
+     * them "focus areas" while the model was allowed to FILE into the area (but never given a folder
+     * there) is what forced every development-area entry to "Outside-project".
+     */
+    @Test
+    fun `development sub-folders read as projects, behaviour sub-folders stay focus areas`() {
+        val block = FrameworkPrompt.categorizerBlock(
+            framework,
+            listOf(
+                project("Product Ownership", "Learning & Growth"),
+                project("Mentoring Circle", "Leadership & Behaviours"),
+            ),
+        )
+        val devLine = block.lines().first { it.contains("Learning & Growth") }
+        val behLine = block.lines().first { it.contains("Leadership & Behaviours") }
+        assertThat(devLine).contains("projects: Product Ownership")
+        assertThat(behLine).contains("focus areas: Mentoring Circle")
+    }
+
     @Test
     fun `development axis is omitted when the framework has none`() {
         val block = FrameworkPrompt.categorizerBlock(

@@ -12,6 +12,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -38,23 +40,31 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,7 +83,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.ai.SummaryBehaviour
 import com.bragbuddy.app.data.ai.SummaryCompetency
 import com.bragbuddy.app.data.ai.SummaryGoalArea
+import com.bragbuddy.app.data.entry.Recategorize
 import com.bragbuddy.app.data.framework.Framework
+import com.bragbuddy.app.data.local.NO_PROJECT_LABEL
 import com.bragbuddy.app.ui.common.LocalBottomBarInset
 import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.data.framework.PillarKind
@@ -115,7 +127,8 @@ fun SummaryScreen(
     // content Column.
     var pointerAction by remember { mutableStateOf<String?>(null) }
     var pointerEdit by remember { mutableStateOf<String?>(null) }
-    var restoreNote by remember { mutableStateOf<String?>(null) }
+    // (bullet, its current goal area) — the line being retagged (v0.31.0).
+    var retagLine by remember { mutableStateOf<RetagTarget?>(null) }
 
     // Home's early-preview banner lands here with autoGenerate set: the tap was the consent for
     // one metered generation. Waits for the state to load, consumes the flag exactly once, and
@@ -192,7 +205,11 @@ fun SummaryScreen(
                         },
                         onSwap = { area, a, b -> viewModel.swapAchievements(area, a, b) },
                         onLongPressPointer = { raw -> pointerAction = raw },
-                        onRestoreRequest = { note -> restoreNote = note },
+                        onRestoreItem = { item -> viewModel.restoreSetAside(item.bullet, item.area) },
+                        onRestoreAll = { viewModel.restoreAllSetAside() },
+                        onEditPointer = { raw -> pointerEdit = raw },
+                        onDeletePointer = { raw -> viewModel.deletePointer(raw) },
+                        onRetagRequest = { target -> retagLine = target },
                     )
                 }
             }
@@ -226,14 +243,22 @@ fun SummaryScreen(
                 onDismiss = { pointerEdit = null },
             )
         }
-        if (restoreNote != null && s != null) {
-            RestorePickerSheet(
-                palette = palette,
-                note = restoreNote!!,
-                framework = s.framework,
-                onPick = { area -> restoreNote?.let { viewModel.restoreSetAside(it, area) }; restoreNote = null },
-                onDismiss = { restoreNote = null },
-            )
+        retagLine?.let { target ->
+            if (s != null) {
+                RetagSheet(
+                    palette = palette,
+                    line = target.bullet,
+                    currentArea = target.area,
+                    currentProject = target.project,
+                    framework = s.framework,
+                    folders = s.allFolders,
+                    onApply = { category, project ->
+                        viewModel.retagAchievement(target.area, target.bullet, category, project)
+                        retagLine = null
+                    },
+                    onDismiss = { retagLine = null },
+                )
+            }
         }
 
         if (generating) GeneratingOverlay(palette)
@@ -318,11 +343,17 @@ private fun ReadyBlock(
     onRegenerate: () -> Unit,
     onSwap: (String, Int, Int) -> Unit,
     onLongPressPointer: (String) -> Unit,
-    onRestoreRequest: (String) -> Unit,
+    onRestoreItem: (SummaryViewModel.SetAsideItem) -> Unit,
+    onRestoreAll: () -> Unit,
+    onEditPointer: (String) -> Unit,
+    onDeletePointer: (String) -> Unit,
+    onRetagRequest: (RetagTarget) -> Unit,
 ) {
     val cached = state.cached ?: return
     val result = cached.result
-    var setAsideOpen by remember { mutableStateOf(false) }
+    // rememberSaveable: the panel is deep down a long scroll, and losing its open state on a rotation or
+    // process death means finding it again.
+    var setAsideOpen by rememberSaveable { mutableStateOf(false) }
     // Collapsible categories (feature #3). Ephemeral, mirroring Home / Pillar-detail; empty set =
     // everything EXPANDED (this is a read-and-copy screen, so content is visible by default).
     val collapsed = remember { mutableStateListOf<String>() }
@@ -365,6 +396,9 @@ private fun ReadyBlock(
                         onCopy = { onCopyText(exportGoalArea(area), "Copied section") },
                         onSwap = onSwap,
                         onLongPress = onLongPressPointer,
+                        onEdit = onEditPointer,
+                        onDelete = onDeletePointer,
+                        onRetag = onRetagRequest,
                     )
                     Spacer(Modifier.height(Spacing.s4))
                 }
@@ -392,17 +426,24 @@ private fun ReadyBlock(
                     expanded = !collapsed.contains("dev"),
                     onToggle = { toggle("dev") },
                     onLongPress = onLongPressPointer,
+                    onEdit = onEditPointer,
+                    onDelete = onDeletePointer,
+                    onRetag = onRetagRequest,
                 )
                 Spacer(Modifier.height(Spacing.s4))
             }
-            if (result.setAside.isNotEmpty()) {
+            // Gated on REAL dropped items, not on the model's notes: rule 7 asks for a setAside note on
+            // every run, so a Detailed summary that dropped nothing would otherwise render a panel
+            // announcing "0 items set aside".
+            if (state.setAsideItems.isNotEmpty()) {
                 SetAsidePanel(
-                    count = result.setAside.size,
-                    open = setAsideOpen,
+                    items = state.setAsideItems,
                     notes = result.setAside,
+                    open = setAsideOpen,
                     palette = palette,
                     onToggle = { setAsideOpen = !setAsideOpen },
-                    onRestore = onRestoreRequest,
+                    onRestoreItem = onRestoreItem,
+                    onRestoreAll = onRestoreAll,
                 )
             }
             Spacer(Modifier.height(contentBottomPadding + 12.dp))
@@ -411,6 +452,16 @@ private fun ReadyBlock(
 }
 
 // ---------------- document sections ----------------
+
+/**
+ * A summary line the user asked to re-place, with everything the sheet needs to preselect honestly:
+ * its text, the area it currently sits under, and its current project (null = no specific project).
+ *
+ * The project MUST travel with it. Without it the sheet opens with "No specific project" selected, so a
+ * user who only wanted to fix the CATEGORY would tap Apply and silently un-file the entry from a project
+ * they never touched — writing OUTSIDE_PROJECT into the record.
+ */
+private data class RetagTarget(val bullet: String, val area: String, val project: String?)
 
 private fun goalHue(framework: Framework, name: String): PillarColor {
     val idx = framework.pillars.indexOfFirst { it.name.equals(name, ignoreCase = true) }
@@ -432,6 +483,10 @@ private fun GoalAreaSection(
     onCopy: () -> Unit,
     onSwap: (String, Int, Int) -> Unit,
     onLongPress: (String) -> Unit,
+    onEdit: (String) -> Unit,
+    onDelete: (String) -> Unit,
+
+    onRetag: (RetagTarget) -> Unit,
 ) {
     val hue = goalHue(state.framework, area.name)
     SectionHeader(area.name, hue, palette, expanded, onToggle, onCopy)
@@ -447,7 +502,7 @@ private fun GoalAreaSection(
             val folders = groupAchievementsByProject(area.achievements)
             if (folders != null) {
                 folders.forEach { folder ->
-                    ProjectFolder(folder, area.name, hue, state, palette, onSwap, onLongPress)
+                    ProjectFolder(folder, area.name, hue, state, palette, onSwap, onLongPress, onEdit, onDelete, onRetag)
                     Spacer(Modifier.height(Spacing.s2))
                 }
             } else {
@@ -465,6 +520,9 @@ private fun GoalAreaSection(
                         onUp = { onSwap(area.name, i, i - 1) },
                         onDown = { onSwap(area.name, i, i + 1) },
                         onLongPress = { onLongPress(ach.bullet) },
+                        onEdit = { onEdit(ach.bullet) },
+                        onDelete = { onDelete(ach.bullet) },
+                        onRetag = { onRetag(RetagTarget(ach.bullet, area.name, ach.project)) },
                     )
                     Spacer(Modifier.height(Spacing.s2))
                 }
@@ -492,6 +550,9 @@ private fun ProjectFolder(
     palette: BragPalette,
     onSwap: (String, Int, Int) -> Unit,
     onLongPress: (String) -> Unit,
+    onEdit: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    onRetag: (RetagTarget) -> Unit,
 ) {
     // Default expanded (this is a read-and-copy screen — content visible by default). Keyed by name so
     // the state survives recomposition/reorder within the folder.
@@ -543,6 +604,9 @@ private fun ProjectFolder(
                         onUp = { prevFlat?.let { onSwap(areaName, ia.flatIndex, it) } },
                         onDown = { nextFlat?.let { onSwap(areaName, ia.flatIndex, it) } },
                         onLongPress = { onLongPress(ach.bullet) },
+                        onEdit = { onEdit(ach.bullet) },
+                        onDelete = { onDelete(ach.bullet) },
+                        onRetag = { onRetag(RetagTarget(ach.bullet, areaName, folder.name.takeIf { !folder.isOutside })) },
                     )
                     Spacer(Modifier.height(Spacing.s2))
                 }
@@ -575,7 +639,7 @@ private fun BehaviourSection(
             // too, so it's never lost or shown under an empty sub-heading.
             val looseEvidence = b.evidence + b.competencies.filter { it.name.isBlank() }.flatMap { it.evidence }
             looseEvidence.forEach { ev ->
-                AchievementRow(ev, hue, palette, pinned = false, count = 1, showControls = false, canUp = false, canDown = false, onUp = {}, onDown = {}, onLongPress = { onLongPress(ev) })
+                AchievementRow(ev, hue, palette, pinned = false, count = 1, showControls = false, canUp = false, canDown = false, onUp = {}, onDown = {}, onLongPress = { onLongPress(ev) }, showMenu = false)
                 Spacer(Modifier.height(Spacing.s2))
             }
             // Nested competencies (item 4): the user's category (e.g. "Leadership") is the header
@@ -605,7 +669,7 @@ private fun CompetencyGroup(
         }
         Spacer(Modifier.height(Spacing.s2))
         comp.evidence.forEach { ev ->
-            AchievementRow(ev, hue, palette, pinned = false, count = 1, showControls = false, canUp = false, canDown = false, onUp = {}, onDown = {}, onLongPress = { onLongPress(ev) })
+            AchievementRow(ev, hue, palette, pinned = false, count = 1, showControls = false, canUp = false, canDown = false, onUp = { }, onDown = { }, onLongPress = { onLongPress(ev) }, showMenu = false)
             Spacer(Modifier.height(Spacing.s2))
         }
     }
@@ -619,8 +683,17 @@ private fun DevelopmentSection(
     expanded: Boolean,
     onToggle: () -> Unit,
     onLongPress: (String) -> Unit,
+    onEdit: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    onRetag: (RetagTarget) -> Unit,
 ) {
     val hue = pillarColor(framework.pillars.size + 1)
+    // Development items ARE real placements (the model files into a DEVELOPMENT area), so they get the
+    // full menu — and this is exactly the area the owner's screenshot was about. The retag needs the
+    // area's real name, not the hardcoded header below: use the framework's own development pillar so a
+    // renamed one still retags correctly.
+    val devAreaName = framework.pillars.firstOrNull { it.kind == PillarKind.DEVELOPMENT }?.name
+        ?: "Learning & Growth"
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.sm)).clickable(onClick = onToggle),
         verticalAlignment = Alignment.CenterVertically,
@@ -647,7 +720,14 @@ private fun DevelopmentSection(
         Column {
             Spacer(Modifier.height(Spacing.s3))
             items.forEach { d ->
-                AchievementRow(d, hue, palette, pinned = false, count = 1, showControls = false, canUp = false, canDown = false, onUp = {}, onDown = {}, onLongPress = { onLongPress(d) })
+                AchievementRow(
+                    d, hue, palette, pinned = false, count = 1, showControls = false,
+                    canUp = false, canDown = false, onUp = { }, onDown = { },
+                    onLongPress = { onLongPress(d) },
+                    onEdit = { onEdit(d) },
+                    onDelete = { onDelete(d) },
+                    onRetag = { onRetag(RetagTarget(d, devAreaName, null)) },
+                )
                 Spacer(Modifier.height(Spacing.s2))
             }
         }
@@ -702,12 +782,24 @@ private fun AchievementRow(
     onUp: () -> Unit,
     onDown: () -> Unit,
     onLongPress: () -> Unit,
+    /**
+     * The ⋮ menu is drawn only where its actions mean something. Behaviour/competency evidence lines are
+     * a computed VIEW of a win that already appears under its goal area — "change category or project"
+     * has no meaning there (the line has no placement of its own to change), so those rows keep the
+     * long-press and omit the menu rather than offer three items that do nothing.
+     */
+    showMenu: Boolean = true,
+    onEdit: () -> Unit = {},
+    onDelete: () -> Unit = {},
+    onRetag: () -> Unit = {},
 ) {
     Row(
         Modifier
             .fillMaxWidth()
-            // Long-press → edit/delete this line (feature #1). detectTapGestures yields to a scroll
-            // drag, so the surrounding verticalScroll still works; child arrow taps keep their own.
+            // Long-press still opens the same actions (users have relied on it since v0.12.0) — but it
+            // was the ONLY way in, with no affordance. The ⋮ menu is now the discoverable path.
+            // detectTapGestures yields to a scroll drag, so the surrounding verticalScroll still works;
+            // child arrow/menu taps keep their own.
             .pointerInput(text) { detectTapGestures(onLongPress = { onLongPress() }) },
     ) {
         Box(Modifier.padding(top = 6.dp).size(5.dp).clip(RoundedCornerShape(2.dp)).background(hue.solid))
@@ -735,10 +827,51 @@ private fun AchievementRow(
                 Text("Pinned", style = MaterialTheme.typography.labelSmall, color = palette.primary, fontWeight = FontWeight.Bold)
             }
         }
+        // The design's sanctioned inline reorder tiles stay exactly where they are drawn; the ⋮ menu is
+        // added alongside for the actions that have no specced home (edit / delete / re-place).
         if (showControls) {
             Spacer(Modifier.width(4.dp))
             ControlIcon(Icons.Filled.KeyboardArrowUp, canUp, palette, onUp)
             ControlIcon(Icons.Filled.KeyboardArrowDown, canDown, palette, onDown)
+        }
+        if (showMenu) AchievementMenu(palette = palette, onEdit = onEdit, onDelete = onDelete, onRetag = onRetag)
+    }
+}
+
+/**
+ * The per-line ⋮ menu. Modelled on the app's own [com.bragbuddy.app.ui.common.EntryBulletRow] kebab —
+ * NOT on the Design System, which specifies no menu primitive anywhere (flagged: its Summary spec draws
+ * an inline Pinned/up/down/regenerate row instead, and the existing Home kebab is itself an undocumented
+ * code-side invention). Matching code precedent keeps the two menus consistent with each other.
+ */
+@Composable
+private fun AchievementMenu(
+    palette: BragPalette,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onRetag: () -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Outlined.MoreVert, "More", tint = palette.text3, modifier = Modifier.size(18.dp))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Change category or project") },
+                onClick = { open = false; onRetag() },
+                leadingIcon = { Icon(Icons.Outlined.DriveFileMove, null, modifier = Modifier.size(18.dp)) },
+            )
+            DropdownMenuItem(
+                text = { Text("Edit line") },
+                onClick = { open = false; onEdit() },
+                leadingIcon = { Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp)) },
+            )
+            DropdownMenuItem(
+                text = { Text("Delete line") },
+                onClick = { open = false; onDelete() },
+                leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null, modifier = Modifier.size(18.dp)) },
+            )
         }
     }
 }
@@ -781,15 +914,32 @@ private fun RolledUpRow(text: String, count: Int, hue: PillarColor, palette: Bra
     }
 }
 
+/**
+ * What didn't make the cut — expandable, in full, and restorable (v0.31.0).
+ *
+ * Two layers, because they are two different things:
+ *  - [items] = the REAL dropped wins, derived client-side (rollup candidates the model didn't use). Each
+ *    is its own full text and knows its own goal area, so Restore needs no destination picker and puts
+ *    back exactly what was left out. "Restore all" acts on these.
+ *  - [notes] = the model's own categorical explanation ("Routine check-ins · condensed to keep to one
+ *    page"). PROSE ONLY, and deliberately not restorable. Restoring one used to inject a bullet reading
+ *    literally "Routine check-ins" — a label pretending to be an achievement. It explains what happened;
+ *    it is not a thing you can get back. (v0.13.0 flagged exactly this; v0.22.0 shipped restore anyway.)
+ *
+ * So the header counts [items] — the things you can actually act on. When nothing was dropped, the panel
+ * is an explanation with nothing to restore, which is the truth.
+ */
 @Composable
 private fun SetAsidePanel(
-    count: Int,
-    open: Boolean,
+    items: List<SummaryViewModel.SetAsideItem>,
     notes: List<com.bragbuddy.app.data.ai.SetAsideNote>,
+    open: Boolean,
     palette: BragPalette,
     onToggle: () -> Unit,
-    onRestore: (String) -> Unit,
+    onRestoreItem: (SummaryViewModel.SetAsideItem) -> Unit,
+    onRestoreAll: () -> Unit,
 ) {
+    val count = items.size
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.md)).background(palette.surface).padding(2.dp),
     ) {
@@ -799,33 +949,67 @@ private fun SetAsidePanel(
         ) {
             Icon(Icons.Outlined.FilterList, null, tint = palette.text3, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(Spacing.s2))
-            Text("$count set aside", style = MaterialTheme.typography.bodySmall, color = palette.text2, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(
+                "$count ${if (count == 1) "item" else "items"} set aside",
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.text2,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
             Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null, tint = palette.text3, modifier = Modifier.size(18.dp))
         }
         AnimatedVisibility(visible = open) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                // The model's own reason, when it gave one; else the design's authoritative copy.
+                val why = notes.mapNotNull { n ->
+                    listOfNotNull(n.what.takeIf { it.isNotBlank() }, n.why.takeIf { it.isNotBlank() }).joinToString(" — ").takeIf { it.isNotBlank() }
+                }
                 Text(
-                    "Condensed to keep the summary crisp — nothing was deleted from your record.",
+                    if (why.isNotEmpty()) why.joinToString("  ·  ")
+                    else "Routine check-ins and duplicates were condensed to keep this to one page.",
                     style = MaterialTheme.typography.bodySmall,
                     color = palette.text3,
                 )
                 Spacer(Modifier.height(Spacing.s2))
-                notes.forEach { n ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Nothing was deleted from your record. Tap any to add it back.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = palette.text3,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        "Restore all",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(Radii.sm)).clickable(onClick = onRestoreAll).padding(horizontal = 8.dp, vertical = 6.dp),
+                    )
+                }
+                Spacer(Modifier.height(Spacing.s2))
+                items.forEach { item ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.Top) {
                         Box(Modifier.padding(top = 6.dp).size(4.dp).clip(RoundedCornerShape(2.dp)).background(palette.text3))
                         Spacer(Modifier.width(Spacing.s2))
                         Column(Modifier.weight(1f)) {
-                            Text(n.what, style = MaterialTheme.typography.bodySmall, color = palette.text2, fontWeight = FontWeight.SemiBold)
-                            if (n.why.isNotBlank()) Text(n.why, style = MaterialTheme.typography.bodySmall, color = palette.text3)
+                            // Full text, never truncated — "I need to be able to tap and see that
+                            // completely" is the whole point of this panel.
+                            Text(
+                                achievementDisplay(item.bullet, item.metric, null),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = palette.text2,
+                            )
+                            Text(item.area, style = MaterialTheme.typography.labelSmall, color = palette.text3)
                         }
                         Spacer(Modifier.width(Spacing.s2))
-                        // Restore this note back into the summary (feature #5).
                         Text(
                             "Restore",
                             style = MaterialTheme.typography.labelSmall,
                             color = palette.primary,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clip(RoundedCornerShape(Radii.sm)).clickable { onRestore(n.what) }.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.clip(RoundedCornerShape(Radii.sm)).clickable { onRestoreItem(item) }.padding(horizontal = 8.dp, vertical = 4.dp),
                         )
                     }
                 }
@@ -1104,17 +1288,47 @@ private fun EditPointerDialog(
     )
 }
 
-/** Pick which goal area a restored set-aside note lands in (feature #5). */
+/**
+ * **Retag a summary line** (v0.31.0) — pick a placement category, then any project under it, or no
+ * specific project. Mirrors the entry-detail Recategorize sheet's shape so the two read the same.
+ *
+ * Every project the user has is reachable here, including ones this summary never mentions and ones the
+ * AI has never filed into — that is the owner's explicit ask ("tag any card to another existing project
+ * even if it's not yet used"). Reachability is via its OWN category, because a project belongs to a
+ * category ([ProjectEntity] is unique by `(name, goalArea)`); picking a project therefore also settles
+ * the category, which is exactly right.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RestorePickerSheet(
+private fun RetagSheet(
     palette: BragPalette,
-    note: String,
+    line: String,
+    currentArea: String,
+    /** The line's CURRENT project (null = none). Preselected, so opening the sheet to change only the
+     *  CATEGORY can't silently un-file the entry from a project the user never touched. */
+    currentProject: String?,
     framework: Framework,
-    onPick: (String) -> Unit,
+    folders: List<SummaryViewModel.FolderRef>,
+    onApply: (String, String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val noRipple = remember { MutableInteractionSource() }
-    val areas = framework.pillars.filter { it.kind != PillarKind.BEHAVIOUR }.map { it.name }
+    val categories = remember(framework) { Recategorize.placementCategories(framework) }
+    // Keyed on the LINE, not the area: two lines in the same area are different entries with different
+    // projects, and keying on the area would hand the second one the first one's selection.
+    var selectedCategory by rememberSaveable(line) {
+        mutableStateOf(categories.firstOrNull { it.name.equals(currentArea, ignoreCase = true) }?.name ?: categories.firstOrNull()?.name)
+    }
+    var selectedFolder by rememberSaveable(line) {
+        // Scoped to the current category, mirroring Recategorize.defaultFolder: a folder is unique by
+        // (name, goalArea), so a project only preselects under the category it actually belongs to.
+        mutableStateOf(
+            currentProject?.takeIf { p ->
+                folders.any { it.name.equals(p, ignoreCase = true) && it.goalArea.equals(currentArea, ignoreCase = true) }
+            },
+        )
+    }
+
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier.fillMaxSize().background(Color(0xFF0E0F1A).copy(alpha = 0.42f))
@@ -1125,27 +1339,65 @@ private fun RestorePickerSheet(
                 .clip(RoundedCornerShape(topStart = Radii.xl, topEnd = Radii.xl))
                 .background(palette.surface)
                 .clickable(interactionSource = noRipple, indication = null, onClick = {})
-                // The goal-area list is as long as the user's framework — scroll instead of clipping.
+                // The category × folder list is as long as the user's framework — scroll, never clip.
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp).padding(top = 12.dp),
         ) {
             Box(Modifier.align(Alignment.CenterHorizontally).width(42.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(palette.text3.copy(alpha = 0.35f)))
             Spacer(Modifier.height(16.dp))
-            Text("Restore to which section?", style = MaterialTheme.typography.titleMedium, color = palette.text1)
+            Text("Where does this belong?", style = MaterialTheme.typography.titleMedium, color = palette.text1)
             Spacer(Modifier.height(Spacing.s2))
-            Text(note, style = MaterialTheme.typography.bodySmall, color = palette.text3, maxLines = 2)
+            Text(line, style = MaterialTheme.typography.bodySmall, color = palette.text3, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(Spacing.s4))
-            if (areas.isEmpty()) {
-                Text("No goal areas in your framework yet.", style = MaterialTheme.typography.bodySmall, color = palette.text3)
+
+            if (categories.isEmpty()) {
+                Text("Add a category in the Framework tab first.", style = MaterialTheme.typography.bodySmall, color = palette.text3)
             } else {
-                areas.forEach { area ->
+                categories.forEach { cat ->
+                    val isSel = selectedCategory?.equals(cat.name, ignoreCase = true) == true
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.md)).background(palette.surface2).clickable { onPick(area) }.padding(horizontal = 14.dp, vertical = 13.dp),
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.md))
+                            .clickable { if (!isSel) { selectedCategory = cat.name; selectedFolder = null } }
+                            .padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(area, style = MaterialTheme.typography.titleSmall, color = palette.text1, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        RadioButton(
+                            selected = isSel,
+                            onClick = { if (!isSel) { selectedCategory = cat.name; selectedFolder = null } },
+                            colors = RadioButtonDefaults.colors(selectedColor = palette.primary, unselectedColor = palette.text3),
+                        )
+                        Text(cat.name, style = MaterialTheme.typography.titleSmall, color = palette.text1, fontWeight = FontWeight.SemiBold)
                     }
-                    Spacer(Modifier.height(Spacing.s2))
+                    if (isSel) {
+                        val catFolders = folders.filter { it.goalArea.equals(cat.name, ignoreCase = true) }
+                        FlowRow(
+                            Modifier.fillMaxWidth().padding(start = 30.dp, bottom = Spacing.s2),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            SelectChip(NO_PROJECT_LABEL, selected = selectedFolder == null, palette = palette) { selectedFolder = null }
+                            catFolders.forEach { f ->
+                                SelectChip(
+                                    f.name,
+                                    selected = selectedFolder?.equals(f.name, ignoreCase = true) == true,
+                                    palette = palette,
+                                ) { selectedFolder = f.name }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(Spacing.s3))
+                // Conditional, because it is: when the line can't be matched back to a saved entry this
+                // falls back to a summary-only move. Promising the record outright would be a claim the
+                // code can't always honour — the snackbar afterwards says which actually happened.
+                Text(
+                    "Where this line can be matched to a saved entry, your record is corrected too — so Home and future summaries agree.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.text3,
+                )
+                Spacer(Modifier.height(Spacing.s3))
+                PrimaryButton("Apply", palette, enabled = selectedCategory != null) {
+                    selectedCategory?.let { onApply(it, selectedFolder) }
                 }
             }
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -1153,6 +1405,21 @@ private fun RestorePickerSheet(
             Spacer(Modifier.height(18.dp + bottomInset + LocalBottomBarInset.current))
         }
     }
+}
+
+@Composable
+private fun SelectChip(label: String, selected: Boolean, palette: BragPalette, onClick: () -> Unit) {
+    Text(
+        label,
+        style = MaterialTheme.typography.labelMedium,
+        color = if (selected) palette.primary else palette.text2,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) palette.primarySoft else palette.surface2)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    )
 }
 
 private fun achievementDisplay(bullet: String, metric: String?, project: String?): String {

@@ -214,7 +214,9 @@ function categorizerFrameworkBlock(framework, projects) {
   const dev = kind('DEVELOPMENT');
   if (dev.length) {
     out.push('DEVELOPMENT (optional):');
-    for (const p of dev) out.push(line(p, 'focus areas', true));
+    // APP-MIRROR (v0.31.0): a DEVELOPMENT area's sub-folders are "projects", not "focus areas" — they
+    // are real placement slots now (see projectLines below). Behaviours keep "focus areas".
+    for (const p of dev) out.push(line(p, 'projects', true));
   }
   return out.join('\n').trim();
 }
@@ -231,12 +233,21 @@ function capDescription(text, max = 300) {
 }
 
 /** Mirrors EntryProcessor.prepare (data/entry/EntryProcessor.kt): the {{PROJECTS}} lines are the
- *  placement universe — sub-folders under GOAL_AREA categories only — as "- Name [Area] — desc",
- *  the description capped at 300 chars (TextCaps.cap) exactly as the app does before every call. */
+ *  placement universe — sub-folders under any NON-BEHAVIOUR category — as "- Name [Area] — desc",
+ *  the description capped at 300 chars (TextCaps.cap) exactly as the app does before every call.
+ *
+ *  v0.31.0 widened this from GOAL_AREA-only to `!= BEHAVIOUR`, matching Recategorize.placementCategories.
+ *  Before, the model could FILE into a development area but was never offered a folder there, so every
+ *  such entry was structurally forced to "Outside-project". Keep this mirror in step with the Kotlin —
+ *  drift here is silent, and it makes the harness measure a prompt the app never sends. */
+const PLACEMENT_KINDS = (p) => p.kind !== 'BEHAVIOUR';
+
+function placementAreaNames(framework) {
+  return (framework.pillars || []).filter(PLACEMENT_KINDS).map((p) => p.name.toLowerCase());
+}
+
 function projectLines(framework, projects) {
-  const goalNames = (framework.pillars || [])
-    .filter((p) => p.kind === 'GOAL_AREA')
-    .map((p) => p.name.toLowerCase());
+  const goalNames = placementAreaNames(framework);
   return projects
     .filter((p) => goalNames.includes(p.goalArea.trim().toLowerCase()))
     .map((p) => `- ${p.name} [${p.goalArea}]${p.description && p.description.trim() ? ` — ${capDescription(p.description)}` : ''}`);
@@ -485,11 +496,13 @@ function scoreCategorizerCase(c, record) {
   const ctx = c.context || {};
   const framework = ctx.framework || { pillars: [] };
   const projects = ctx.projects || [];
+  // APP-MIRROR: EntryProcessor.prepare's `placement` list — must use the SAME kinds as projectLines
+  // above (v0.31.0: any non-behaviour category), or the scorer snaps against a universe the app never had.
   const placementNames = projectLines(framework, projects).length
     ? projects
         .filter((p) =>
           (framework.pillars || [])
-            .filter((x) => x.kind === 'GOAL_AREA')
+            .filter(PLACEMENT_KINDS)
             .some((x) => norm(x.name) === norm(p.goalArea)),
         )
         .map((p) => p.name)
@@ -714,6 +727,7 @@ function scoreSummaryCase(c, record) {
     if (expect.setAsideNonEmpty) checks.setAside = { pass: false, detail: why };
     if (Array.isArray(expect.developmentKeys)) checks.developmentPlacement = { pass: false, detail: why };
     if (expect.competencyGrouping && expect.competencyGrouping.category) checks.competencyGrouping = { pass: false, detail: why };
+    if (expect.minAchievements) checks.lengthHonoured = { pass: false, detail: why };
     return { checks, advisory };
   }
   checks.valid = { pass: true };
@@ -782,6 +796,44 @@ function scoreSummaryCase(c, record) {
     (record.parsed.setAside || []).length > 0
       ? (checks.setAside = { pass: true })
       : (checks.setAside = { pass: false, detail: 'setAside is empty though input had to be condensed' });
+  }
+
+  // GATED (v0.31.0): the summary must actually HONOUR its Length target rather than silently
+  // collapsing to a handful of bullets.
+  //
+  // Why this check exists: the owner reported "AI is shortening everything too much" — and the whole
+  // suite scored 22/22 green while it was happening. Every other check here is about correctness of
+  // content (no dupes, metrics kept, arcs merged); NOTHING measured how much survived, so a regression
+  // that dropped every area to two bullets was invisible to the gate by construction. That blindness is
+  // what let the rule-1 contradiction ("Length target: detailed" in the header vs. a hardcoded "at most
+  // 5" inside the rules) ship unnoticed.
+  //
+  // Expressed as a FLOOR per goal area, never a ceiling: the cap direction is already well covered
+  // (setAside / pinnedOnce / arcsMerged all depend on it), and a floor is what the fix has to hold.
+  //
+  // Area matching is loose + BIDIRECTIONAL, for the same reason competencyGrouping is (see below): the
+  // model legitimately re-titles "Quality & Craft" as "Quality and Craft", which is not a length miss.
+  // Exact matching would score that area 0 and wedge the 100% gate systematically — seed-fixed, so
+  // consensus sampling could never shake it out.
+  if (expect.minAchievements) {
+    const looseArea = (s) => norm(s).replace(/&/g, 'and').replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+    const short = Object.entries(expect.minAchievements)
+      .map(([area, min]) => {
+        const want = looseArea(area);
+        const g = body.goalAreas.find((x) => {
+          const got = looseArea(x.name || '');
+          return got.includes(want) || want.includes(got);
+        });
+        // A missing area scores 0 — an area the model dropped entirely is the most extreme
+        // over-shortening there is, not an excuse to skip the check.
+        const n = g ? (g.achievements || []).length : 0;
+        return { area, min, n };
+      })
+      .filter((x) => x.n < x.min);
+    checks.lengthHonoured =
+      short.length === 0
+        ? { pass: true }
+        : { pass: false, detail: `too few achievements: ${short.map((s) => `${s.area} ${s.n}<${s.min}`).join('; ')}` };
   }
 
   // GATED since AI-2 (serializer heads development pillars "DEVELOPMENT AREA:" + summary rule 5

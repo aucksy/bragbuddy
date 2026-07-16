@@ -80,6 +80,11 @@ object BackupCodec {
         put("status", status.name)
         put("rawTranscript", rawTranscript)
         putOpt("anchorProject", anchorProject)
+        // Both anchors ride the backup: they record the user's MANUAL placement decisions, and dropping
+        // them would let the AI silently revert every correction on the entry's next edit after a
+        // restore. An older backup simply has no key here → null → nothing was ever pinned, which is
+        // exactly right for pre-v0.31.0 data.
+        putOpt("anchorGoalArea", anchorGoalArea)
         putOpt("bullet", bullet)
         putOpt("project", project)
         putOpt("goalCategory", goalCategory)
@@ -104,6 +109,7 @@ object BackupCodec {
             status = enumOr(optString("status"), EntryStatus.PROCESSED),
             rawTranscript = raw,
             anchorProject = optStringOrNull("anchorProject"),
+            anchorGoalArea = optStringOrNull("anchorGoalArea"),
             bullet = optStringOrNull("bullet"),
             project = optStringOrNull("project"),
             goalCategory = optStringOrNull("goalCategory"),

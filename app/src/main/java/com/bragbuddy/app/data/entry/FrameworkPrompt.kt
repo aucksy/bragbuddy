@@ -15,7 +15,14 @@ import com.bragbuddy.app.data.local.ProjectEntity
  * **BEHAVIOURS / DEVELOPMENT = name + blurb (AI-1).** These pillars render their descriptions again so
  * the model can tag work to the behaviour it *genuinely* evidences, judged against the blurb — the fix
  * for the demonstrates-tagging accuracy the AI-0 baseline flagged. (These blurbs aren't a placement
- * slot, so no B2b filing concern.) Sub-folder names still ride along as context under any category.
+ * slot, so no B2b filing concern.) Sub-folder names still ride along under any category.
+ *
+ * **A DEVELOPMENT area's sub-folders are PROJECTS (v0.31.0)**, labelled as such — not "focus areas".
+ * A development area is a real placement target (the model may file into it), so its folders are real
+ * placement slots and [EntryProcessor.prepare] now offers them in `{{PROJECTS}}` too. Labelling them
+ * "focus areas" here while the model was allowed to file into the area — but never given a folder to
+ * file into — is what forced every development-area entry to "Outside-project". A BEHAVIOUR's folders
+ * remain "focus areas": behaviours are tagged via `demonstrates`, never filed into.
  */
 internal object FrameworkPrompt {
     fun categorizerBlock(fw: Framework, projects: List<ProjectEntity>): String {
@@ -36,7 +43,7 @@ internal object FrameworkPrompt {
             fw.behaviours.forEach { line(it, "focus areas", withBlurb = true) }
             if (fw.development.isNotEmpty()) {
                 appendLine("DEVELOPMENT (optional):")
-                fw.development.forEach { line(it, "focus areas", withBlurb = true) }
+                fw.development.forEach { line(it, "projects", withBlurb = true) }
             }
         }.trim()
     }

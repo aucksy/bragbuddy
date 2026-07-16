@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bragbuddy.app.data.local.EntryEntity
+import com.bragbuddy.app.data.local.isNamedProject
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.Radii
 import com.bragbuddy.app.ui.theme.Spacing
@@ -95,7 +96,7 @@ fun EntryBulletRow(
             // Cross-references: under a project, note the behaviours it also evidences; under a
             // behaviour, note the project it came from.
             if (showFromProject) {
-                entry.project?.takeIf { it.isNotBlank() && !it.equals("Outside-project", true) && !it.equals("Inbox", true) }
+                entry.project?.takeIf { it.isNamedProject() }
                     ?.let {
                         Spacer(Modifier.height(3.dp))
                         Text("from $it", style = MaterialTheme.typography.bodySmall, color = palette.text3)

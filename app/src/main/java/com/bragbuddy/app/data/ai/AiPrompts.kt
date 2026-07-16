@@ -283,14 +283,17 @@ CONTEXT
 {{ROLLUP}}
 
 WHAT TO DO
-1. For each GOAL AREA, select the few strongest achievements (default at most 5),
-   ranked by impact, outcome/metrics, scale, difficulty, visibility, goal alignment.
+1. For each GOAL AREA, select the strongest achievements — as many as the Length
+   target above allows, and when it names no number, every achievement that genuinely
+   earns a place. Rank by impact, outcome/metrics, scale, difficulty, visibility, goal
+   alignment.
    Never list the same accomplishment twice: if several highlights describe the SAME
    work (they may read near-identically or be marked "(logged N×)"), output ONE bullet
    with the strongest phrasing and set its "count". A sequence of PROGRESS updates on
    one deliverable ("started the X redesign" then "shipped X, cut drop-off 18%") is a
-   single arc — combine into one outcome-led bullet, not repeated lines. Prefer the
-   fewest pointers that fully represent the work.
+   single arc — combine into one outcome-led bullet, not repeated lines. This is about
+   never repeating ONE piece of work; it is not a reason to leave out genuinely
+   distinct achievements.
 2. Copy EVERY "Routine tallies" line from the rollup into "rolledUp" (one object each):
    the label EXACTLY as the rollup names it (never reworded or re-pluralised), the same
    count, plus any metric. This is REQUIRED even for a brief or tight summary — routine
@@ -314,10 +317,11 @@ WHAT TO DO
 5. Items listed under a DEVELOPMENT AREA belong in "development", never in
    "goalAreas". Fill "development" only if the framework has such an area and there
    is real material.
-6. Keep every line tight, professional, past-tense, outcome-led; stay within the cap;
-   never invent results or numbers not in the rollup. When a selected achievement
-   carries a metric, keep the number verbatim in the bullet — a line with its number
-   beats two lines without.
+6. Write every line professional, past-tense and outcome-led, with enough substance to
+   stand on its own to a manager who wasn't there: name the work, what was done, and
+   the result. Don't pad, and never invent results or numbers not in the rollup. When a
+   selected achievement carries a metric, keep the number verbatim in the bullet — a
+   line with its number beats two lines without.
 7. Produce a short "setAside" explanation of what was condensed or left out and why.
 
 OUTPUT (JSON only — no prose, no markdown, no code fences)

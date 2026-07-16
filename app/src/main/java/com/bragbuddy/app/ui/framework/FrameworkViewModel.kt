@@ -87,8 +87,13 @@ class FrameworkViewModel @Inject constructor(
     fun remove(id: String) {
         val p = framework.value.pillars.firstOrNull { it.id == id }
         persist(framework.value.pillars.filterNot { it.id == id })
-        // Removing a category also removes its folders (entries already filed stay in the record).
-        if (p != null) viewModelScope.launch { runCatching { projects.deleteByCategory(p.name) } }
+        if (p != null) viewModelScope.launch {
+            // Removing a category also removes its folders (entries already filed stay in the record).
+            runCatching { projects.deleteByCategory(p.name) }
+            // ...and clears any manual category anchor pinned to it, so a later edit doesn't re-file an
+            // entry into a category that no longer exists (v0.31.0).
+            runCatching { entries.clearCategoryAnchor(p.name) }
+        }
     }
 
     /**

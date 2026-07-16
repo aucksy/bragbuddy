@@ -100,7 +100,7 @@ object RollupAggregator {
             val highlights = mergeNotable(group.filter { !it.routine })
                 .sortedWith(compareByDescending<MergedNotable> { it.impact }.thenByDescending { it.timeMillis })
                 .take(highlightCap)
-                .map { AggHighlight(it.bullet, it.project, it.metric, it.impact, it.isExtra, it.demonstrates, it.count) }
+                .map { AggHighlight(it.bullet, it.project, it.metric, it.impact, it.isExtra, it.demonstrates, it.count, it.ids) }
             val routine = group.filter { it.routine }
                 .groupBy { (it.routineType ?: "Other").trim().ifBlank { "Other" } }
                 .map { (type, rows) ->
@@ -187,6 +187,8 @@ private data class MergedNotable(
     val demonstrates: List<String>,
     val count: Int,
     val timeMillis: Long,
+    /** Every source entry id merged into this one — client-side only, never serialized to the model. */
+    val ids: List<Long>,
 )
 
 /**
@@ -213,6 +215,9 @@ private fun mergeNotable(items: List<RollupItem>): List<MergedNotable> {
             demonstrates = rows.flatMap { it.demonstrates }.distinct(),
             count = rows.size,
             timeMillis = rows.maxOf { it.timeMillis },
+            // Representative-first so a single-target action (retag) hits the row whose phrasing the
+            // user is actually looking at; the rest ride along (a merged card re-files every source).
+            ids = (listOf(rep.id) + rows.map { it.id }).distinct(),
         )
     }
 }
