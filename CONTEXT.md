@@ -288,7 +288,13 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   (**eval-gated**) = user's BEHAVIOUR **categories as top headers** with a Leadership category's competencies
   **nested** under it (`SummaryBehaviour.competencies:[{name,evidence[]}]` + a PART B rule-4 rewrite +
   a gated `competencyGrouping` golden/scorer); adversarial 4-lens review (0 compile findings; a HIGH
-  export-drop + a MED scorer-flake + 2 LOWs fixed pre-gate). Full detail in `PROGRESS.md` `## Status: v0.30.0`. **M2 (v0.29.0):** onboarding aha rehearsal · Home
+  export-drop + a MED scorer-flake + 2 LOWs fixed pre-gate). Full detail in `PROGRESS.md` `## Status: v0.30.0`.
+  **v0.30.1 = an app-wide UI fix** (owner-reported): `MainScaffold` draws the bottom bar/FAB OVER the
+  full-screen tab content, so every bottom-anchored sheet opened from a tab hid its last ~74dp behind the bar
+  (the Generate-summary CTA was clipped). Fixed at the root — new `ui/common/BottomBarInset.kt`
+  (`LocalBottomBarInset`, provided around the tab content only, 0.dp elsewhere) applied to all 7 surfaces.
+  **STANDING UI RULE: a bottom-anchored surface's trailing spacer is
+  `<gap> + <systemNavInset> + LocalBottomBarInset.current`** — follow it for any new sheet. **M2 (v0.29.0):** onboarding aha rehearsal · Home
   one-slot nudge queue · finger-down haptics · themed snackbars replacing all Toasts (+ "Filed ✓ →
   category") · weekly recap notification (replaced the in-app catch-up sheet) · full image-offline-queue
   parity (**Room v5**, `PENDING_IMAGE`) · BYOK key mask/link + capture gates → `cloudTranscription` ·

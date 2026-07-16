@@ -114,6 +114,13 @@ current code — that is the context, not chat history.
 > DEFAULT framework's behaviour blurb is a comma-list, so the model may cosmetically nest generic aspect-words
 > as competencies for default-framework users — harmless/still-truthful, monitor after owner testing.)*
 >
+> **v0.30.1 = an app-wide UI fix on top of the Summary phase** (owner-reported): every bottom-anchored sheet
+> opened from a TAB was rendering its last ~74dp behind `MainScaffold`'s bottom bar (drawn on top of the
+> full-screen tab content) — the Generate-summary CTA was clipped. Fixed at the root via a new
+> `LocalBottomBarInset` CompositionLocal across all 7 affected surfaces. **Standing rule: a bottom-anchored
+> surface's trailing spacer is `<gap> + <systemNavInset> + LocalBottomBarInset.current`.** Detail in
+> `## Status: v0.30.1` below.
+>
 > **Exact next step: Phase M3 (v0.31.0) — Play Store + Billing + paywall/trial + metering** (was v0.30.0;
 > the Summary phase took v0.30.0). Fresh chat pointed at `CONTEXT.md`.
 
@@ -314,6 +321,50 @@ was made.** When it resumes, this is the pre-done research:
 - **Capture parity:** no iOS overlay (Apple forbids) — the notification opens the app straight into a
   minimal auto-recording screen + App Intents (Siri/Shortcuts/Action Button/Lock-Screen). Blessed in the
   PRD/Brief.
+
+---
+
+## Status: v0.30.1 — Bottom-bar occlusion fix (app-wide) ✅ SHIPPED (signed · tag-driven CI; adversarially reviewed; **NOT a prompt phase → no eval gate**)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.30.1/BragBuddy-v0.30.1.apk` (signed; `.aab` alongside). `versionCode 36`.
+
+> Owner-reported on v0.30.0 (screenshot): the **Generate-summary sheet's primary CTA was clipped by the
+> bottom tab bar**. The root cause was **app-wide and pre-existing**, not Summary-specific — so it was fixed
+> once, at the root, across every affected surface ("please ensure this does not happen anywhere").
+
+**Root cause.** `MainScaffold` lays the tab content out **full-screen** and draws `BottomBar` + the raised
+`CaptureFab` **on top of it** (later siblings in the same `Box`). Every bottom-anchored overlay reserved only
+`WindowInsets.navigationBars` (the SYSTEM gesture inset, 0–48dp) — never the app's own **~74dp** bar — so the
+last ~74dp of ANY tab-hosted sheet sat behind the bar, unreachable. Latent since the tab bar shipped; the
+Generate sheet (the tallest, with a bottom CTA) just made it visible.
+
+**Fix (root, once).** New `ui/common/BottomBarInset.kt`: `BottomBarHeight = 74.dp` (bar + the FAB that
+straddles it — matches the existing `contentBottom` used to pad scrolling tab content) + `LocalBottomBarInset`
+(`staticCompositionLocalOf { 0.dp }`). `MainScaffold` provides it via `CompositionLocalProvider` around the
+`when(tab){…}` **tab content ONLY** — the bar, FAB and `NotificationPrimerSheet` sit ABOVE the bar and must
+NOT reserve for it. It stays **0.dp** in the capture activity, onboarding and pushed routes, so a sheet shared
+between a tab and a route (`EntryDetailSheet`, `ProjectRemapSheet`) is correct in both **without threading a
+parameter through every call site**. **Standing rule (documented in the new file): a bottom-anchored surface's
+trailing spacer is `<gap> + <systemNavInset> + LocalBottomBarInset.current`.**
+- **7 surfaces fixed:** `SummaryScreen` ×3 (Generate / PointerAction / RestorePicker), `EntryDetailSheet`,
+  `AddImpactSheet`, `ProjectRemapSheet`, and `CategoryEditSheet`'s scroll tail.
+- **`GenerateSheet` + `RestorePickerSheet` gained `verticalScroll`** (they had none and now sit 74dp higher —
+  otherwise a short display / large font scale would push their TOPS off instead; mirrors the proven
+  `AddImpactSheet` modifier order). Verified no `ColumnScope.weight` on a direct child (would crash under
+  infinite height constraints) — every `weight` in those trees is `RowScope`.
+- **Deliberately NOT changed (verified correct):** `CaptureScreen`'s 3 sheets (separate `CaptureActivity`, no
+  bar → local is 0.dp), `NotificationPrimerSheet` (emitted outside the provider, above the bar),
+  `BragSnackbarHost` (nav-root sibling, floats above). No double-counting: `contentBottomPadding` covers
+  scrolling tab CONTENT, `LocalBottomBarInset` covers bottom-anchored OVERLAYS — no surface reads both.
+- **REVIEW (adversarial: compile / layout-scope / verticalScroll / coverage) = WILL COMPILE**, and it caught
+  **1 real MED bug in the fix itself**: `CategoryEditSheet` omitted the system nav inset (`Spacing.s8 + bar`
+  only), leaving "Add project" / "Save category" **~16dp clipped on 3-button navigation** (48dp) — and in
+  onboarding, where that clip PRE-EXISTED. Fixed → all 7 surfaces now uniform. Also confirmed:
+  `CompositionLocalProvider` emits no layout node and no tab call site uses a BoxScope API, so alignment and
+  `rememberSaveable` identity are unchanged.
+- **Known/accepted:** sheets end ABOVE the bar, so the tab bar stays visible + tappable beneath them —
+  consistent with every existing sheet in the app. True modality (sheets covering the bar) would mean hoisting
+  every sheet to the `MainScaffold` level; scoped as a possible M3 item, not done here.
 
 ---
 
