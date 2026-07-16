@@ -224,7 +224,9 @@ fun ProjectRemapSheet(
             }
 
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            Spacer(Modifier.height(18.dp + bottomInset))
+            // + the app's own bottom bar/FAB when opened from the Framework TAB. 0.dp from Settings
+            // (a pushed route with no bar).
+            Spacer(Modifier.height(18.dp + bottomInset + LocalBottomBarInset.current))
         }
     }
 }

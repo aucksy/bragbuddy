@@ -17,7 +17,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -59,6 +62,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.local.ProjectEntity
+import com.bragbuddy.app.ui.common.LocalBottomBarInset
 import com.bragbuddy.app.ui.common.rememberDiscardGuard
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
@@ -360,7 +364,13 @@ fun CategoryEditSheet(
                     rows.add(ProjRowState(nextKey, null, "", "")); nextKey++
                 }
             }
-            Spacer(Modifier.height(Spacing.s8))
+            // This editor fills the screen edge-to-edge with no navigationBarsPadding, UNDER
+            // MainScaffold's bottom bar/FAB (drawn on top of the Framework tab) — so the scroll tail
+            // must clear BOTH the system nav bar and the app bar, or the last control ("Add project" /
+            // "Save category") is unreachable. The bar term is 0.dp in onboarding, which embeds this
+            // screen with no bar; the system inset still applies there.
+            val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            Spacer(Modifier.height(Spacing.s8 + bottomInset + LocalBottomBarInset.current))
         }
     }
 

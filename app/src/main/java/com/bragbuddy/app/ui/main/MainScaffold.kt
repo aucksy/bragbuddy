@@ -44,6 +44,7 @@ import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +68,8 @@ import com.bragbuddy.app.notification.NotificationPrimer
 import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.framework.FrameworkScreen
 import com.bragbuddy.app.ui.home.HomeScreen
+import com.bragbuddy.app.ui.common.BottomBarHeight
+import com.bragbuddy.app.ui.common.LocalBottomBarInset
 import com.bragbuddy.app.ui.common.tapHaptic
 import com.bragbuddy.app.ui.inbox.InboxScreen
 import com.bragbuddy.app.ui.summary.SummaryScreen
@@ -111,7 +114,7 @@ fun MainScaffold(
     var summaryAutoGenerate by rememberSaveable { mutableStateOf(false) }
     val inboxCount by viewModel.inboxCount.collectAsStateWithLifecycle()
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val contentBottom = 74.dp + navInset
+    val contentBottom = BottomBarHeight + navInset
 
     // M2: the in-app weekly catch-up SHEET is retired — its job (a weekly "log anything bigger?"
     // nudge) is now the weekly recap NOTIFICATION, which fires even when the app isn't opened.
@@ -141,25 +144,31 @@ fun MainScaffold(
     }
 
     Box(Modifier.fillMaxSize().background(palette.bg)) {
-        when (tab) {
-            HomeTab.HOME -> HomeScreen(
-                onOpenSettings = onOpenSettings,
-                onOpenPillar = onOpenPillar,
-                onOpenFolder = onOpenFolder,
-                onReviewInbox = { tab = HomeTab.INBOX },
-                onOpenSummary = { summaryAutoGenerate = true; tab = HomeTab.SUMMARY },
-                onOpenReliability = onOpenReliability,
-                onQuickCapture = { radialOpen = true },
-                contentBottomPadding = contentBottom,
-            )
-            HomeTab.SUMMARY -> SummaryScreen(
-                contentBottomPadding = contentBottom,
-                onOpenSettings = onOpenSettings,
-                autoGenerate = summaryAutoGenerate,
-                onAutoGenerateConsumed = { summaryAutoGenerate = false },
-            )
-            HomeTab.FRAMEWORK -> FrameworkScreen(contentBottomPadding = contentBottom)
-            HomeTab.INBOX -> InboxScreen(contentBottomPadding = contentBottom)
+        // The tab content is laid out FULL-SCREEN and the bar + FAB are drawn on top of it (below), so
+        // anything a tab screen anchors to the bottom must reserve the bar's height or it renders
+        // behind it. Scoped to the tab content only — the bar, FAB and primer sheet sit ABOVE the bar
+        // and must NOT reserve for it.
+        CompositionLocalProvider(LocalBottomBarInset provides BottomBarHeight) {
+            when (tab) {
+                HomeTab.HOME -> HomeScreen(
+                    onOpenSettings = onOpenSettings,
+                    onOpenPillar = onOpenPillar,
+                    onOpenFolder = onOpenFolder,
+                    onReviewInbox = { tab = HomeTab.INBOX },
+                    onOpenSummary = { summaryAutoGenerate = true; tab = HomeTab.SUMMARY },
+                    onOpenReliability = onOpenReliability,
+                    onQuickCapture = { radialOpen = true },
+                    contentBottomPadding = contentBottom,
+                )
+                HomeTab.SUMMARY -> SummaryScreen(
+                    contentBottomPadding = contentBottom,
+                    onOpenSettings = onOpenSettings,
+                    autoGenerate = summaryAutoGenerate,
+                    onAutoGenerateConsumed = { summaryAutoGenerate = false },
+                )
+                HomeTab.FRAMEWORK -> FrameworkScreen(contentBottomPadding = contentBottom)
+                HomeTab.INBOX -> InboxScreen(contentBottomPadding = contentBottom)
+            }
         }
 
         BottomBar(

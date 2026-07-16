@@ -46,6 +46,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bragbuddy.app.ui.common.LocalBottomBarInset
 import com.bragbuddy.app.ui.common.rememberDiscardGuard
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
@@ -152,7 +153,8 @@ fun AddImpactSheet(
             }
 
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            Spacer(Modifier.height(16.dp + bottomInset))
+            // + the app's own bottom bar/FAB, which MainScaffold draws OVER the Home tab.
+            Spacer(Modifier.height(16.dp + bottomInset + LocalBottomBarInset.current))
         }
     }
 }

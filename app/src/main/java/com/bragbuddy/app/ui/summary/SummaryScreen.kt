@@ -74,6 +74,7 @@ import com.bragbuddy.app.data.ai.SummaryBehaviour
 import com.bragbuddy.app.data.ai.SummaryCompetency
 import com.bragbuddy.app.data.ai.SummaryGoalArea
 import com.bragbuddy.app.data.framework.Framework
+import com.bragbuddy.app.ui.common.LocalBottomBarInset
 import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.rollup.SummaryLength
@@ -875,6 +876,9 @@ private fun GenerateSheet(
                 .clip(RoundedCornerShape(topStart = Radii.xl, topEnd = Radii.xl))
                 .background(palette.surface)
                 .clickable(interactionSource = noRipple, indication = null, onClick = {})
+                // This sheet is the tallest (period + 3 length rows + CTA). Scroll rather than push its
+                // top off-screen on a short display / large font scale.
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp)
                 .padding(top = 12.dp),
         ) {
@@ -932,7 +936,8 @@ private fun GenerateSheet(
                 Text("No entries in this period yet.", style = MaterialTheme.typography.bodySmall, color = palette.text3, modifier = Modifier.align(Alignment.CenterHorizontally))
             }
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            Spacer(Modifier.height(18.dp + bottomInset))
+            // + the app's own bottom bar/FAB, which MainScaffold draws OVER this screen.
+            Spacer(Modifier.height(18.dp + bottomInset + LocalBottomBarInset.current))
         }
     }
 }
@@ -1054,7 +1059,8 @@ private fun PointerActionSheet(
                 color = palette.text3,
             )
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            Spacer(Modifier.height(18.dp + bottomInset))
+            // + the app's own bottom bar/FAB, which MainScaffold draws OVER this screen.
+            Spacer(Modifier.height(18.dp + bottomInset + LocalBottomBarInset.current))
         }
     }
 }
@@ -1119,6 +1125,8 @@ private fun RestorePickerSheet(
                 .clip(RoundedCornerShape(topStart = Radii.xl, topEnd = Radii.xl))
                 .background(palette.surface)
                 .clickable(interactionSource = noRipple, indication = null, onClick = {})
+                // The goal-area list is as long as the user's framework — scroll instead of clipping.
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp).padding(top = 12.dp),
         ) {
             Box(Modifier.align(Alignment.CenterHorizontally).width(42.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(palette.text3.copy(alpha = 0.35f)))
@@ -1141,7 +1149,8 @@ private fun RestorePickerSheet(
                 }
             }
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            Spacer(Modifier.height(18.dp + bottomInset))
+            // + the app's own bottom bar/FAB, which MainScaffold draws OVER this screen.
+            Spacer(Modifier.height(18.dp + bottomInset + LocalBottomBarInset.current))
         }
     }
 }

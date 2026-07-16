@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bragbuddy.app.data.entry.Recategorize
+import com.bragbuddy.app.ui.common.LocalBottomBarInset
 import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.OUTSIDE_PROJECT
@@ -303,7 +304,9 @@ fun EntryDetailSheet(
             }
 
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            Spacer(Modifier.height(18.dp + bottomInset))
+            // + the app's own bottom bar/FAB when this sheet is opened from a TAB (Home). It is 0.dp on
+            // the pushed pillar/folder routes, which have no bar.
+            Spacer(Modifier.height(18.dp + bottomInset + LocalBottomBarInset.current))
         }
     }
 }
