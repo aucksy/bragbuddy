@@ -18,14 +18,22 @@ import com.bragbuddy.app.data.prefs.CaptureMode
  */
 object CaptureLauncher {
 
-    private fun base(context: Context, project: String?, deliverable: String?, replaceId: Long?): Intent =
-        Intent(context, CaptureActivity::class.java).apply {
-            if (project != null) putExtra(CaptureActivity.EXTRA_PROJECT, project)
-            // A deliverable anchor is meaningless without its project (it lives inside one), so it only
-            // rides when a project does — the tap-in sites always pass both.
-            if (project != null && deliverable != null) putExtra(CaptureActivity.EXTRA_DELIVERABLE, deliverable)
-            if (replaceId != null && replaceId > 0L) putExtra(CaptureActivity.EXTRA_REPLACE_ID, replaceId)
-        }
+    private fun base(
+        context: Context,
+        project: String?,
+        deliverable: String?,
+        goalArea: String?,
+        replaceId: Long?,
+    ): Intent = Intent(context, CaptureActivity::class.java).apply {
+        if (project != null) putExtra(CaptureActivity.EXTRA_PROJECT, project)
+        // A deliverable anchor is meaningless without its project (it lives inside one), so it only
+        // rides when a project does — the tap-in sites always pass both.
+        if (project != null && deliverable != null) putExtra(CaptureActivity.EXTRA_DELIVERABLE, deliverable)
+        // The CATEGORY the user tapped through rides with any anchored capture (v0.33.1). Every
+        // in-context "+" knows it — it's the section header they opened.
+        if (project != null && goalArea != null) putExtra(CaptureActivity.EXTRA_GOAL_AREA, goalArea)
+        if (replaceId != null && replaceId > 0L) putExtra(CaptureActivity.EXTRA_REPLACE_ID, replaceId)
+    }
 
     /** Explicit mode (from the Home "+" radial pick), optionally anchored to a folder / deliverable. */
     fun intentForMode(
@@ -33,25 +41,45 @@ object CaptureLauncher {
         mode: CaptureMode,
         project: String? = null,
         deliverable: String? = null,
-    ): Intent = base(context, project, deliverable, null)
+        goalArea: String? = null,
+    ): Intent = base(context, project, deliverable, goalArea, null)
         .putExtra(CaptureActivity.EXTRA_START_MODE, mode.name)
 
     /** The 3-choice chooser (the in-context "+" rows), anchored to the tapped folder / deliverable. */
-    fun intentForChooser(context: Context, project: String? = null, deliverable: String? = null): Intent =
-        base(context, project, deliverable, null).putExtra(CaptureActivity.EXTRA_START_MODE, CaptureActivity.START_ASK)
+    fun intentForChooser(
+        context: Context,
+        project: String? = null,
+        deliverable: String? = null,
+        goalArea: String? = null,
+    ): Intent = base(context, project, deliverable, goalArea, null)
+        .putExtra(CaptureActivity.EXTRA_START_MODE, CaptureActivity.START_ASK)
 
     /** Redo an existing entry (no start mode → opens in the last-used mode). */
-    fun intentForRedo(context: Context, entryId: Long): Intent = base(context, null, null, entryId)
+    fun intentForRedo(context: Context, entryId: Long): Intent = base(context, null, null, null, entryId)
 
-    fun openMode(context: Context, mode: CaptureMode, project: String? = null, deliverable: String? = null) =
-        context.startActivity(intentForMode(context, mode, project, deliverable))
+    fun openMode(
+        context: Context,
+        mode: CaptureMode,
+        project: String? = null,
+        deliverable: String? = null,
+        goalArea: String? = null,
+    ) = context.startActivity(intentForMode(context, mode, project, deliverable, goalArea))
 
-    /** Log into a deliverable — the **tap-in** path (owner's call, 2026-07-17): this pins the entry to
-     *  [project] + [deliverable] with NO AI guess at either. The deterministic route is deliberately the
-     *  primary one, because a third level makes the model's guess strictly harder and mis-classification
-     *  is the complaint this phase exists to answer. */
-    fun openChooser(context: Context, project: String? = null, deliverable: String? = null) =
-        context.startActivity(intentForChooser(context, project, deliverable))
+    /**
+     * Log into a folder — or, with [deliverable], into a deliverable inside it (owner's call,
+     * 2026-07-17): the **tap-in** path, which pins the placement with NO AI guess at any level. The
+     * deterministic route is deliberately the primary one, because a third level makes the model's guess
+     * strictly harder and mis-classification is the complaint this phase exists to answer.
+     *
+     * [goalArea] is the category the user tapped through. Pass it whenever it's known — see
+     * [CaptureActivity.EXTRA_GOAL_AREA] for why an unpinned category makes the other two pins ambiguous.
+     */
+    fun openChooser(
+        context: Context,
+        project: String? = null,
+        deliverable: String? = null,
+        goalArea: String? = null,
+    ) = context.startActivity(intentForChooser(context, project, deliverable, goalArea))
 
     fun redo(context: Context, entryId: Long) =
         context.startActivity(intentForRedo(context, entryId))

@@ -160,10 +160,13 @@ fun PillarDetailScreen(
     var deleteDeliverable by remember { mutableStateOf<DeliverableTarget?>(null) }
 
     // In-context "+" (Add a note / Add entry to a project) → the 3-choice chooser, anchored if named.
-    fun capture(project: String?) = CaptureLauncher.openChooser(context, project)
-    /** Tap-in filing: pins the project AND the deliverable, so the AI guesses neither (v0.33.0). */
+    // The CATEGORY rides with any anchored capture — see CaptureActivity.EXTRA_GOAL_AREA for why a pin
+    // made of names alone can't be resolved. This screen IS one category, so it always knows it.
+    fun capture(project: String?) =
+        CaptureLauncher.openChooser(context, project, goalArea = detail.goalArea.takeIf { it.isNotBlank() })
+    /** Tap-in filing: pins all three axes, so the AI guesses none of them (v0.33.0). */
     fun captureInto(project: String, deliverable: String) =
-        CaptureLauncher.openChooser(context, project, deliverable)
+        CaptureLauncher.openChooser(context, project, deliverable, detail.goalArea.takeIf { it.isNotBlank() })
     fun redo(entry: EntryEntity) = CaptureLauncher.redo(context, entry.id)
 
     Column(

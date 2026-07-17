@@ -147,7 +147,13 @@ class CaptureViewModel @Inject constructor(
      *  [anchorProject] — the tap-in path, which files with NO AI guess (v0.33.0). */
     private var anchorDeliverable: String? = null
 
-    fun setAnchorProject(name: String, deliverable: String? = null) {
+    /** The CATEGORY the user tapped through (v0.33.1). Pinned because the other two anchors are only
+     *  names: a project is unique by (name, goalArea) and a deliverable by (name, project, goalArea), so
+     *  without it "Payments"/"Onboarding" cannot say WHICH — and the app was left guessing by sort order.
+     *  See [CaptureActivity.EXTRA_GOAL_AREA]. */
+    private var anchorGoalArea: String? = null
+
+    fun setAnchorProject(name: String, deliverable: String? = null, goalArea: String? = null) {
         val clean = name.trim()
         if (clean.isEmpty()) return
         anchorProject = clean
@@ -155,6 +161,7 @@ class CaptureViewModel @Inject constructor(
         // guaranteed by the single entry point above, and re-asserted here.
         val del = deliverable?.trim()?.takeIf { it.isNotEmpty() }
         anchorDeliverable = del
+        anchorGoalArea = goalArea?.trim()?.takeIf { it.isNotEmpty() }
         _state.update { it.copy(anchorProject = clean, anchorDeliverable = del) }
     }
 
@@ -307,7 +314,7 @@ class CaptureViewModel @Inject constructor(
         lastImageDataUrl = null
         // Sequenced AFTER the row insert commits (both on the app scope) so an immediately-online
         // recovery pass can actually see the new row.
-        entries.queueImageNote(queued.absolutePath, anchorProject, anchorDeliverable) {
+        entries.queueImageNote(queued.absolutePath, anchorProject, anchorDeliverable, anchorGoalArea) {
             if (connectivity.isOnline.value) recovery.kick()
         }
         _state.update { it.copy(queuedOffline = true, error = null, needsKey = false) }
@@ -443,7 +450,7 @@ class CaptureViewModel @Inject constructor(
         submitting = false
         // The kick is sequenced AFTER the row insert commits (both on the app scope) so an
         // immediately-online recovery pass can actually see the new row.
-        entries.queueVoiceNote(queued.absolutePath, anchorProject, anchorDeliverable) {
+        entries.queueVoiceNote(queued.absolutePath, anchorProject, anchorDeliverable, anchorGoalArea) {
             if (connectivity.isOnline.value) recovery.kick()
         }
         _state.update { it.copy(queuedOffline = true, error = null, canSaveForLater = false) }
@@ -651,7 +658,8 @@ class CaptureViewModel @Inject constructor(
             val id = if (replace != null) { entries.replaceText(replace, text, combineSingle, isRedo = true); replace }
                      else entries.capture(
                          text, source, anchorProject = anchorProject,
-                         anchorDeliverable = anchorDeliverable, combineSingle = combineSingle,
+                         anchorDeliverable = anchorDeliverable, anchorGoalArea = anchorGoalArea,
+                         combineSingle = combineSingle,
                      )
             onDone()
             when {

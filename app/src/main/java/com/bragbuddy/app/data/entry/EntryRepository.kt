@@ -45,6 +45,7 @@ class EntryRepository @Inject constructor(
         occurredAt: Long? = null,
         anchorProject: String? = null,
         anchorDeliverable: String? = null,
+        anchorGoalArea: String? = null,
         combineSingle: Boolean = false,
     ): Long {
         val id = entryDao.insert(
@@ -56,6 +57,9 @@ class EntryRepository @Inject constructor(
                 rawTranscript = rawTranscript.trim(),
                 anchorProject = anchorProject?.takeIf { it.isNotBlank() },
                 anchorDeliverable = anchorDeliverable?.takeIf { it.isNotBlank() },
+                // The tapped-through CATEGORY. Pinned so the two name-only anchors above can actually be
+                // resolved — see EntryEntity.anchorGoalArea and CaptureActivity.EXTRA_GOAL_AREA.
+                anchorGoalArea = anchorGoalArea?.takeIf { it.isNotBlank() },
             ),
         )
         appScope.launch { processor.process(id, combineSingle) }
@@ -73,6 +77,7 @@ class EntryRepository @Inject constructor(
         audioPath: String,
         anchorProject: String? = null,
         anchorDeliverable: String? = null,
+        anchorGoalArea: String? = null,
         onQueued: () -> Unit = {},
     ) {
         appScope.launch {
@@ -87,6 +92,7 @@ class EntryRepository @Inject constructor(
                     // does — the tap-in is the user's placement decision, and it would be silently lost
                     // if a capture into a deliverable happened to be made with no network.
                     anchorDeliverable = anchorDeliverable?.takeIf { it.isNotBlank() },
+                    anchorGoalArea = anchorGoalArea?.takeIf { it.isNotBlank() },
                     audioPath = audioPath,
                 ),
             )
@@ -105,6 +111,7 @@ class EntryRepository @Inject constructor(
         imagePath: String,
         anchorProject: String? = null,
         anchorDeliverable: String? = null,
+        anchorGoalArea: String? = null,
         onQueued: () -> Unit = {},
     ) {
         appScope.launch {
@@ -116,6 +123,7 @@ class EntryRepository @Inject constructor(
                     rawTranscript = "",
                     anchorProject = anchorProject?.takeIf { it.isNotBlank() },
                     anchorDeliverable = anchorDeliverable?.takeIf { it.isNotBlank() },
+                    anchorGoalArea = anchorGoalArea?.takeIf { it.isNotBlank() },
                     imagePath = imagePath,
                 ),
             )

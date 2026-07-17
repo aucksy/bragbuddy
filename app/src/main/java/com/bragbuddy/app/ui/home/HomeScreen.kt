@@ -181,11 +181,14 @@ fun HomeScreen(
     var renameDeliverable by remember { mutableStateOf<DeliverableTarget?>(null) }
     var deleteDeliverable by remember { mutableStateOf<DeliverableTarget?>(null) }
 
-    // In-context "+" (Add entry to a folder) → the 3-choice chooser, anchored to that folder.
-    fun captureInto(project: String?) = CaptureLauncher.openChooser(context, project)
-    /** Tap-in filing: pins BOTH axes, so the AI guesses neither (v0.33.0). */
-    fun captureIntoDeliverable(project: String, deliverable: String) =
-        CaptureLauncher.openChooser(context, project, deliverable)
+    // In-context "+" (Add entry to a folder) → the 3-choice chooser, anchored to that folder. The
+    // CATEGORY rides too: an anchor is only a name, and a project is unique by (name, goalArea), so
+    // without it the pin can't say which folder it meant (v0.33.1).
+    fun captureInto(project: String?, goalArea: String? = null) =
+        CaptureLauncher.openChooser(context, project, goalArea = goalArea)
+    /** Tap-in filing: pins ALL THREE axes, so the AI guesses none of them (v0.33.0). */
+    fun captureIntoDeliverable(project: String, deliverable: String, goalArea: String) =
+        CaptureLauncher.openChooser(context, project, deliverable, goalArea)
     fun redo(entry: EntryEntity) = CaptureLauncher.redo(context, entry.id)
 
     Column(
@@ -295,7 +298,7 @@ fun HomeScreen(
                         isFolderExpanded = { folder -> expandedFolders.contains(section.pillar.id + "::" + folder) },
                         onToggleFolder = { folder -> toggleFolder(section.pillar.id + "::" + folder) },
                         onSeeMore = { folder -> onOpenFolder(section.pillar.id, folder) },
-                        onAddEntry = { folder -> captureInto(folder) },
+                        onAddEntry = { folder -> captureInto(folder, section.pillar.name) },
                         onOpenDetail = { detailEntry = it },
                         onEdit = { editTarget = it },
                         onRedo = { redo(it) },
@@ -306,7 +309,7 @@ fun HomeScreen(
                         onAddDeliverable = { project ->
                             createDeliverableFor = DeliverableTarget(project, section.pillar.name, "")
                         },
-                        onAddEntryToDeliverable = { project, d -> captureIntoDeliverable(project, d) },
+                        onAddEntryToDeliverable = { project, d -> captureIntoDeliverable(project, d, section.pillar.name) },
                         onRenameDeliverable = { project, d ->
                             renameDeliverable = DeliverableTarget(project, section.pillar.name, d)
                         },

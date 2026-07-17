@@ -1392,14 +1392,25 @@ private fun RetagSheet(
     val categories = remember(framework) { Recategorize.placementCategories(framework) }
     // Keyed on the LINE, not the area: two lines in the same area are different entries with different
     // projects, and keying on the area would hand the second one the first one's selection.
-    var selectedCategory by rememberSaveable(line) {
-        mutableStateOf(categories.firstOrNull { it.name.equals(currentArea, ignoreCase = true) }?.name ?: categories.firstOrNull()?.name)
+    // The category the sheet OPENS on. Usually the line's own area — but when that names no placement
+    // category (an off-framework area, e.g. one renamed since the summary generated) it falls back to
+    // the first, and "changed" must then be measured against THIS, not against the line's raw area.
+    // Measuring against the raw area made `categoryChanged` true before the user touched anything, which
+    // silently settled the placement and wiped the deliverable of a win they only opened to look at.
+    val initialCategory = remember(line, currentArea, categories) {
+        categories.firstOrNull { it.name.equals(currentArea, ignoreCase = true) }?.name
+            ?: categories.firstOrNull()?.name
     }
+    var selectedCategory by rememberSaveable(line) { mutableStateOf(initialCategory) }
     // Scoped to the current category, mirroring Recategorize.defaultFolder: a folder is unique by
     // (name, goalArea), so a project only preselects under the category it actually belongs to.
     val initialFolder = remember(line, currentProject, currentArea, folders) {
-        currentProject?.takeIf { p ->
-            folders.any { it.name.equals(p, ignoreCase = true) && it.goalArea.equals(currentArea, ignoreCase = true) }
+        // Resolve to the FOLDER's own spelling rather than echoing the model's: `currentProject` is an
+        // unconstrained model-authored string, and Apply writes it straight into the record.
+        currentProject?.let { p ->
+            folders.firstOrNull {
+                it.name.equals(p, ignoreCase = true) && it.goalArea.equals(currentArea, ignoreCase = true)
+            }?.name
         }
     }
     var selectedFolder by rememberSaveable(line) { mutableStateOf(initialFolder) }
@@ -1444,7 +1455,7 @@ private fun RetagSheet(
     //
     // `projectKnown` is false for DEVELOPMENT summary lines, whose project can't be resolved at render
     // time. There "unchanged" is unknowable, so an explicit pick is treated as a move.
-    val categoryChanged = !selectedCategory.orEmpty().equals(currentArea, ignoreCase = true)
+    val categoryChanged = !selectedCategory.orEmpty().equals(initialCategory.orEmpty(), ignoreCase = true)
     // Is the PROJECT question answered? Three ways, and it must be DERIVED, not stored:
     //  - we knew the answer and preselected it (writing the truth back is a no-op);
     //  - the user picked one;
@@ -1491,7 +1502,7 @@ private fun RetagSheet(
                     // Changing the category invalidates both narrower axes — they belong to the old one.
                     val pickCategory = {
                         if (!isSel) {
-                            val backHome = cat.name.equals(currentArea, ignoreCase = true)
+                            val backHome = cat.name.equals(initialCategory.orEmpty(), ignoreCase = true)
                             selectedCategory = cat.name
                             // Returning to the line's OWN category restores its real project instead of
                             // leaving it blank: a round trip (A → B → A) landed on "No specific project",

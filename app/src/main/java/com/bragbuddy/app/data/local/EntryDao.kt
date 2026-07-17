@@ -84,12 +84,22 @@ interface EntryDao {
      *  to the new area — so running it second means the clause never matches whenever the goal area
      *  actually changes, silently leaving the anchor pointing at the old folder (fixed v0.31.0).
      *
+     *  ⚠️ The category term accepts EITHER the filed `goalCategory` **or** the pinned `anchorGoalArea`.
+     *  Reading only the filed one meant this missed every not-yet-filed capture — a RAW row, a FAILED one
+     *  waiting in the Inbox after an AI outage, a PENDING_AUDIO/IMAGE one queued offline for days — since
+     *  those carry the pin with `goalCategory` still NULL. Their anchor kept the OLD project name, and
+     *  `prepare()` then re-filed them into a folder that no longer existed. Same shape as the deliverable
+     *  bug at [remapDeliverableAnchor]: **an anchor must be scoped by anchor columns.** (Present since
+     *  v0.19.0; reachable only once a tap-in pins its category, which it now does.)
+     *
      *  [anchorGoalArea] follows only when it was ALREADY set: a null there means "the user never pinned
      *  a category", and a remap must not invent a pin they didn't ask for. */
     @Query(
         "UPDATE entries SET anchorProject = :newName, " +
             "anchorGoalArea = CASE WHEN anchorGoalArea IS NOT NULL THEN :newArea ELSE NULL END " +
-            "WHERE LOWER(anchorProject) = LOWER(:old) AND LOWER(goalCategory) = LOWER(:oldArea)",
+            "WHERE LOWER(anchorProject) = LOWER(:old) " +
+            "AND (LOWER(goalCategory) = LOWER(:oldArea) " +
+            "OR (goalCategory IS NULL AND LOWER(anchorGoalArea) = LOWER(:oldArea)))",
     )
     suspend fun remapAnchorScoped(old: String, oldArea: String, newName: String, newArea: String)
 
@@ -149,10 +159,13 @@ interface EntryDao {
      * filed into the project's loose list instead, with no signal — a rename behaved as a delete for
      * exactly the entries that hadn't landed yet.
      *
-     * `anchorGoalArea` is deliberately allowed to be NULL: a tap-in capture pins the project and the
-     * deliverable but NOT the category (`prepare()` derives it from the anchored folder), so requiring a
-     * match there would miss the very rows this exists for. Only a manual correction sets it, and then it
-     * must agree.
+     * The category term is a real match, never an "IS NULL" escape hatch. A tap-in now pins the category
+     * it walked through ([EntryEntity.anchorGoalArea]) precisely so this can be exact: an earlier
+     * version accepted `anchorGoalArea IS NULL` to reach in-flight rows, and that clause matched pins in
+     * a **different category's same-named project** — renaming Performance Goals ▸ Payments ▸ Onboarding
+     * silently re-pinned a win the user had tapped into Learning & Growth ▸ Payments ▸ Onboarding, which
+     * `prepare()` then dropped as unresolvable. The `goalCategory` fallback covers only rows written
+     * before the category was pinned, where the filed label answers the same question.
      *
      * Matching on `anchorDeliverable = :old` inherently means "only where a pin already exists" — a
      * rename must never invent one ([remapAnchorScoped] follows the same rule).
@@ -160,7 +173,8 @@ interface EntryDao {
     @Query(
         "UPDATE entries SET anchorDeliverable = :newName " +
             "WHERE LOWER(anchorDeliverable) = LOWER(:old) AND LOWER(anchorProject) = LOWER(:project) " +
-            "AND (anchorGoalArea IS NULL OR LOWER(anchorGoalArea) = LOWER(:area))",
+            "AND (LOWER(anchorGoalArea) = LOWER(:area) " +
+            "OR (anchorGoalArea IS NULL AND LOWER(goalCategory) = LOWER(:area)))",
     )
     suspend fun remapDeliverableAnchor(old: String, project: String, area: String, newName: String)
 

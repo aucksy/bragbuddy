@@ -95,7 +95,11 @@ class CaptureActivity : ComponentActivity() {
         // Folder tap → capture straight into that project (no spoken prefix needed). A deliverable tap
         // additionally pins the deliverable; the launcher only ever sends it alongside a project.
         intent.getStringExtra(EXTRA_PROJECT)?.let {
-            vm.setAnchorProject(it, intent.getStringExtra(EXTRA_DELIVERABLE))
+            vm.setAnchorProject(
+                it,
+                intent.getStringExtra(EXTRA_DELIVERABLE),
+                intent.getStringExtra(EXTRA_GOAL_AREA),
+            )
         }
 
         setContent {
@@ -226,6 +230,25 @@ class CaptureActivity : ComponentActivity() {
         /** String extra: a **deliverable** name to anchor this capture to (a deliverable tap, v0.33.0).
          *  Only ever accompanies [EXTRA_PROJECT] — a deliverable exists only inside a project. */
         const val EXTRA_DELIVERABLE = "anchor_deliverable"
+
+        /**
+         * String extra: the **category** the user tapped through to reach the folder / deliverable
+         * (v0.33.1). Only ever accompanies [EXTRA_PROJECT].
+         *
+         * Pinning it matters because the other two anchors are only NAMES, and a name is not an
+         * identity: a project is unique by (name, goalArea) and a deliverable by
+         * (name, project, goalArea). Without the category, an anchor of "Payments"/"Onboarding" cannot
+         * say WHICH "Payments" — the app had to guess, by taking the first project with that name in
+         * sort order. Two bugs came out of that gap: a rename could not tell an in-flight pin in one
+         * category from an identically-named one in another, and the project rename-remap could not
+         * follow a pin at all until the entry had been filed.
+         *
+         * This is the same "the user's call on which category" that a manual correction records
+         * ([EntryEntity.anchorGoalArea]) — and a tap-in IS that call, made by walking into the section.
+         * It resolves to the value `prepare()` was already deriving, so nothing about normal filing
+         * changes; it just stops being a guess.
+         */
+        const val EXTRA_GOAL_AREA = "anchor_goal_area"
 
         /** String extra: how to open (Phase B). A [CaptureMode] name (explicit pick) or [START_ASK]
          *  (show the 3-choice chooser). Absent = last-used. [START_DEFAULT] is legacy (the "default
