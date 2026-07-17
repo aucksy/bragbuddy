@@ -126,23 +126,38 @@ class FrameworkViewModel @Inject constructor(
 
     // ---------------- Project CRUD (per-item) ----------------
 
-    /** Save one project row: create a new folder ([id] null) or update an existing one, under [category].
-     *  [onSaved] receives the row's id (the new id after a create) so the sheet can switch a just-created
-     *  row to update-mode and avoid a duplicate on a second save. When an EXISTING project is **renamed**
-     *  ([previousName] differs) and it still has filed records, the deterministic 3-option remap is
-     *  OFFERED via [pendingProjectRemap] (Phase B2b · project rename-remap). */
+    /**
+     * Save one project row: create a new folder ([id] null) or update an existing one, under [category].
+     * [onSaved] receives the row's id (the new id after a create) **and the name as actually stored** —
+     * which is NOT necessarily [name]; see below. The sheet needs both: the id to switch a just-created
+     * row to update-mode, and the stored name so its own idea of the row can't drift from the database.
+     *
+     * When an EXISTING project is genuinely renamed and it still has filed records, the deterministic
+     * 3-option remap is OFFERED via [pendingProjectRemap] (Phase B2b · project rename-remap).
+     *
+     * ⚠️ **Both the old and the new name are read from the DATABASE, never from the caller.** This gate
+     * decides whether to offer to move the user's records, so every input to it must be a fact. It
+     * previously trusted a `previousName` the sheet remembered, and `ProjectDao.update` is
+     * `UPDATE OR IGNORE` — so a rename onto an existing folder was silently skipped while the sheet
+     * still recorded the new name as its baseline. The *next* save then compared that phantom baseline
+     * against the real row and offered a backwards remap, whose "Carry" merged the **untouched** folder's
+     * records into this one and wiped their deliverable tags (found verifying the v0.33.0 fix batch —
+     * the first fix closed one direction and left the reverse open, because it still mixed a DB name with
+     * a UI-remembered one).
+     */
     fun saveProject(
         id: Long?,
         name: String,
         detail: String,
         category: String,
-        previousName: String? = null,
-        onSaved: (Long) -> Unit = {},
+        onSaved: (id: Long, storedName: String?) -> Unit = { _, _ -> },
     ) {
         val rn = name.trim().ifBlank { return }
         val area = category.trim()
         viewModelScope.launch {
-            // `stored` is the row AS SAVED — NOT what was asked for. See the remap gate below.
+            // Read the row BEFORE touching it: this is the only trustworthy "what was it called?".
+            val before = if (id == null) null else runCatching { projects.getById(id) }.getOrNull()
+            // `stored` is the row AS SAVED — NOT what was asked for.
             var stored: com.bragbuddy.app.data.local.ProjectEntity? = null
             val newId = runCatching {
                 if (id == null) projects.create(rn, area, detail.trim().ifBlank { null })
@@ -151,25 +166,20 @@ class FrameworkViewModel @Inject constructor(
                     id
                 }
             }.getOrDefault(id ?: 0L)
-            onSaved(newId)
-            val prev = previousName?.trim()
+            // A create reports the requested name (it either inserted it or didn't insert at all, which
+            // the sheet already detects via id <= 0); an update reports whatever the row now holds.
+            onSaved(newId, if (id == null) rn else stored?.name)
             // ⚠️ ORDER IS LOAD-BEARING (v0.33.0): `projects.update` above is AWAITED before the remap is
             // offered below, and it is what moves this project's deliverables to their new parent. The
             // remap's `clearDeliverablesNotUnder` then asks whether each tagged deliverable EXISTS at the
             // destination — so if the offer ever raced ahead of the update, a plain "carry" would find
             // nothing there and wipe every entry's deliverable tag.
-            //
-            // ⚠️ And the offer is gated on the STORED name, never `rn`. `ProjectDao.update` is
-            // `UPDATE OR IGNORE`: renaming "Alpha" → "Beta" when Beta already exists is silently skipped,
-            // and nothing here validates that. Offering the remap for a rename that never happened let
-            // "Carry" merge Alpha's records into the unrelated Beta AND wipe their deliverable tags on the
-            // way (found in the v0.33.0 stability assessment) — the same intent-vs-effect trap as the
-            // repository cascade, one layer up.
             // A project row's category (`area`) doesn't change here, so old area == new area == area.
-            val landed = stored?.name ?: prev
-            if (id != null && !prev.isNullOrBlank() && !prev.equals(landed, ignoreCase = true)) {
+            val prev = before?.name?.trim()
+            val landed = stored?.name?.trim()
+            if (prev != null && landed != null && !prev.equals(landed, ignoreCase = true)) {
                 val count = runCatching { entries.countProjectReferences(prev, area) }.getOrDefault(0)
-                if (count > 0) _pendingProjectRemap.value = ProjectRemap(prev, landed!!, area, area, count)
+                if (count > 0) _pendingProjectRemap.value = ProjectRemap(prev, landed, area, area, count)
             }
         }
     }

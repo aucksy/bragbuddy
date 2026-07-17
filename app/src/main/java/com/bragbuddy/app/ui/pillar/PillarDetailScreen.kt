@@ -64,6 +64,7 @@ import com.bragbuddy.app.data.local.DELIVERABLE_LABEL
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.common.DeliverableHeader
+import com.bragbuddy.app.ui.common.EmptyDeliverableNote
 import com.bragbuddy.app.ui.common.EntryBulletRow
 import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.ui.entry.EntryDetailSheet
@@ -752,7 +753,7 @@ private fun ProjectBody(
             )
             g.entries.forEach { bullet(it, indent = true) }
             // Home says this; without it the deep view shows a bare heading and reads like a bug.
-            if (g.entries.isEmpty()) EmptyGroupNote(palette)
+            if (g.entries.isEmpty()) EmptyDeliverableNote(palette)
         }
     }
     project.loose.forEach { bullet(it, indent = false) }
@@ -775,20 +776,9 @@ private fun ProjectBody(
             )
             if (open) {
                 g.entries.forEach { bullet(it, indent = true) }
-                if (g.entries.isEmpty()) EmptyGroupNote(palette)
+                if (g.entries.isEmpty()) EmptyDeliverableNote(palette)
             }
         }
     }
 }
 
-/** Shown when an expanded deliverable holds nothing — otherwise opening it does visibly nothing, which
- *  reads as broken rather than empty. */
-@Composable
-private fun EmptyGroupNote(palette: BragPalette) {
-    Text(
-        "Nothing logged here yet",
-        style = MaterialTheme.typography.bodySmall,
-        color = palette.text3,
-        modifier = Modifier.padding(start = 22.dp),
-    )
-}

@@ -76,6 +76,7 @@ import com.bragbuddy.app.data.local.isNamedProject
 import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.common.DeliverableHeader
+import com.bragbuddy.app.ui.common.EmptyDeliverableNote
 import com.bragbuddy.app.ui.common.EntryBulletRow
 import com.bragbuddy.app.ui.entry.EntryDetailSheet
 import com.bragbuddy.app.ui.role.RoleInput
@@ -660,7 +661,7 @@ private fun FolderCard(
                                     onTap = { onOpenDetail(entry) },
                                 )
                             }
-                            if (g.entries.isEmpty()) EmptyGroupNote(palette)
+                            if (g.entries.isEmpty()) EmptyDeliverableNote(palette)
                         }
                     }
                     view.loose.forEach { entry ->
@@ -707,7 +708,7 @@ private fun FolderCard(
                                 // A done deliverable can legitimately hold nothing (marked done before
                                 // anything was logged, or its last win deleted) — without this the
                                 // chevron flips and nothing appears, which reads as a dead control.
-                                if (g.entries.isEmpty()) EmptyGroupNote(palette)
+                                if (g.entries.isEmpty()) EmptyDeliverableNote(palette)
                             }
                         }
                     }
@@ -720,18 +721,6 @@ private fun FolderCard(
             }
         }
     }
-}
-
-/** Shown when an expanded deliverable holds nothing — otherwise opening it does visibly nothing, which
- *  reads as broken rather than empty. */
-@Composable
-private fun EmptyGroupNote(palette: BragPalette) {
-    Text(
-        "Nothing logged here yet",
-        style = MaterialTheme.typography.bodySmall,
-        color = palette.text3,
-        modifier = Modifier.padding(start = 22.dp),
-    )
 }
 
 @Composable

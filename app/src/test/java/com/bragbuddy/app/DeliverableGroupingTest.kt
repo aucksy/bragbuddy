@@ -251,6 +251,26 @@ class DeliverableGroupingTest {
         assertThat(Recategorize.defaultDeliverable(e, goalArea, "Payments", all)).isEqualTo("Onboarding")
     }
 
+    // ---------------- the "same name, different project" trap ----------------
+
+    @Test
+    fun `deliverablesFor never offers a same-named deliverable from another project`() {
+        // The one that bit the Summary retag sheet: names like "Phase 1" / "Q1" / "Discovery" repeat
+        // across projects, so resolving a tag by NAME against a new project silently adopts the wrong
+        // one. Every lookup must be scoped by the full (name, project, goalArea) triple.
+        val all = listOf(
+            deliverable("Phase 1", project = "Payments"),
+            deliverable("Phase 1", project = "Data"),
+        )
+        val offered = Recategorize.deliverablesFor(goalArea, "Data", all)
+        assertThat(offered).hasSize(1)
+        assertThat(offered.single().project).isEqualTo("Data")
+
+        // And an entry sitting in Payments/"Phase 1" must NOT preselect Data's identically-named one.
+        val e = entry(project = "Payments", deliverable = "Phase 1")
+        assertThat(Recategorize.defaultDeliverable(e, goalArea, "Data", all)).isNull()
+    }
+
     // ---------------- export ----------------
 
     @Test

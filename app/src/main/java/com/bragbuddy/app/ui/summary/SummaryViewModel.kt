@@ -525,9 +525,13 @@ class SummaryViewModel @Inject constructor(
                             id = id,
                             goalArea = toCategory,
                             project = toProject?.takeIf { it.isNotBlank() } ?: OUTSIDE_PROJECT,
-                            // Untouched → this entry's OWN deliverable, not a blanket null. If the move
-                            // takes it to a different project the destination validation drops it there
-                            // anyway, which is correct — a deliverable belongs to its project.
+                            // Untouched → this entry's OWN deliverable, not a blanket null.
+                            //
+                            // Safe ONLY because the sheet forces `deliverableTouched` whenever the
+                            // project changes. Relying on the destination validation to drop a stale tag
+                            // here would be wrong: it resolves by NAME, so moving a win tagged "Phase 1"
+                            // into a project that also has a "Phase 1" would silently adopt it — and
+                            // anchor it — into a deliverable the user never picked.
                             deliverable = if (deliverableTouched) toDeliverable?.takeIf { it.isNotBlank() }
                             else e.deliverable,
                             demonstrates = e.demonstrates,

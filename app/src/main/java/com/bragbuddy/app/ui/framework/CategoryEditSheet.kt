@@ -427,16 +427,23 @@ fun CategoryEditSheet(
 
 private fun doSaveProject(viewModel: FrameworkViewModel, row: ProjRowState, category: String, showMessage: (String) -> Unit) {
     val creating = row.id == null
-    // The last-saved name is the "old" name — a change to it is a rename (offers the 3-option remap).
-    val previousName = row.baseName
-    viewModel.saveProject(row.id, row.name, row.summary, category, previousName = previousName) { newId ->
+    viewModel.saveProject(row.id, row.name, row.summary, category) { newId, storedName ->
         // A create that hit the (name, goalArea) unique index returns a non-positive id — nothing was
         // saved, so keep the row dirty and say so rather than falsely showing it as saved.
-        if (creating && newId <= 0L) {
+        //
+        // An UPDATE can be rejected the same way and just as silently (`UPDATE OR IGNORE`), which this
+        // used to miss entirely: it reported "Project saved" and set `baseName` to the name the user
+        // typed, so the row's idea of itself drifted away from the database. `storedName` is what the row
+        // actually holds, so a rejected rename now says so and the baseline stays true. (The VM no longer
+        // depends on `baseName` for its remap gate either — it reads both names from the DB — but a UI
+        // that lies about a save is its own bug.)
+        val rejected = if (creating) newId <= 0L else storedName == null ||
+            !storedName.equals(row.name.trim(), ignoreCase = true)
+        if (rejected) {
             showMessage("Couldn't save — a project with that name already exists here.")
         } else {
             if (creating) row.id = newId
-            row.baseName = row.name
+            row.baseName = storedName ?: row.name
             row.baseSummary = row.summary
             showMessage("Project saved")
         }

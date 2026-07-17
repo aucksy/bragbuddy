@@ -1359,11 +1359,21 @@ private fun RetagSheet(
     // host honours per-entry — correct even for a merged card whose entries differ.
     var deliverableTouched by rememberSaveable(line) { mutableStateOf(false) }
     var selectedDeliverable by rememberSaveable(line) { mutableStateOf<String?>(null) }
+    // "Leave as is" only means anything while the entry stays in the project it's already in. Moving it
+    // elsewhere settles the deliverable question by itself — the old one lives in the OLD project and
+    // cannot come along. Without this, "untouched" let the host re-resolve the entry's existing tag
+    // against the DESTINATION, and a same-named deliverable there ("Phase 1", "Q1", "Discovery" — names
+    // that repeat across projects) would silently adopt the win and durably anchor it to a deliverable
+    // the user never chose. Derived, not a flag, so returning to the original project restores "as is".
     // A deliverable named right here, staged rather than created — Apply creates and files in one
     // locked step, so a fast tap can't beat the insert and have its tag silently dropped.
     var newDeliverable by rememberSaveable(line) { mutableStateOf<String?>(null) }
     var namingDeliverable by rememberSaveable(line) { mutableStateOf(false) }
     var newDeliverableText by rememberSaveable(line) { mutableStateOf("") }
+
+    // Moving the win to a different project settles the deliverable on its own — see above.
+    val projectChanged = !selectedFolder.orEmpty().equals(currentProject.orEmpty(), ignoreCase = true)
+    val effectiveTouched = deliverableTouched || projectChanged
 
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -1465,20 +1475,25 @@ private fun RetagSheet(
                             ) {
                                 // "Leave as is" is the DEFAULT and is not a no-op chip: it is the only
                                 // honest answer this sheet has, because it doesn't know the line's
-                                // deliverable. Picking anything else overrides it.
-                                SelectChip(
-                                    "Leave as is",
-                                    selected = !deliverableTouched,
-                                    palette = palette,
-                                ) {
-                                    deliverableTouched = false
-                                    selectedDeliverable = null
-                                    newDeliverable = null
-                                    namingDeliverable = false
+                                // deliverable. Picking anything else overrides it. It is offered ONLY
+                                // while the win stays in its own project — once it's moving elsewhere
+                                // there is no "as is" to keep, and showing it against a different
+                                // project's list would be claiming something incoherent.
+                                if (!projectChanged) {
+                                    SelectChip(
+                                        "Leave as is",
+                                        selected = !deliverableTouched,
+                                        palette = palette,
+                                    ) {
+                                        deliverableTouched = false
+                                        selectedDeliverable = null
+                                        newDeliverable = null
+                                        namingDeliverable = false
+                                    }
                                 }
                                 SelectChip(
                                     "None",
-                                    selected = deliverableTouched && selectedDeliverable == null && newDeliverable == null,
+                                    selected = effectiveTouched && selectedDeliverable == null && newDeliverable == null,
                                     palette = palette,
                                 ) {
                                     deliverableTouched = true
@@ -1566,7 +1581,7 @@ private fun RetagSheet(
                             selectedFolder,
                             newDeliverable ?: selectedDeliverable,
                             newDeliverable != null,
-                            deliverableTouched,
+                            effectiveTouched,
                         )
                     }
                 }

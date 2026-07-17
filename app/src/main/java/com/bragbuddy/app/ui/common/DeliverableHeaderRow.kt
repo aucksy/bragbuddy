@@ -102,6 +102,10 @@ fun DeliverableHeader(
             // name claim all the remaining space and push them to the right edge — no Spacer needed.
             modifier = Modifier.weight(1f),
         )
+        // The gap belongs BEFORE the count, not after: the name takes all the free width, so a long one
+        // ellipsises right up against whatever follows it ("Merchant onboardi…12") unless something
+        // separates them. The chevron/⋮ side already has the touch box's own padding.
+        Spacer(Modifier.size(6.dp))
         Text(
             // A done one always states its count, since its wins are collapsed behind the row — without
             // it the row would read as though the work vanished.
@@ -110,7 +114,6 @@ fun DeliverableHeader(
             color = palette.text3,
             maxLines = 1,
         )
-        Spacer(Modifier.size(6.dp))
         if (collapsible) {
             Icon(
                 if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
@@ -149,4 +152,19 @@ fun DeliverableHeader(
             }
         }
     }
+}
+
+/**
+ * Shown when an expanded deliverable holds nothing — otherwise opening one does visibly nothing, which
+ * reads as broken rather than empty. Lives here beside [DeliverableHeader] for the same reason: Home and
+ * the pillar view both render this level, and two copies drift into two different-looking records.
+ */
+@Composable
+fun EmptyDeliverableNote(palette: BragPalette) {
+    Text(
+        "Nothing logged here yet",
+        style = MaterialTheme.typography.bodySmall,
+        color = palette.text3,
+        modifier = Modifier.padding(start = 22.dp),
+    )
 }

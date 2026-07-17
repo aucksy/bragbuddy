@@ -16,8 +16,8 @@ import kotlinx.coroutines.flow.Flow
  * ⚠️ **A silent no-op is only safe if callers check the EFFECT.** `UPDATE OR IGNORE` reports nothing —
  * no exception, no row count — so code that assumes the requested name landed and then cascades on it
  * will corrupt data (this is exactly what a v0.33.0 review caught: entries remapped into a deliverable
- * the rename never reached). `DeliverableRepository.rename` therefore pre-checks the collision AND
- * re-reads the row; the name dialogs additionally block a duplicate before it gets here.
+ * the rename never reached). `EntryProcessor.renameDeliverable` therefore pre-checks the collision AND
+ * re-reads the row inside its transaction; the name dialogs additionally block a duplicate up front.
  *
  * **Every cascade query here is scoped by BOTH parents** (`project` AND `goalArea`). A deliverable's
  * identity is `(name, project, goalArea)` — scoping by project alone would touch a same-named project's
