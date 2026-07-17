@@ -15,18 +15,20 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v4 adds `entries.audioPath` (the offline voice-note queue, Phase 7). v5 adds `entries.imagePath`
  * (the offline image-scan queue, M2). v6 adds `entries.anchorGoalArea` (the manual category anchor,
  * v0.31.0 — so a user's correction survives a re-file). v7 adds `entries.originalTranscript` (the
- * user's own words, preserved across an edit — v0.32.0). All migrations keep existing data.
- * exportSchema stays off (no schemaLocation ksp arg wired).
+ * user's own words, preserved across an edit — v0.32.0). v8 adds the `deliverables` table plus
+ * `entries.deliverable` / `entries.anchorDeliverable` (the third level — v0.33.0). All migrations keep
+ * existing data. exportSchema stays off (no schemaLocation ksp arg wired).
  */
 @Database(
-    entities = [EntryEntity::class, ProjectEntity::class],
-    version = 7,
+    entities = [EntryEntity::class, ProjectEntity::class, DeliverableEntity::class],
+    version = 8,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
 abstract class BragBuddyDatabase : RoomDatabase() {
     abstract fun entryDao(): EntryDao
     abstract fun projectDao(): ProjectDao
+    abstract fun deliverableDao(): DeliverableDao
 
     companion object {
         const val NAME = "bragbuddy.db"
@@ -87,6 +89,53 @@ abstract class BragBuddyDatabase : RoomDatabase() {
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE entries ADD COLUMN originalTranscript TEXT")
+            }
+        }
+
+        /**
+         * v7→v8: the **third level** (Category → Project → Deliverable → entries, v0.33.0). Adds the
+         * `deliverables` table and the two nullable `entries` columns that reference it.
+         *
+         * Purely additive — no existing table is rewritten and no existing row changes meaning. Every
+         * entry migrates with a NULL deliverable, which is exactly right and needs no back-fill: "not
+         * part of a deliverable" is the normal state, not a gap (nothing guessed one before, and
+         * inventing one retroactively would be a claim the user never made). Deliverables accrue only as
+         * the user creates them and files into them.
+         *
+         * ⚠️ The CREATE statements below must match Room's generated schema **exactly** (column order,
+         * types, NOT NULL, and the auto-generated index names) or the identity hash check fails at open
+         * with "Migration didn't properly handle" — and `exportSchema` is off, so there is no JSON to
+         * diff against. Cross-check against [DeliverableEntity]:
+         *  - `done: Boolean` (non-null, no default) → `INTEGER NOT NULL`;
+         *  - `description: String?` → `TEXT` (nullable);
+         *  - Kotlin defaults (`done = false`, `sortOrder = 0`) are **constructor** defaults, not SQL
+         *    ones — Room never emits a DEFAULT clause for them, so neither does this.
+         *  - index names follow Room's `index_<table>_<col>_<col>` convention (see [MIGRATION_2_3],
+         *    where getting that wrong was already called out).
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `deliverables` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, " +
+                        "`project` TEXT NOT NULL, " +
+                        "`goalArea` TEXT NOT NULL, " +
+                        "`done` INTEGER NOT NULL, " +
+                        "`description` TEXT, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "`sortOrder` INTEGER NOT NULL)",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_deliverables_name_project_goalArea` " +
+                        "ON `deliverables` (`name`, `project`, `goalArea`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_deliverables_project_goalArea` " +
+                        "ON `deliverables` (`project`, `goalArea`)",
+                )
+                db.execSQL("ALTER TABLE entries ADD COLUMN deliverable TEXT")
+                db.execSQL("ALTER TABLE entries ADD COLUMN anchorDeliverable TEXT")
             }
         }
     }

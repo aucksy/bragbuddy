@@ -171,7 +171,7 @@ fun CaptureScreen(
             Spacer(Modifier.height(12.dp))
 
             state.anchorProject?.let { project ->
-                AnchorBanner(project)
+                AnchorBanner(project, state.anchorDeliverable)
                 Spacer(Modifier.height(Spacing.s3))
             }
 
@@ -253,7 +253,7 @@ fun CaptureScreen(
 
 /** Shown when capturing straight into a project folder — no spoken prefix needed. */
 @Composable
-private fun AnchorBanner(project: String) {
+private fun AnchorBanner(project: String, deliverable: String? = null) {
     val palette = BragBuddyTheme.palette
     Row(
         Modifier
@@ -266,7 +266,11 @@ private fun AnchorBanner(project: String) {
         Icon(Icons.Outlined.Folder, null, tint = palette.primary, modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(7.dp))
         Text(
-            "Filing into $project",
+            // Naming the deliverable is the point of tapping into one: this pins the entry there with no
+            // AI guess, and the banner is the only place that promise is visible before saving.
+            // Deliverable-first, because it's the more specific of the two — "project · deliverable"
+            // would bury the answer to "where is this going?" at the end of a line that can ellipsize.
+            if (deliverable == null) "Filing into $project" else "Filing into $deliverable · $project",
             style = MaterialTheme.typography.titleSmall,
             color = palette.primary,
             fontWeight = FontWeight.Bold,

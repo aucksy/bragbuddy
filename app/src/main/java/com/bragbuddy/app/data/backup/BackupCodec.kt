@@ -2,6 +2,7 @@ package com.bragbuddy.app.data.backup
 
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
+import com.bragbuddy.app.data.local.DeliverableEntity
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.local.EntryStatus
@@ -36,6 +37,10 @@ data class BackupSnapshot(
     val settings: BackupSettings,
     /** The raw SummaryStore JSON blob (cached generated summaries), or "" if none. */
     val summariesRaw: String,
+    /** The deliverables table (v0.33.0). **Last, with a default**, so every existing construction site
+     *  and every older backup still (de)serialises — an older file simply restores none, which is the
+     *  truthful reading: there were none. */
+    val deliverables: List<DeliverableEntity> = emptyList(),
 )
 
 /**
@@ -51,6 +56,7 @@ object BackupCodec {
         put("version", VERSION)
         put("entries", JSONArray().apply { snapshot.entries.forEach { put(it.toJson()) } })
         put("projects", JSONArray().apply { snapshot.projects.forEach { put(it.toJson()) } })
+        put("deliverables", JSONArray().apply { snapshot.deliverables.forEach { put(it.toJson()) } })
         put("pillars", JSONArray().apply { snapshot.pillars.forEach { put(it.toJson()) } })
         put("settings", snapshot.settings.toJson())
         put("summaries", snapshot.summariesRaw)
@@ -67,7 +73,10 @@ object BackupCodec {
         val pillars = root.optJSONArray("pillars").objects().mapNotNull { it.toPillar() }
         val settings = root.optJSONObject("settings")?.toSettings() ?: defaultSettings()
         val summaries = root.optString("summaries", "")
-        return BackupSnapshot(entries, projects, pillars, settings, summaries)
+        // Deliberately NOT added to the required-keys gate above: a pre-v0.33.0 backup is still a valid
+        // BragBuddy backup and must restore, just with no deliverables.
+        val deliverables = root.optJSONArray("deliverables").objects().mapNotNull { it.toDeliverable() }
+        return BackupSnapshot(entries, projects, pillars, settings, summaries, deliverables)
     }
 
     // ---------------- entries ----------------
@@ -90,9 +99,14 @@ object BackupCodec {
         // restore. An older backup simply has no key here → null → nothing was ever pinned, which is
         // exactly right for pre-v0.31.0 data.
         putOpt("anchorGoalArea", anchorGoalArea)
+        // The third placement axis rides too (v0.33.0), for exactly the reason above: dropping the tag
+        // would silently un-file every entry from its deliverable on a restore, and dropping the anchor
+        // would let a later edit re-guess a placement the user had pinned by hand.
+        putOpt("anchorDeliverable", anchorDeliverable)
         putOpt("bullet", bullet)
         putOpt("project", project)
         putOpt("goalCategory", goalCategory)
+        putOpt("deliverable", deliverable)
         put("demonstrates", JSONArray(demonstrates))
         put("isExtra", isExtra)
         putOpt("impact", impact)
@@ -116,9 +130,11 @@ object BackupCodec {
             originalTranscript = optStringOrNull("originalTranscript"),
             anchorProject = optStringOrNull("anchorProject"),
             anchorGoalArea = optStringOrNull("anchorGoalArea"),
+            anchorDeliverable = optStringOrNull("anchorDeliverable"),
             bullet = optStringOrNull("bullet"),
             project = optStringOrNull("project"),
             goalCategory = optStringOrNull("goalCategory"),
+            deliverable = optStringOrNull("deliverable"),
             demonstrates = optJSONArray("demonstrates").strings(),
             isExtra = optBoolean("isExtra", false),
             impact = optDoubleOrNull("impact"),
@@ -154,6 +170,37 @@ object BackupCodec {
             createdAt = optLong("createdAt", 0L),
             sortOrder = optInt("sortOrder", 0),
             archived = optBoolean("archived", false),
+        )
+    }
+
+    // ---------------- deliverables ----------------
+
+    private fun DeliverableEntity.toJson() = JSONObject().apply {
+        put("id", id)
+        put("name", name)
+        put("project", project)
+        put("goalArea", goalArea)
+        put("done", done)
+        putOpt("description", description)
+        put("createdAt", createdAt)
+        put("sortOrder", sortOrder)
+    }
+
+    /** A deliverable with no parents is unreachable — it could never render or be filed into — so a row
+     *  missing either one is dropped rather than restored into limbo (mirrors [toProject]). */
+    private fun JSONObject.toDeliverable(): DeliverableEntity? {
+        val name = optStringOrNull("name") ?: return null
+        val project = optStringOrNull("project") ?: return null
+        val area = optStringOrNull("goalArea") ?: return null
+        return DeliverableEntity(
+            id = optLong("id", 0L),
+            name = name,
+            project = project,
+            goalArea = area,
+            done = optBoolean("done", false),
+            description = optStringOrNull("description"),
+            createdAt = optLong("createdAt", 0L),
+            sortOrder = optInt("sortOrder", 0),
         )
     }
 

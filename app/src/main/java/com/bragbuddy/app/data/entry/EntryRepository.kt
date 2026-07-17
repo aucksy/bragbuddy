@@ -37,12 +37,14 @@ class EntryRepository @Inject constructor(
     fun observePinned(): Flow<List<EntryEntity>> = entryDao.observePinned()
 
     /** Durably store what the user said/typed, then categorize in the background. Returns the row id.
-     *  [anchorProject] (folder-tap) fixes the project for this capture. */
+     *  [anchorProject] (folder-tap) fixes the project for this capture, and [anchorDeliverable] fixes
+     *  the deliverable within it (a deliverable-tap) — the AI guesses neither. */
     suspend fun capture(
         rawTranscript: String,
         source: EntrySource,
         occurredAt: Long? = null,
         anchorProject: String? = null,
+        anchorDeliverable: String? = null,
         combineSingle: Boolean = false,
     ): Long {
         val id = entryDao.insert(
@@ -53,6 +55,7 @@ class EntryRepository @Inject constructor(
                 status = EntryStatus.RAW,
                 rawTranscript = rawTranscript.trim(),
                 anchorProject = anchorProject?.takeIf { it.isNotBlank() },
+                anchorDeliverable = anchorDeliverable?.takeIf { it.isNotBlank() },
             ),
         )
         appScope.launch { processor.process(id, combineSingle) }
@@ -66,7 +69,12 @@ class EntryRepository @Inject constructor(
      * (safe from onCleared — no suspension on the caller's side). [onQueued] runs after the insert
      * commits, so an immediate recovery kick can actually see the row.
      */
-    fun queueVoiceNote(audioPath: String, anchorProject: String? = null, onQueued: () -> Unit = {}) {
+    fun queueVoiceNote(
+        audioPath: String,
+        anchorProject: String? = null,
+        anchorDeliverable: String? = null,
+        onQueued: () -> Unit = {},
+    ) {
         appScope.launch {
             entryDao.insert(
                 EntryEntity(
@@ -75,6 +83,10 @@ class EntryRepository @Inject constructor(
                     status = EntryStatus.PENDING_AUDIO,
                     rawTranscript = "",
                     anchorProject = anchorProject?.takeIf { it.isNotBlank() },
+                    // The deliverable anchor must survive the offline queue exactly as the project one
+                    // does — the tap-in is the user's placement decision, and it would be silently lost
+                    // if a capture into a deliverable happened to be made with no network.
+                    anchorDeliverable = anchorDeliverable?.takeIf { it.isNotBlank() },
                     audioPath = audioPath,
                 ),
             )
@@ -89,7 +101,12 @@ class EntryRepository @Inject constructor(
      * (safe from onCleared). [onQueued] runs after the insert commits, so an immediate recovery kick
      * can actually see the row. Mirrors [queueVoiceNote].
      */
-    fun queueImageNote(imagePath: String, anchorProject: String? = null, onQueued: () -> Unit = {}) {
+    fun queueImageNote(
+        imagePath: String,
+        anchorProject: String? = null,
+        anchorDeliverable: String? = null,
+        onQueued: () -> Unit = {},
+    ) {
         appScope.launch {
             entryDao.insert(
                 EntryEntity(
@@ -98,6 +115,7 @@ class EntryRepository @Inject constructor(
                     status = EntryStatus.PENDING_IMAGE,
                     rawTranscript = "",
                     anchorProject = anchorProject?.takeIf { it.isNotBlank() },
+                    anchorDeliverable = anchorDeliverable?.takeIf { it.isNotBlank() },
                     imagePath = imagePath,
                 ),
             )
@@ -163,10 +181,17 @@ class EntryRepository @Inject constructor(
         appScope.launch { processor.resolve(id, project, goalArea) }
     }
 
-    /** Recategorize a filed entry: set its placement category + project AND its behaviour evidence,
-     *  no AI re-call (Phase 2 · fix-a-wrong-category). Supersedes the old reassign/"Move". */
-    fun recategorize(id: Long, goalArea: String, project: String, demonstrates: List<String>) {
-        appScope.launch { processor.recategorize(id, goalArea, project, demonstrates) }
+    /** Recategorize a filed entry: set its placement category, project **and deliverable** AND its
+     *  behaviour evidence, no AI re-call (Phase 2 · fix-a-wrong-category; third axis added v0.33.0).
+     *  Supersedes the old reassign/"Move". [deliverable] null = "not part of one". */
+    fun recategorize(
+        id: Long,
+        goalArea: String,
+        project: String,
+        deliverable: String?,
+        demonstrates: List<String>,
+    ) {
+        appScope.launch { processor.recategorize(id, goalArea, project, deliverable, demonstrates) }
     }
 
     /**
@@ -177,8 +202,44 @@ class EntryRepository @Inject constructor(
      * been written yet). Runs on the CALLER's scope, so a cancelled caller cancels the write — only
      * use it where the caller owns the outcome.
      */
-    suspend fun recategorizeNow(id: Long, goalArea: String, project: String, demonstrates: List<String>) {
-        processor.recategorize(id, goalArea, project, demonstrates)
+    suspend fun recategorizeNow(
+        id: Long,
+        goalArea: String,
+        project: String,
+        deliverable: String?,
+        demonstrates: List<String>,
+    ) {
+        processor.recategorize(id, goalArea, project, deliverable, demonstrates)
+    }
+
+    // ---------------- deliverables · the third axis (v0.33.0) ----------------
+
+    /** How many filed records are tagged to this deliverable under ([project], [area]) — decides whether
+     *  a delete needs to warn. Scoped by both parents (a deliverable's name isn't an identity alone). */
+    suspend fun countDeliverableReferences(name: String, project: String, area: String): Int =
+        processor.countDeliverableReferences(name, project, area)
+
+    /** Re-tag every record of a renamed deliverable, old → new (deterministic, no AI). */
+    fun renameDeliverableEntries(old: String, project: String, area: String, newName: String) {
+        appScope.launch { processor.renameDeliverableEverywhere(old, project, area, newName) }
+    }
+
+    /** Clear the deliverable tag + anchor of every entry of a DELETED deliverable. The entries stay —
+     *  only the grouping goes, so they fall back to listing plainly under their project. */
+    fun clearDeliverable(name: String, project: String, area: String) {
+        appScope.launch { processor.clearDeliverable(name, project, area) }
+    }
+
+    /** Clear the deliverable axis of every entry of a DELETED project (whose deliverables cascade away
+     *  in `ProjectRepository`). Call alongside `ProjectRepository.delete`. */
+    fun clearProjectDeliverables(project: String, area: String) {
+        appScope.launch { processor.clearProjectDeliverables(project, area) }
+    }
+
+    /** Clear the deliverable axis of every entry under a DELETED category. Call alongside
+     *  [clearCategoryAnchor], which the same sites already invoke. */
+    fun clearCategoryDeliverables(area: String) {
+        appScope.launch { processor.clearCategoryDeliverables(area) }
     }
 
     /** One entry by id, or null. */

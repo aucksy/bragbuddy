@@ -65,6 +65,8 @@ data class CaptureUiState(
     val awaitingChoice: Boolean = false,
     /** When capturing into a folder, the project name this entry is anchored to (shown as a chip). */
     val anchorProject: String? = null,
+    /** When capturing into a deliverable, its name — shown on the same chip, under the project. */
+    val anchorDeliverable: String? = null,
     /** The scanned image (IMAGE mode) — kept for the review thumbnail; null in voice/text modes. */
     val imageThumb: Uri? = null,
     // ---- Review-stage number nudge (voice): record again just for the metric, or type it ----
@@ -140,11 +142,20 @@ class CaptureViewModel @Inject constructor(
 
     /** When set (folder tap), the capture is anchored to this project — no spoken prefix needed. */
     private var anchorProject: String? = null
-    fun setAnchorProject(name: String) {
+
+    /** When set (a deliverable tap), the capture is additionally pinned to this deliverable within
+     *  [anchorProject] — the tap-in path, which files with NO AI guess (v0.33.0). */
+    private var anchorDeliverable: String? = null
+
+    fun setAnchorProject(name: String, deliverable: String? = null) {
         val clean = name.trim()
         if (clean.isEmpty()) return
         anchorProject = clean
-        _state.update { it.copy(anchorProject = clean) }
+        // A deliverable can't be pinned without its project, so it is only ever accepted with one —
+        // guaranteed by the single entry point above, and re-asserted here.
+        val del = deliverable?.trim()?.takeIf { it.isNotEmpty() }
+        anchorDeliverable = del
+        _state.update { it.copy(anchorProject = clean, anchorDeliverable = del) }
     }
 
     init {
@@ -296,7 +307,7 @@ class CaptureViewModel @Inject constructor(
         lastImageDataUrl = null
         // Sequenced AFTER the row insert commits (both on the app scope) so an immediately-online
         // recovery pass can actually see the new row.
-        entries.queueImageNote(queued.absolutePath, anchorProject) {
+        entries.queueImageNote(queued.absolutePath, anchorProject, anchorDeliverable) {
             if (connectivity.isOnline.value) recovery.kick()
         }
         _state.update { it.copy(queuedOffline = true, error = null, needsKey = false) }
@@ -432,7 +443,7 @@ class CaptureViewModel @Inject constructor(
         submitting = false
         // The kick is sequenced AFTER the row insert commits (both on the app scope) so an
         // immediately-online recovery pass can actually see the new row.
-        entries.queueVoiceNote(queued.absolutePath, anchorProject) {
+        entries.queueVoiceNote(queued.absolutePath, anchorProject, anchorDeliverable) {
             if (connectivity.isOnline.value) recovery.kick()
         }
         _state.update { it.copy(queuedOffline = true, error = null, canSaveForLater = false) }
@@ -638,7 +649,10 @@ class CaptureViewModel @Inject constructor(
             // so the fresh text becomes the entry's original (isRedo). The number-append below goes
             // straight to replaceText WITHOUT the flag, so it preserves the original instead.
             val id = if (replace != null) { entries.replaceText(replace, text, combineSingle, isRedo = true); replace }
-                     else entries.capture(text, source, anchorProject = anchorProject, combineSingle = combineSingle)
+                     else entries.capture(
+                         text, source, anchorProject = anchorProject,
+                         anchorDeliverable = anchorDeliverable, combineSingle = combineSingle,
+                     )
             onDone()
             when {
                 // Voice & image both offered the number nudge at review already → just dismiss.

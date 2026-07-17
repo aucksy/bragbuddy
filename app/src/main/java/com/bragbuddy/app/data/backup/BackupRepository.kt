@@ -2,6 +2,7 @@ package com.bragbuddy.app.data.backup
 
 import com.bragbuddy.app.data.entry.EntryProcessor
 import com.bragbuddy.app.data.framework.FrameworkStore
+import com.bragbuddy.app.data.local.DeliverableDao
 import com.bragbuddy.app.data.local.EntryDao
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.ProjectDao
@@ -39,6 +40,7 @@ class BackupRepository @Inject constructor(
     private val db: BragBuddyDatabase,
     private val entryDao: EntryDao,
     private val projectDao: ProjectDao,
+    private val deliverableDao: DeliverableDao,
     private val frameworkStore: FrameworkStore,
     private val settingsStore: SettingsStore,
     private val summaryStore: SummaryStore,
@@ -73,6 +75,7 @@ class BackupRepository @Inject constructor(
                     defaultCaptureMethod = s.defaultCaptureMethod,
                 ),
                 summariesRaw = summaryStore.exportRaw(),
+                deliverables = deliverableDao.getAllOnce(),
             ),
         )
     }
@@ -98,6 +101,11 @@ class BackupRepository @Inject constructor(
                 pendingImage.forEach { entryDao.insert(it.copy(id = 0)) }
                 projectDao.deleteAll()
                 projectDao.insertAll(snap.projects)
+                // Deliverables replace wholesale alongside the projects they hang off, inside the SAME
+                // transaction — the two tables are one structure, and a half-applied restore would leave
+                // deliverables pointing at projects that no longer exist.
+                deliverableDao.deleteAll()
+                deliverableDao.insertAll(snap.deliverables)
             }
             // Framework: an empty list resets to the shipped default (a valid backup always carries pillars).
             frameworkStore.save(snap.pillars)
@@ -138,7 +146,9 @@ class BackupRepository @Inject constructor(
         val entries = entryDao.getAllOnce()
         val framework = frameworkStore.framework.first()
         val folders = projects.observeActive().first()
-        exportDocument(buildHomeDoc(entries, framework, folders))
+        // The readable Drive doc is the record a human reads — it must show the same structure the app
+        // does, deliverables included, or the two silently diverge.
+        exportDocument(buildHomeDoc(entries, framework, folders, deliverableDao.getAllOnce()))
     }
 
     /** True if there is no logged data yet (drives the silent restore-on-reinstall check). A queued
@@ -156,16 +166,20 @@ class BackupRepository @Inject constructor(
     fun changeSignal(): Flow<Int> = combine(
         entryDao.observeAll(),
         projects.observeActive(),
+        deliverableDao.observeAll(),
         frameworkStore.framework,
         settingsStore.settings,
-    ) { entries, folders, fw, s ->
+    ) { entries, folders, dels, fw, s ->
         listOf(
             // Hash the same surface exportJson backs up — PENDING_AUDIO/PENDING_IMAGE churn (a queued
             // offline capture appearing) must not trigger an upload of a byte-identical backup.
             // audio/imagePath are nulled so a drained row briefly toggling its transient path doesn't fire.
             entries.filter { it.status != EntryStatus.PENDING_AUDIO && it.status != EntryStatus.PENDING_IMAGE }
                 .map { it.copy(audioPath = null, imagePath = null) },
-            folders, fw.pillars,
+            // Deliverables are part of the backed-up surface, so creating/renaming/completing one must
+            // fire an auto-backup on its own — without this, a deliverable built before anything is
+            // logged into it would sit un-backed-up until some unrelated entry change happened to flush it.
+            folders, dels, fw.pillars,
             s.reminderEnabled, s.reminderHour, s.reminderMinute, s.lastCaptureMode,
             s.jobRole, s.rolePromptDismissed, s.reviewYearStartMonth, s.defaultCaptureMethod,
         ).hashCode()

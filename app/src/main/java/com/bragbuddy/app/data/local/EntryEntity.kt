@@ -139,6 +139,23 @@ data class EntryEntity(
     val anchorGoalArea: String? = null,
 
     /**
+     * Explicit **deliverable** anchor — the third placement axis (Category → Project → Deliverable),
+     * set by tapping into a deliverable at capture time or by a manual move. When present the entry is
+     * pinned to this exact deliverable and **no AI guess is made** for it. (Room v8 column.)
+     *
+     * Why this is the PRIMARY path, not a fallback (owner's call, 2026-07-17): mis-classification is the
+     * #1 complaint, and a third level makes the AI's guess strictly *harder* — so the deterministic
+     * tap-in must be the main way an entry reaches a deliverable. In v0.33.0 it is the ONLY way: nothing
+     * writes [deliverable] except this anchor (and a manual move). The AI is only taught to guess one in
+     * v0.34.0, prompt-first and eval-gated.
+     *
+     * Meaningful only alongside a real project — a deliverable lives inside one. Cleared when its
+     * deliverable is deleted ([EntryDao.clearDeliverableAnchor]), and followed on rename
+     * ([EntryDao.remapDeliverableScoped]) — the v0.31.0 anchor lessons, which cost two rounds to learn.
+     */
+    val anchorDeliverable: String? = null,
+
+    /**
      * Absolute path of a saved-but-untranscribed voice clip (status [EntryStatus.PENDING_AUDIO]
      * only — an offline capture queued for transcription). Cleared (and the file deleted) the
      * moment transcription succeeds. Never backed up; audio stays on this device. (Room v4 column.)
@@ -160,6 +177,17 @@ data class EntryEntity(
     val project: String? = null,
     /** Goal-area (pillar) this counts toward, or "Inbox". */
     val goalCategory: String? = null,
+    /**
+     * The **deliverable** within [project] this entry belongs to, or null for "not part of one" — which
+     * is the normal, unremarkable case, not an absence to be flagged. There is deliberately **no
+     * `Outside-deliverable` sentinel**: [OUTSIDE_PROJECT] exists because the categorizer must always
+     * return *some* project, so "none" needed a value it could name. Nothing guesses a deliverable in
+     * v0.33.0, so null means exactly what it says and untagged entries simply list under their project.
+     *
+     * Sits in the AI-derived block because v0.34.0 will let the categorizer fill it. **In v0.33.0 it is
+     * written only from [anchorDeliverable]** (a tap-in capture or a manual move). (Room v8 column.)
+     */
+    val deliverable: String? = null,
     /** Behaviours/competencies this genuinely evidences (JSON list of names). */
     val demonstrates: List<String> = emptyList(),
     /** Standout / beyond-scope work — the reserved Extra flag. */

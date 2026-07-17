@@ -92,8 +92,11 @@ class CaptureActivity : ComponentActivity() {
         vm.applyStart(intent.getStringExtra(EXTRA_START_MODE))
         // Redo (from Home) re-records over an existing entry instead of creating a new one.
         intent.getLongExtra(EXTRA_REPLACE_ID, 0L).let { if (it > 0L) vm.setReplaceId(it) }
-        // Folder tap → capture straight into that project (no spoken prefix needed).
-        intent.getStringExtra(EXTRA_PROJECT)?.let { vm.setAnchorProject(it) }
+        // Folder tap → capture straight into that project (no spoken prefix needed). A deliverable tap
+        // additionally pins the deliverable; the launcher only ever sends it alongside a project.
+        intent.getStringExtra(EXTRA_PROJECT)?.let {
+            vm.setAnchorProject(it, intent.getStringExtra(EXTRA_DELIVERABLE))
+        }
 
         setContent {
             // Translucent overlay → hold the surface until the theme resolves (no splash to mask a
@@ -219,6 +222,10 @@ class CaptureActivity : ComponentActivity() {
 
         /** String extra: a project name to anchor this capture to (Home folder tap). */
         const val EXTRA_PROJECT = "anchor_project"
+
+        /** String extra: a **deliverable** name to anchor this capture to (a deliverable tap, v0.33.0).
+         *  Only ever accompanies [EXTRA_PROJECT] — a deliverable exists only inside a project. */
+        const val EXTRA_DELIVERABLE = "anchor_deliverable"
 
         /** String extra: how to open (Phase B). A [CaptureMode] name (explicit pick) or [START_ASK]
          *  (show the 3-choice chooser). Absent = last-used. [START_DEFAULT] is legacy (the "default

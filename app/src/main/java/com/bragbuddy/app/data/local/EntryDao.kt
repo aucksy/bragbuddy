@@ -107,6 +107,95 @@ interface EntryDao {
     @Query("UPDATE entries SET anchorGoalArea = NULL WHERE LOWER(anchorGoalArea) = LOWER(:area)")
     suspend fun clearAnchorGoalArea(area: String)
 
+    // ---------------- deliverables (the third axis, v0.33.0) ----------------
+    //
+    // All three below are scoped by (project, goalCategory) as well as the deliverable name, because a
+    // deliverable is unique by (name, project, goalArea) — its name alone is NOT an identity. Scoping by
+    // name only would hit a same-named deliverable ("Phase 1") under a completely different project,
+    // which is the exact class of bug `remapProjectScoped`'s goal-area scoping already exists to prevent.
+
+    /** How many filed records are tagged to deliverable [name] under ([project], [area]) — decides
+     *  whether a rename needs the remap, and whether a delete needs to warn. Case-insensitive. */
+    @Query(
+        "SELECT COUNT(*) FROM entries WHERE LOWER(deliverable) = LOWER(:name) " +
+            "AND LOWER(project) = LOWER(:project) AND LOWER(goalCategory) = LOWER(:area)",
+    )
+    suspend fun countDeliverableReferences(name: String, project: String, area: String): Int
+
+    /** Re-tag every record of a renamed deliverable. Rewrites the filed label AND the anchor in ONE
+     *  statement — unlike the project remap, which needs two ordered queries because the anchor's WHERE
+     *  reads `goalCategory` (the column the other rewrites). Here neither `project` nor `goalCategory`
+     *  changes, so there is no ordering hazard to get wrong.
+     *
+     *  `anchorDeliverable` follows only where it was ALREADY set: a null means the user never pinned
+     *  this entry to the deliverable (v0.34.0's AI could file one without a pin), and a rename must not
+     *  invent a pin they never asked for — the same rule [remapAnchorScoped] follows. */
+    @Query(
+        "UPDATE entries SET deliverable = :newName, " +
+            "anchorDeliverable = CASE WHEN anchorDeliverable IS NOT NULL THEN :newName ELSE NULL END " +
+            "WHERE LOWER(deliverable) = LOWER(:old) AND LOWER(project) = LOWER(:project) " +
+            "AND LOWER(goalCategory) = LOWER(:area)",
+    )
+    suspend fun remapDeliverableScoped(old: String, project: String, area: String, newName: String)
+
+    /** A DELETED deliverable can't stay tagged or pinned: clear both columns so its entries fall back to
+     *  listing plainly under their project (they are NOT deleted — the entries are the record, the
+     *  deliverable was only a grouping). Mirrors [clearAnchorGoalArea]'s reasoning, but also clears the
+     *  filed label: unlike a category, a deliverable has no "Uncategorized" catch-all to surface it, so a
+     *  dangling name would render a **ghost group header** for a deliverable that no longer exists. */
+    @Query(
+        "UPDATE entries SET deliverable = NULL, anchorDeliverable = NULL " +
+            "WHERE LOWER(deliverable) = LOWER(:name) AND LOWER(project) = LOWER(:project) " +
+            "AND LOWER(goalCategory) = LOWER(:area)",
+    )
+    suspend fun clearDeliverable(name: String, project: String, area: String)
+
+    /** Clear the deliverable axis on every entry of a **deleted project**. The entries themselves are
+     *  never touched — they keep their labels and fall into their category's "no specific project"
+     *  bucket exactly as they already do today; only the now-dangling deliverable tag goes. */
+    @Query(
+        "UPDATE entries SET deliverable = NULL, anchorDeliverable = NULL " +
+            "WHERE deliverable IS NOT NULL AND LOWER(project) = LOWER(:project) " +
+            "AND LOWER(goalCategory) = LOWER(:area)",
+    )
+    suspend fun clearDeliverablesOfProject(project: String, area: String)
+
+    /** Clear the deliverable axis on every entry under a **deleted category** (whose projects and
+     *  deliverables are both cascaded away). Needed because deleting a category deliberately LEAVES the
+     *  entries' `project`/`goalCategory` labels intact so the "Uncategorized" catch-all can still surface
+     *  them — but a deliverable has no such catch-all, so its tag would render a ghost header. */
+    @Query(
+        "UPDATE entries SET deliverable = NULL, anchorDeliverable = NULL " +
+            "WHERE deliverable IS NOT NULL AND LOWER(goalCategory) = LOWER(:area)",
+    )
+    suspend fun clearDeliverablesOfCategory(area: String)
+
+    /**
+     * The **project rename-remap** deliverable rule (v0.19.0's 3-option flow). Clears the deliverable
+     * axis of the records about to move from ([old], [oldArea]) to ([target], [targetArea]) — but ONLY
+     * where the tagged deliverable does not actually exist under the destination.
+     *
+     * This deliberately **tests reality instead of inferring intent**, because intent isn't knowable
+     * here: all three options (carry / reassign to an existing project / create a new one) arrive at
+     * [EntryProcessor.remapProjectEverywhere] as the same four arguments, and it is never told the
+     * renamed folder's new name — so it cannot distinguish "the records are following their own folder"
+     * (deliverables came along, keep the tag) from "the records are being moved to somebody else's
+     * folder" (the deliverables stayed behind, drop the tag). The `NOT EXISTS` answers that directly by
+     * asking whether the deliverable is present at the destination, whatever route got us here.
+     *
+     * ⚠️ Scoped on `project`/`goalCategory`, which [remapProjectScoped] rewrites — so it **MUST run
+     * before** that query, or its WHERE stops matching. Same hazard as [remapAnchorScoped]; see the
+     * ordering note there (getting it wrong cost a round in v0.31.0).
+     */
+    @Query(
+        "UPDATE entries SET deliverable = NULL, anchorDeliverable = NULL " +
+            "WHERE deliverable IS NOT NULL AND LOWER(project) = LOWER(:old) " +
+            "AND LOWER(goalCategory) = LOWER(:oldArea) " +
+            "AND NOT EXISTS (SELECT 1 FROM deliverables d WHERE LOWER(d.name) = LOWER(entries.deliverable) " +
+            "AND LOWER(d.project) = LOWER(:target) AND LOWER(d.goalArea) = LOWER(:targetArea))",
+    )
+    suspend fun clearDeliverablesNotUnder(old: String, oldArea: String, target: String, targetArea: String)
+
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteById(id: Long)
 

@@ -3,6 +3,7 @@ package com.bragbuddy.app.di
 import android.content.Context
 import androidx.room.Room
 import com.bragbuddy.app.data.local.BragBuddyDatabase
+import com.bragbuddy.app.data.local.DeliverableDao
 import com.bragbuddy.app.data.local.EntryDao
 import com.bragbuddy.app.data.local.ProjectDao
 import dagger.Module
@@ -27,6 +28,7 @@ object DatabaseModule {
                 BragBuddyDatabase.MIGRATION_4_5,
                 BragBuddyDatabase.MIGRATION_5_6,
                 BragBuddyDatabase.MIGRATION_6_7,
+                BragBuddyDatabase.MIGRATION_7_8,
             )
             .build()
 
@@ -35,4 +37,7 @@ object DatabaseModule {
 
     @Provides
     fun provideProjectDao(db: BragBuddyDatabase): ProjectDao = db.projectDao()
+
+    @Provides
+    fun provideDeliverableDao(db: BragBuddyDatabase): DeliverableDao = db.deliverableDao()
 }

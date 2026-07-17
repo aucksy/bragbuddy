@@ -3,6 +3,7 @@ package com.bragbuddy.app.ui.home
 import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
+import com.bragbuddy.app.data.local.DeliverableEntity
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.INBOX_PLACEMENT
@@ -34,16 +35,53 @@ const val OUTSIDE_PROJECT_LABEL = NO_PROJECT_LABEL
 const val UNCATEGORIZED_ID = "__uncategorized__"
 const val UNCATEGORIZED_LABEL = "Uncategorized"
 
-/** A project (folder) within a goal pillar, plus the entries filed into it (may be empty). */
+/**
+ * A **deliverable** and the entries filed into it — the third level (v0.33.0). May be empty: a freshly
+ * created deliverable shows immediately, exactly as an empty folder does.
+ */
+data class DeliverableGroup(
+    val name: String,
+    val done: Boolean,
+    val entries: List<EntryEntity>,
+) {
+    val entryCount: Int get() = entries.size
+    val lastUpdated: Long get() = entries.maxOfOrNull { it.effectiveTime() } ?: 0L
+}
+
+/**
+ * A project (folder) within a goal pillar, plus the entries filed into it (may be empty).
+ *
+ * [entries] deliberately stays **every** entry in the project, deliverable or not — it is what
+ * [entryCount] / [lastUpdated] / the exports and the "See all N" cap have always meant, and quietly
+ * redefining it to "the loose ones" would have silently under-counted every project. The deliverable
+ * level is layered on top as two derived views of that same list:
+ *  - [deliverables] — the groups, active first and **done last** (owner: a done one never hides its
+ *    entries, it just stops being somewhere you log into);
+ *  - [loose] — entries in no deliverable, which is the normal case and gets **no synthetic heading**
+ *    (owner's call: deliverables are an addition, so an untagged win reads exactly as it does today).
+ * Rendering order is groups → loose → done groups.
+ */
 data class ProjectBullets(
     val name: String,
     val isOutside: Boolean,
     val entries: List<EntryEntity>,
+    val deliverables: List<DeliverableGroup> = emptyList(),
 ) {
     val entryCount: Int get() = entries.size
 
     /** Most recent activity (occurred-at if given, else captured-at); 0 for an empty folder. */
     val lastUpdated: Long get() = entries.maxOfOrNull { it.effectiveTime() } ?: 0L
+
+    /** Entries not in any deliverable — listed plainly under the project, with no heading. */
+    val loose: List<EntryEntity>
+        get() {
+            if (deliverables.isEmpty()) return entries
+            val grouped = deliverables.flatMapTo(HashSet()) { g -> g.entries.map { it.id } }
+            return entries.filterNot { it.id in grouped }
+        }
+
+    val activeDeliverables: List<DeliverableGroup> get() = deliverables.filterNot { it.done }
+    val doneDeliverables: List<DeliverableGroup> get() = deliverables.filter { it.done }
 }
 
 /** A goal-area or development pillar and the projects/bullets that roll up to it. */
@@ -99,6 +137,7 @@ fun goalProjectGroups(
     processed: List<EntryEntity>,
     folders: List<ProjectEntity>,
     pillar: Pillar,
+    deliverables: List<DeliverableEntity> = emptyList(),
 ): List<ProjectBullets> {
     val folderByLower = folders.associateBy { it.name.lowercase() }
     val inSection = processed.filter { it.goalCategory.matches(pillar.name) }
@@ -116,9 +155,49 @@ fun goalProjectGroups(
         if (buckets.keys.none { it.equals(f.name, ignoreCase = true) }) buckets[f.name] = mutableListOf()
     }
 
+    // This pillar's deliverables, indexed by their parent project. Scoped by goalArea as well as
+    // project name, since a project is itself only unique by (name, goalArea).
+    val delsHere = deliverables.filter { it.goalArea.matches(pillar.name) }
+
     return buckets.entries
-        .map { (name, es) -> ProjectBullets(name, isOutside = name == OUTSIDE_PROJECT_LABEL, entries = es) }
+        .map { (name, es) ->
+            ProjectBullets(
+                name = name,
+                isOutside = name == OUTSIDE_PROJECT_LABEL,
+                entries = es,
+                // The Outside bucket is a synthetic "no project" grouping, not a project — it can't own
+                // deliverables, and an entry there can't be in one.
+                deliverables = if (name == OUTSIDE_PROJECT_LABEL) emptyList()
+                else deliverableGroups(es, delsHere.filter { it.project.matches(name) }),
+            )
+        }
         .sortedWith(compareBy({ it.isOutside }, { -it.lastUpdated }, { it.name.lowercase() }))
+}
+
+/**
+ * Group ONE project's entries by deliverable. Mirrors the project-level rules deliberately, so the two
+ * levels behave the same way:
+ *  - an entry's tag is **canonicalised** to the real deliverable's exact name (case-insensitively), and
+ *    a tag matching no live deliverable is treated as no tag — it falls into [ProjectBullets.loose]
+ *    rather than materialising a ghost group. The cascades clear such tags eagerly, but rendering must
+ *    not depend on that having happened;
+ *  - every declared deliverable is shown even with zero entries, so a just-created one appears at once;
+ *  - **done last**, then most-recent-first, then by name for a stable order among empties.
+ */
+private fun deliverableGroups(
+    inProject: List<EntryEntity>,
+    deliverables: List<DeliverableEntity>,
+): List<DeliverableGroup> {
+    if (deliverables.isEmpty()) return emptyList()
+    val byLower = deliverables.associateBy { it.name.lowercase() }
+    val buckets = LinkedHashMap<String, MutableList<EntryEntity>>()
+    for (e in inProject) {
+        val canonical = byLower[e.deliverable?.trim()?.lowercase().orEmpty()]?.name ?: continue
+        buckets.getOrPut(canonical) { mutableListOf() }.add(e)
+    }
+    return deliverables
+        .map { d -> DeliverableGroup(d.name, d.done, buckets[d.name].orEmpty()) }
+        .sortedWith(compareBy({ it.done }, { -it.lastUpdated }, { it.name.lowercase() }))
 }
 
 /** Processed entries that demonstrate [pillar], newest first (the behaviour "evidence" view). */
@@ -149,11 +228,13 @@ fun uncategorizedPillar(): Pillar = Pillar(
     blurb = "Filed before your framework changed. Open to re-home each in a tap (edit or redo).",
 )
 
-/** Build the full Home document from the raw entry list + the active framework + the folders. */
+/** Build the full Home document from the raw entry list + the active framework + the folders + the
+ *  deliverables (v0.33.0 — defaulted so the pure builder stays callable with none). */
 fun buildHomeDoc(
     entries: List<EntryEntity>,
     framework: Framework,
     folders: List<ProjectEntity>,
+    deliverables: List<DeliverableEntity> = emptyList(),
 ): HomeDoc {
     val processed = entries.filter { it.status == EntryStatus.PROCESSED }
     val processing = entries.filter { it.status == EntryStatus.RAW }.sortedByDescending { it.createdAt }
@@ -165,7 +246,7 @@ fun buildHomeDoc(
     val pillars = framework.pillars
     val goals = pillars.mapIndexedNotNull { index, pillar ->
         if (pillar.kind == PillarKind.BEHAVIOUR) return@mapIndexedNotNull null
-        val groups = goalProjectGroups(processed, folders, pillar)
+        val groups = goalProjectGroups(processed, folders, pillar, deliverables)
         if (groups.isEmpty()) null else GoalSection(pillar, index, groups)
     }
     val behaviours = pillars.mapIndexedNotNull { index, pillar ->

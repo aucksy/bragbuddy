@@ -8,6 +8,7 @@ import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.local.BragBuddyDatabase
+import com.bragbuddy.app.data.local.DeliverableDao
 import com.bragbuddy.app.data.local.EntryDao
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
@@ -42,6 +43,7 @@ import javax.inject.Singleton
 class EntryProcessor @Inject constructor(
     private val entryDao: EntryDao,
     private val projectDao: ProjectDao,
+    private val deliverableDao: DeliverableDao,
     private val frameworkStore: FrameworkStore,
     private val aiProvider: AiProvider,
     private val settings: SettingsStore,
@@ -125,6 +127,12 @@ class EntryProcessor @Inject constructor(
                 bullet = null,
                 project = null,
                 goalCategory = null,
+                // Cleared with the other two placement axes, not kept: refileSingle re-derives it from
+                // `anchorDeliverable` (which, like the other anchors, deliberately survives the reset).
+                // Without this a row whose re-file FAILS keeps a stale tag it can no longer justify —
+                // and if its deliverable was deleted meanwhile, the anchor re-validation drops it and
+                // this row would otherwise still claim the old one.
+                deliverable = null,
                 demonstrates = emptyList(),
                 isExtra = false,
                 impact = null,
@@ -217,6 +225,12 @@ class EntryProcessor @Inject constructor(
             val clean = project.trim()
             val isOutside = clean.isBlank() || clean.equals(OUTSIDE_PROJECT, ignoreCase = true)
             val area = goalArea.trim().ifBlank { e.goalCategory?.takeIf { it.isNotBlank() } ?: INBOX_LABEL }
+            // The Inbox's quick-resolve has no deliverable picker, so the tag has to be checked rather
+            // than asked about: an entry CAN reach the Inbox still carrying one (a tap-in capture is
+            // anchored — including its deliverable — but still goes FAILED if the AI was unreachable, and
+            // FAILED rows are resolvable). Keep it only where it genuinely exists under the project the
+            // user just chose; resolving somewhere else leaves it pointing at nothing.
+            val keptDeliverable = e.deliverable?.takeIf { !isOutside && deliverableExists(it, clean, area) }
             val updated = e.copy(
                 status = EntryStatus.PROCESSED,
                 // A FAILED / empty-result row has no cleaned bullet; fall back to its raw transcript so
@@ -225,6 +239,13 @@ class EntryProcessor @Inject constructor(
                 bullet = e.bullet?.takeIf { it.isNotBlank() } ?: e.rawTranscript.trim().ifBlank { null },
                 project = if (isOutside) OUTSIDE_PROJECT else clean,
                 goalCategory = area,
+                deliverable = keptDeliverable,
+                // Deliberately NOT `= keptDeliverable`: the resolve is a decision about the project and
+                // category (which is why both of those anchor below), but the sheet never asked about the
+                // deliverable — so an existing pin is carried and a nonexistent one is never invented.
+                // v0.34.0's AI can set `deliverable` with no pin, and silently promoting that to a
+                // user-made decision is the same mistake `remapAnchorScoped` guards against.
+                anchorDeliverable = e.anchorDeliverable?.takeIf { keptDeliverable != null },
                 // The user's resolve is a DECISION and must survive a later edit/redo (which resets the
                 // row to RAW and re-runs the categorizer). Anchor BOTH axes — including the Outside
                 // sentinel, which previously anchored nothing and so let the AI silently re-guess a
@@ -254,11 +275,18 @@ class EntryProcessor @Inject constructor(
      * becomes the [anchorProject] so a later edit re-files here. A blank [goalArea] falls back to the
      * entry's current one (then "Inbox") — the sheet always sends a real category, so that's a defensive
      * floor only; keeping a real goal area is what lets the entry's evidence reach the summary rollup.
+     *
+     * [deliverable] is the third axis (v0.33.0): the deliverable within [project], or null for "not part
+     * of one" — a normal state, not an absence, so there is no sentinel to pass. It is **validated, not
+     * trusted**: a deliverable only exists inside a specific (project, goalArea), so one that isn't
+     * really there is dropped rather than written as a tag pointing at nothing. This is the owner's
+     * "move a win to any level, anywhere" path — every surface that can move an entry routes here.
      */
     suspend fun recategorize(
         id: Long,
         goalArea: String,
         project: String,
+        deliverable: String?,
         demonstrates: List<String>,
     ) {
         mutex.withLock {
@@ -269,6 +297,12 @@ class EntryProcessor @Inject constructor(
             val isOutside = clean.isBlank() || clean.equals(OUTSIDE_PROJECT, ignoreCase = true)
             val area = goalArea.trim().ifBlank { e.goalCategory?.takeIf { it.isNotBlank() } ?: INBOX_LABEL }
             val cleanDemos = demonstrates.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+            // Validated against the destination, not trusted: a deliverable exists only inside one
+            // (project, goalArea), so "no project" can't have one, and a stale pick (its deliverable
+            // deleted, or belonging to the project the user just moved AWAY from) resolves to none.
+            val cleanDeliverable = deliverable?.trim()?.takeIf {
+                it.isNotBlank() && !isOutside && deliverableExists(it, clean, area)
+            }
             val updated = e.copy(
                 status = EntryStatus.PROCESSED,
                 // A bullet-less row (recategorized straight from FAILED) falls back to its transcript so
@@ -276,9 +310,14 @@ class EntryProcessor @Inject constructor(
                 bullet = e.bullet?.takeIf { it.isNotBlank() } ?: e.rawTranscript.trim().ifBlank { null },
                 project = if (isOutside) OUTSIDE_PROJECT else clean,
                 goalCategory = area,
-                // Anchor BOTH axes so this correction survives a later edit/redo — see resolve() above.
+                deliverable = cleanDeliverable,
+                // Anchor ALL THREE axes so this correction survives a later edit/redo — see resolve()
+                // above. The deliverable anchors unconditionally here (unlike in resolve) because this
+                // sheet DID ask: whatever the user picked, including "none", is their decision, and
+                // v0.34.0's AI must not re-guess over it.
                 anchorProject = if (isOutside) OUTSIDE_PROJECT else clean,
                 anchorGoalArea = area,
+                anchorDeliverable = cleanDeliverable,
                 demonstrates = cleanDemos,
                 confidence = 1.0,
                 suggestedProjects = emptyList(),
@@ -507,13 +546,99 @@ class EntryProcessor @Inject constructor(
             }
             // Skip the row rewrite only when nothing actually changes (same name AND same goal area).
             if (!(o.equals(t, ignoreCase = true) && oa.equals(ta, ignoreCase = true))) {
-                // ORDER MATTERS: the anchor update's WHERE reads `goalCategory`, which remapProjectScoped
-                // rewrites to the new area. Running it second meant the clause never matched whenever the
-                // goal area changed, leaving anchorProject on the old folder — so a later edit re-filed
-                // the entry back into a folder that no longer exists there (fixed v0.31.0).
+                // ORDER MATTERS — TWICE. Both queries below read `project`/`goalCategory`, which
+                // remapProjectScoped rewrites; running either after it means its WHERE never matches.
+                // That exact mistake cost a round in v0.31.0, so it is spelled out at each query too.
+                //
+                // Drop the deliverable tag of any record whose deliverable doesn't exist at the
+                // destination. This is the ONE place the 3-option flow's options are indistinguishable —
+                // carry / reassign / create-new all arrive here as the same four arguments, and the
+                // renamed folder's new name is never passed — so the query asks the deliverables table
+                // what is actually there rather than trying to infer which option the user picked.
+                // A carry keeps its tags (the deliverables followed the folder, in ProjectRepository);
+                // a reassign to somebody else's folder drops them (they stayed behind).
+                entryDao.clearDeliverablesNotUnder(o, oa, t, ta)
                 entryDao.remapAnchorScoped(o, oa, t, ta)
                 entryDao.remapProjectScoped(o, oa, t, ta)
             }
+            reconcileLocked()
+        }
+        Unit
+    }
+
+    // ---------------- deliverables · the third axis (v0.33.0) ----------------
+
+    /**
+     * How many filed records are tagged to deliverable [name] under ([project], [area]) — read-only, so
+     * no lock (it only decides whether to warn before a delete). Scoped by BOTH parents, because a
+     * deliverable's name alone is not an identity.
+     */
+    suspend fun countDeliverableReferences(name: String, project: String, area: String): Int {
+        val n = name.trim()
+        if (n.isEmpty()) return 0
+        return entryDao.countDeliverableReferences(n, project.trim(), area.trim())
+    }
+
+    /**
+     * Deterministically re-tag every record of a renamed deliverable — NO AI, instant, mirroring
+     * [remapProjectEverywhere]. Rewrites the filed label and the anchor together (one statement; unlike
+     * the project remap there's no ordering hazard, since neither `project` nor `goalCategory` moves),
+     * then rebuilds the rollup so the summary follows the new name.
+     */
+    suspend fun renameDeliverableEverywhere(
+        old: String,
+        project: String,
+        area: String,
+        newName: String,
+    ) = mutex.withLock {
+        val o = old.trim()
+        val p = project.trim()
+        val a = area.trim()
+        val nw = newName.trim()
+        if (o.isEmpty() || nw.isEmpty() || o.equals(nw, ignoreCase = true)) return@withLock
+        runCatching {
+            entryDao.remapDeliverableScoped(o, p, a, nw)
+            reconcileLocked()
+        }
+        Unit
+    }
+
+    /**
+     * A **deleted deliverable** must not stay tagged on its entries. The entries are the record and are
+     * never touched — only the grouping goes, so they fall back to listing plainly under their project.
+     * Both columns clear: leaving the filed label would render a group header for a deliverable that no
+     * longer exists (a deliverable has no "Uncategorized" catch-all to fall into, unlike a category), and
+     * leaving the anchor would re-pin the entry to a ghost on its next edit — the v0.31.0 lesson.
+     */
+    suspend fun clearDeliverable(name: String, project: String, area: String) = mutex.withLock {
+        val n = name.trim()
+        if (n.isEmpty()) return@withLock
+        runCatching {
+            entryDao.clearDeliverable(n, project.trim(), area.trim())
+            reconcileLocked()
+        }
+        Unit
+    }
+
+    /** Clear the deliverable axis of every entry of a **deleted project** (its deliverables cascade away
+     *  in `ProjectRepository`; this drops the entries' now-dangling tags). */
+    suspend fun clearProjectDeliverables(project: String, area: String) = mutex.withLock {
+        val p = project.trim()
+        if (p.isEmpty()) return@withLock
+        runCatching {
+            entryDao.clearDeliverablesOfProject(p, area.trim())
+            reconcileLocked()
+        }
+        Unit
+    }
+
+    /** Clear the deliverable axis of every entry under a **deleted category** (mirrors
+     *  [clearCategoryAnchor], which the same call site already invokes). */
+    suspend fun clearCategoryDeliverables(area: String) = mutex.withLock {
+        val a = area.trim()
+        if (a.isEmpty()) return@withLock
+        runCatching {
+            entryDao.clearDeliverablesOfCategory(a)
             reconcileLocked()
         }
         Unit
@@ -535,9 +660,19 @@ class EntryProcessor @Inject constructor(
         val request: CategorizeRequest,
         val anchor: String?,
         val anchorGoalArea: String?,
+        val anchorDeliverable: String?,
         val placementNames: List<String>,
         val pillars: List<Pillar>,
     )
+
+    /** Does this exact deliverable exist under this exact ([project], [area])? A deliverable's name is
+     *  not an identity on its own, so every "is this tag real?" test must ask with all three. */
+    private suspend fun deliverableExists(name: String?, project: String?, area: String?): Boolean {
+        val n = name?.trim()?.takeIf { it.isNotBlank() } ?: return false
+        val p = project?.trim()?.takeIf { it.isNotBlank() } ?: return false
+        val a = area?.trim()?.takeIf { it.isNotBlank() } ?: return false
+        return runCatching { deliverableDao.getByIdentity(n, p, a) }.getOrNull() != null
+    }
 
     private suspend fun prepare(entry: EntryEntity, combineSingle: Boolean = false): Prep {
         val role = settings.settings.first().jobRole
@@ -578,6 +713,17 @@ class EntryProcessor @Inject constructor(
         // folder (the long-standing folder-tap behaviour).
         val anchorGoalArea = entry.anchorGoalArea?.takeIf { it.isNotBlank() }
             ?: namedAnchor?.let { name -> activeProjects.firstOrNull { it.name.equals(name, ignoreCase = true) }?.goalArea }
+        // The DELIVERABLE anchor (v0.33.0) — the only thing that can put an entry in a deliverable at
+        // this version. It is deliberately NOT added to the CategorizeRequest: no prompt change ships in
+        // this phase (hence no eval gate), so the model is never told deliverables exist and can never
+        // guess one. It binds purely deterministically in applyCategorized. Teaching the categorizer to
+        // pick one is v0.34.0's job — prompt-first, eval-gated, with the JS mirror in `eval/run.mjs`
+        // updated in the same breath (v0.31.0's F4 drifted that mirror and shipped the fix unmeasured).
+        //
+        // Re-validated against the anchored parents on every re-file rather than trusted: an edit can
+        // land long after the capture, and the deliverable may have been deleted or renamed since.
+        val anchorDeliverable = entry.anchorDeliverable
+            ?.takeIf { deliverableExists(it, namedAnchor, anchorGoalArea) }
         return Prep(
             CategorizeRequest(
                 transcript = entry.rawTranscript,
@@ -591,6 +737,7 @@ class EntryProcessor @Inject constructor(
             ),
             anchor,
             anchorGoalArea,
+            anchorDeliverable,
             placement.map { it.name },
             fw.pillars,
         )
@@ -610,9 +757,12 @@ class EntryProcessor @Inject constructor(
                     entryDao.update(entry.copy(status = EntryStatus.INBOX, confidence = 0.0))
                 } else {
                     // First result updates the captured row; extras become sibling rows.
-                    val firstRow = entry.applyCategorized(result.entries.first(), p.anchor, p.anchorGoalArea)
+                    val firstRow = entry.applyCategorized(
+                        result.entries.first(), p.anchor, p.anchorGoalArea, p.anchorDeliverable,
+                    )
                     val siblings = result.entries.drop(1).map { extra ->
-                        entry.copy(id = 0, bullet = null).applyCategorized(extra, p.anchor, p.anchorGoalArea)
+                        entry.copy(id = 0, bullet = null)
+                            .applyCategorized(extra, p.anchor, p.anchorGoalArea, p.anchorDeliverable)
                     }
                     // Atomic: the first-row update + every sibling insert commit together. Without this,
                     // a crash mid-split leaves row 1 PROCESSED (so processPending skips it forever) while
@@ -644,7 +794,7 @@ class EntryProcessor @Inject constructor(
                 val result = CategorizedNormalizer.normalize(raw, p.placementNames, p.pillars)
                 val first = result.entries.firstOrNull()
                 val updated = if (first == null) entry.copy(status = EntryStatus.INBOX, confidence = 0.0)
-                else entry.applyCategorized(first, p.anchor, p.anchorGoalArea)
+                else entry.applyCategorized(first, p.anchor, p.anchorGoalArea, p.anchorDeliverable)
                 entryDao.update(updated)
                 syncRollup(updated)
             },
@@ -666,17 +816,25 @@ class EntryProcessor @Inject constructor(
      * and binds exactly like a named folder. [anchorGoalArea] binds INDEPENDENTLY of the project: it is
      * the whole point of the v0.31.0 column, since a manual category chosen alongside "no specific
      * project" has no folder to derive a category from.
+     *
+     * [anchorDeliverable] is the **only** source of a deliverable in v0.33.0 — the model is never told
+     * they exist (no prompt change this phase), so there is nothing to fall back to and no guess to
+     * override. `deliverable` is therefore assigned outright rather than `anchorDeliverable ?: c.<x>`:
+     * an unanchored entry has none, which is the normal case. v0.34.0 adds the model's guess as the
+     * fallback, at which point this becomes the same `anchor ?: guess` shape as the two axes above.
      */
     private fun EntryEntity.applyCategorized(
         c: CategorizedEntry,
         anchor: String?,
         anchorGoalArea: String?,
+        anchorDeliverable: String?,
     ): EntryEntity = copy(
         status = statusFor(c, anchored = anchor != null || anchorGoalArea != null),
         occurredAt = c.dateMentioned.toEpochMillisOrNull() ?: occurredAt,
         bullet = c.bullet.ifBlank { null },
         project = anchor ?: c.project,
         goalCategory = anchorGoalArea ?: c.goalCategory,
+        deliverable = anchorDeliverable,
         demonstrates = c.demonstrates,
         isExtra = c.isExtra,
         impact = c.impact,
