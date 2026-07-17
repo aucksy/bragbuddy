@@ -106,9 +106,10 @@ data class EntryEntity(
      * (`CONTEXT.md` §2), which had only ever been enforced against AI *failure*, not against the
      * user's own edits.
      *
-     * A **redo (re-record) resets this to null** — a redo is starting over, so the fresh recording
-     * becomes the original and the scrapped attempt is let go (owner's call, 2026-07-17). An **edit**
-     * and an **add-impact append** both preserve it.
+     * Set only when text is genuinely REPLACED. A **redo (re-record) resets this to null** — a redo is
+     * starting over, so the fresh recording becomes the original and the scrapped attempt is let go
+     * (owner's call, 2026-07-17). An **add-impact append** sets nothing: it only adds to the text, so
+     * the live transcript is still entirely the user's words. See [OriginalTranscript].
      */
     val originalTranscript: String? = null,
 

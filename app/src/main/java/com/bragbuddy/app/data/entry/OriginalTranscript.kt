@@ -27,10 +27,14 @@ object OriginalTranscript {
         // Already captured → never overwrite. The second edit must still show what was FIRST said,
         // not the first edit's text.
         existing != null -> existing
-        // A no-op "edit" (same text) mutates nothing, so there is nothing to preserve — and claiming a
-        // snapshot would make the UI report "Edited since" for an edit that never happened.
-        incoming.trim() == current.trim() -> null
-        // The first real mutation: this is the original.
+        // The incoming text CONTAINS the current text unchanged, so nothing is being lost and there is
+        // nothing to preserve. Covers a pure append (add-impact folds a number onto the end) and a
+        // no-op edit. Snapshotting here would actively HARM: the reader shows the snapshot, so it would
+        // hide the words the user just added behind a "you originally said" hint — the same trap the
+        // redo reset above avoids. Edits are unaffected: the editor is seeded from the AI's *bullet*,
+        // which does not start with the transcript, so a real rewrite still snapshots.
+        incoming.trim().startsWith(current.trim()) -> null
+        // The first real mutation — text is being REPLACED, so this is the original worth keeping.
         else -> current
     }
 }

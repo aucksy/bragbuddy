@@ -180,8 +180,10 @@ class EntryProcessor @Inject constructor(
                 if (c != null && newBullet != null) {
                     val updated = e.copy(
                         rawTranscript = combined,
-                        // An append is not a loss, but it still changes the text — so snapshot the words
-                        // as first spoken (once, never overwritten), same rule as an edit (v0.32.0).
+                        // An append LOSES nothing (`combined` is the transcript plus the user's number),
+                        // so the rule below deliberately snapshots NOTHING here — keeping the full text
+                        // readable as the user's own words. It still runs, rather than being skipped, so
+                        // an already-snapshotted original is carried through untouched (v0.32.0).
                         originalTranscript = OriginalTranscript.next(
                             current = e.rawTranscript, existing = e.originalTranscript,
                             incoming = combined, isRedo = false,

@@ -64,12 +64,38 @@ class OriginalTranscriptTest {
     }
 
     @Test
-    fun `an append (add-impact) snapshots the words as first spoken`() {
+    fun `an append (add-impact) snapshots NOTHING, so the added words stay visible`() {
+        // An append loses nothing — the transcript keeps every word and gains the user's number. A
+        // snapshot here would be actively harmful: readers show the snapshot, so it would HIDE the
+        // number the user just added behind "this is what you originally said".
         val next = OriginalTranscript.next(
             current = "shipped the dashboard", existing = null,
             incoming = "shipped the dashboard cut load time 40%", isRedo = false,
         )
-        assertThat(next).isEqualTo("shipped the dashboard")
+        assertThat(next).isNull()
+        assertThat(shown(next, "shipped the dashboard cut load time 40%"))
+            .isEqualTo("shipped the dashboard cut load time 40%")
+    }
+
+    @Test
+    fun `an append AFTER an edit still carries the earlier original untouched`() {
+        val next = OriginalTranscript.next(
+            current = "Led the migration kickoff.", existing = "helped raj with the migation thing",
+            incoming = "Led the migration kickoff. cut handoff time 40%", isRedo = false,
+        )
+        assertThat(next).isEqualTo("helped raj with the migation thing")
+    }
+
+    @Test
+    fun `a rewrite that merely starts with the same words is still an append, not a loss`() {
+        // Guard the boundary of the startsWith rule: a real edit is seeded from the AI's BULLET, which
+        // does not begin with the transcript, so this leniency never swallows a genuine rewrite.
+        assertThat(
+            OriginalTranscript.next(
+                current = "shipped the dashboard", existing = null,
+                incoming = "Shipped the dashboard, cutting load time 40%.", isRedo = false,
+            ),
+        ).isEqualTo("shipped the dashboard") // capital S → a rewrite → protected
     }
 
     @Test
