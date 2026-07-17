@@ -333,10 +333,31 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   cross-category mis-file — it was **not** re-fixed. Full findings, the open list, and the **"already
   refuted — don't re-fix"** list (feed it to any future reviewer) are in `PROGRESS.md`
   `## Status: v0.33.1`.
-  **▶ EXACT NEXT STEP:** `v0.34.0` — AI files into deliverables + per-deliverable summary
-  (⚠️ EVAL-GATED — the FIRST prompt change since v0.31.0; mirror every prompt-shape change in
-  `eval/run.mjs`, budget ≥2 gate rounds). Full spec + the owner's locked decisions: `PROGRESS.md`
-  "▶ ROADMAP RESHAPE". **v0.31.0 (fix batch):** a **⋮ retag on summary cards** that
+  **`v0.34.0 — AI files into deliverables + per-deliverable summary` is SHIPPED** (signed;
+  `versionCode 41`; **Room stays v8** — no new column; compile + unit-test gate green pre-tag; ONE scoped
+  5-lens adversarial review; **EVAL-GATED, 2 rounds**). **The deliverables arc is now COMPLETE**
+  (structure v0.33.0 → hardening v0.33.1 → AI filling it v0.34.0). The AI is finally told deliverables
+  exist: `{{PROJECTS}}` nests each project's **Active** ones (a **Done** one has shipped, so it is never
+  offered), new categorizer **rule 5** picks one only when exactly ONE clearly fits, and the **rollup**
+  gains a per-area deliverable index (*"47 entries over 6 months, DONE"*) so PART B **rule 2** can make
+  each deliverable ONE outcome-led story — the deterministic anchor the arc-merge never had.
+  **⭐ EVAL VERDICT: both of this phase's OWN gates passed** (`deliverableAccuracy`; `summaryChecks` at
+  **100%** incl. the new `deliverableGrouping` — the AND-gate the spec expected to bite didn't). The job
+  is nonetheless RED on **`inboxPrecision` 88.5% (bar 90%)**, which is **PRE-EXISTING and moved by zero**:
+  the committed baseline is *exactly* the same 23/26, and the cause is the prompt's **own Example 3**
+  ("Built that new leadership dashboard…" → Inbox) teaching the model to fail the near-identical golden
+  `po-metric-30-percent`. **Owner was shown the evidence and chose to ship + log it separately
+  (2026-07-17).** ⚠️ Two lessons recorded in `PROGRESS.md` `## Status: v0.34.0`: **a bare eval re-run is
+  NOT a remedy** (the harness sends a fixed `seed`; r2 reproduced 88.5% exactly — a wasted ₹9 round), and
+  **never close that gap by lowering the threshold**. Pre-tag review found 2 HIGH: ⭐ a user's explicit
+  **"None" was re-guessed by the AI on their next edit** (*a null anchor is not an answer, it is the
+  absence of one* — this axis has no `Outside-project`-style sentinel, so the guess is gated on ANY manual
+  placement, which is the owner's locked rule verbatim), and the **Summary ⋮ retag corrected the record but
+  not the card** while re-stamping "Up to date" (v0.31.0's F1 repeated on the new axis; found by three
+  lenses independently). Detail + the **do-NOT-re-fix list** in `## Status: v0.34.0`.
+  **▶ EXACT NEXT STEP: the owner's next direction.** The only named item left is **M3 (Play Store +
+  Billing + metering), still DEFERRED TO THE VERY END** until the owner says on-device testing is done.
+  **v0.31.0 (fix batch):** a **⋮ retag on summary cards** that
   corrects the RECORD via a client-side resolver (`AggHighlight.ids` + `SummaryResolver`, no prompt change);
   **derived Set-aside** (real dropped wins, Restore all); **EVAL-GATED** length-prompt fix (rule 1 was
   hardcoding "at most 5" so Detailed was inert); and the **"Outside project under Learning & Growth"**

@@ -159,22 +159,25 @@ current code — that is the context, not chat history.
 - **Sequence: v0.32.0 transcript access → v0.33.0 deliverables (structure, manual) → v0.34.0 AI filing +
   per-deliverable summary → … → M3 last.**
 
-> **▶ WHERE WE ARE (2026-07-17): `v0.33.1` is SHIPPED, signed and green (`versionCode 40`) — it
-> supersedes the `v0.33.0` tag, which has a live data bug. The deliverables hardening is CLOSED.**
-> **▶ THE EXACT NEXT STEP IS `### ▶ v0.34.0 — AI files into deliverables + per-deliverable summary`
-> below.** Read `## Status: v0.33.1` first for what shipped, what is deliberately still open, and the
-> **"already refuted — do NOT re-fix"** list (feed that list to any reviewer, or it re-raises them).
+> **▶ WHERE WE ARE (2026-07-17): `v0.34.0` is SHIPPED, signed (`versionCode 41`). The DELIVERABLES
+> ARC IS COMPLETE — structure (v0.33.0), hardening (v0.33.1), and now the AI filling it (v0.34.0).**
+> **▶ THE EXACT NEXT STEP: the owner's next direction.** The roadmap's remaining named item is **M3
+> (Play Store + Billing + metering), which stays DEFERRED TO THE VERY END** until the owner says
+> on-device testing is done. Read `## Status: v0.34.0` for what shipped, its eval evidence, the one
+> **deliberately-open gap**, and the **"already refuted — do NOT re-fix"** list (feed that list to any
+> reviewer, or it re-raises them — it did, twice, unprompted, in v0.33.1).
 >
-> The next phase is `v0.34.0 — AI files into deliverables + per-deliverable summary`
-> (EVAL-GATED), specced below. Carry these forward into that phase:
-> - **Room is now v8**; `deliverables` table + `entries.deliverable` / `entries.anchorDeliverable` exist.
-> - **The AI has never been told deliverables exist.** v0.34.0 is the FIRST prompt change — mirror every
->   prompt-shape change in `eval/run.mjs` (v0.31.0's F4 drifted that mirror and shipped the fix unmeasured).
-> - **`applyCategorized` assigns `deliverable = anchorDeliverable` outright.** v0.34.0 turns that into the
->   same `anchor ?: guess` shape the other two axes already use.
-> - **`originalTranscript` exists.** Anything that mutates an entry's text must go through
->   `OriginalTranscript.next()`, and any NEW column must ride `BackupCodec` (the v0.31.0 lesson, re-proven
->   in v0.32.0 AND v0.33.0) **and** be added to `EntryEntity` with **named** args at every construction site.
+> Carry these forward into whatever comes next:
+> - **Room is v8** (unchanged by v0.34.0 — this phase added no column).
+> - **The AI now files into deliverables**, but ONLY for a capture the user placed nowhere. ⭐ **A null
+>   anchor is not an answer, it is the absence of one**, and this axis has no `Outside-project`-style
+>   sentinel — so the guess is gated on ANY manual placement. Weakening that to a bare
+>   `anchorDeliverable ?: guess` re-introduces a live data bug (see F1 below).
+> - **⭐ THE INBOX-PRECISION GAP IS OPEN AND KNOWN** (`inboxPrecision` 88.5%, bar is 90%). It is
+>   **pre-existing and untouched by v0.34.0** — see `## Status: v0.34.0` → "⚠️ OPEN". Any future prompt
+>   phase will hit this same red gate. **Do not "fix" it by lowering the threshold.**
+> - **Any prompt change still ships EVAL-GATED**, and the JS mirror in `eval/run.mjs` must move in the
+>   SAME commit (v0.31.0's F4 drifted it and shipped a fix that was never measured).
 
 ---
 
@@ -251,6 +254,126 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
   produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
   ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
   went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
+
+---
+
+## Status: v0.34.0 — AI files into deliverables + per-deliverable summary ✅ SHIPPED (signed · `versionCode 41` · Room stays **v8**, no new column · compile + unit tests GREEN before the tag · **PROMPT PHASE → EVAL-GATED, 2 rounds run — see the verdict below**)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.34.0/BragBuddy-v0.34.0.apk` (`.aab` alongside).
+
+The record has been **Category → Project → Deliverable → entries** since v0.33.0, but only a tap-in
+could fill the third level — the AI was never told deliverables existed. Now it fills it too, and the
+summary reads a deliverable as ONE story instead of N loose bullets.
+
+### The eval verdict (read this before re-running anything)
+Two gate rounds (`eval-run-v0.34.0`, `eval-run-v0.34.0-r2`). **Both of this phase's own gates passed:**
+- **`deliverableAccuracy` PASSED** (new, floor 0.8) — the categorizer files into the right deliverable
+  *and*, mostly, declines to guess when nothing clearly fits.
+- **`summaryChecks` PASSED at 100%**, including the new `deliverableGrouping`. The spec expected this
+  100% AND-gate to bite. **It didn't** — PART B rule 2 held first time.
+
+**The job is nonetheless RED, on `inboxPrecision` 88.5% (23/26; bar ≥90%) — and that is PRE-EXISTING.**
+The committed baseline is `0.8846…` = **exactly 23/26**, so v0.34.0 moved this metric by zero. The owner
+was shown the evidence and **chose to ship and log it separately** (2026-07-17). Do not read the red job
+as "v0.34.0 broke something".
+
+⚠️ **`eval-run-v0.34.0-r2` was a WASTED round (~₹9) — learn from it.** It was a *bare re-run*, on the
+strength of a note claiming "a re-run clears the flaky inboxPrecision floor". **`run.mjs` sends a fixed
+`seed`**, so a bare re-run reproduces the same answer; it returned an identical 88.5% with the same cases
+failing 0/3. Consensus-of-3 already de-noises each case. **A bare re-run is not a remedy here** — if a
+gate is red, either the prompt or the golden has to change.
+
+### ⚠️ OPEN — the inbox-precision gap (deliberately not fixed here)
+**The prompt's own Example 3 teaches the model to fail the golden that fails.** Verbatim, and untouched
+by this phase (it predates it):
+- Prompt `EXAMPLES`, Example 3: *"Built that new leadership dashboard, cut reporting time by about 30
+  percent."* → `"project": "Inbox", "confidence": 0.5`.
+- Golden `po-metric-30-percent`: *"Built the migration status dashboard for leadership, cut the weekly
+  reporting effort by about 30 percent."* → `inboxExpected: false` (must NOT park).
+
+Nearly the same sentence, opposite required answers — so the model parks it 0/3, deterministically. The
+other stable precision miss is `real-002` (picks `Raven Migration` over `Raven Migration CCP Portals` —
+a near-duplicate-project miss). **Fixing this is prompt-CALIBRATION work, out of a deliverables phase's
+scope, and it risks destabilising the gates that just went green.** Whoever takes it: decide whether
+Example 3 or the golden is wrong (they cannot both be right), and budget several paid rounds.
+**Never close it by lowering the threshold.** Note the committed baseline ALSO sits below the 90% bar,
+so *every* future prompt phase inherits this red gate until someone resolves it.
+
+### What was built
+- **Categorizer (the FIRST prompt change since v0.31.0).** `{{PROJECTS}}` nests each project's **Active**
+  deliverables, indented (`    · Name — capped desc`); a **Done** one has shipped, so it is never offered
+  and the AI cannot file new work into it. New **rule 5** picks one only when exactly ONE clearly fits and
+  omits it otherwise. Rules renumbered (old 5–11 → 6–12); PART B gained **rule 2** (old 2–7 → 3–8).
+  ⭐ Rules 8/9 stopped saying "deliverable" *loosely* ("a core deliverable of their role", "solid
+  deliverable milestone") — an overloaded word inside the prompt that now DEFINES that word is a trap.
+- **`applyCategorized` = `anchor ?: guess`**, matching the project/category axes — but see F1: the guess
+  is additionally gated on the row having NO manual placement at all.
+- **The guess is RESOLVED, never trusted** (`data/entry/DeliverableGuess.kt`, pure + unit-tested):
+  ⭐ **a name is not an identity**, so it must match `(name, project, goalArea)` — and against the parents
+  the row is **FILED** under (`anchor ?: c.project`), not the model's own guess. That is why it resolves in
+  `applyCategorized` and NOT in `CategorizedNormalizer`: the normalizer runs earlier and knows only the
+  model's project, so it would validate against the wrong parent.
+- **Rollup (the real payoff).** `RollupItem.deliverable` + a per-area **deliverable index**
+  (`"Market rollout" (project: X) — 47 entries over 6 months, DONE`), capped at `DELIVERABLE_CAP = 12`.
+  `done` is read **live** from the table via `DeliverableFact` — denormalizing it would go stale the moment
+  the user finished something (marking Done touches no entry). It rides the serialized rollup, so marking
+  Done correctly marks the summary **stale**. The merge key gained the deliverable, so one thread can't
+  fold into another.
+- **Summary.** PART B rule 2 = one deliverable → ONE outcome-led story (a Done one written as delivered);
+  `SummaryAchievement.deliverable` **defaulted** (old cached summaries must still decode — the v0.30.0
+  `competencies` lesson; a decode throw silently wipes the WHOLE cache); a deliverable sub-group under the
+  project folder; the deliverable carried into the copy-out as `[Project ▸ Deliverable]`.
+- **Eval** (mirrored in the SAME commit): `run.mjs` mirrors the nested `{{PROJECTS}}` lines +
+  `DeliverableGuess.resolve`; +6 categorizer goldens (**1 files, 5 must DECLINE** — declining is the
+  behaviour that matters) and a summary golden with a long-running Done deliverable and an active one;
+  gated `deliverableAccuracy` + `deliverableGrouping`.
+- **Also:** `RollupAggregator.kt` had a **raw NUL byte** committed inside the merge key's separator
+  literal, which made git treat the whole file as **binary** — no diff in review, invisible to grep. Now an
+  escape: identical bytes at runtime, file is text. `RollupItem` construction sites moved to named args.
+
+### Fixed pre-tag by ONE scoped 5-lens review (`anchor-vs-guess` · `eval-mirror` · `rollup-schema` · `regression` · `compose`)
+Run once, in parallel, each lens fed the do-NOT-re-fix list. **7 real findings, all fixed, then STOPPED** —
+per v0.33.1's process lesson (the loop was the failure mode, not the code). No second round was run.
+- **F1 · HIGH · a user's explicit "None" was re-guessed by the AI on their next edit.** ⭐ The root: **a
+  null anchor is not an answer, it is the absence of one.** Recategorize's "None" chip stores
+  `anchorDeliverable = null` — identical to never having been asked — so a bare `?:` re-applied the tag the
+  user had just deliberately removed, durably, on every subsequent edit, un-stickably. v0.33.1's
+  `recategorize` comment had *promised* this wouldn't happen; it was a promise about code that didn't exist
+  yet. Fixed by gating the guess on ANY manual placement, which is also the owner's locked rule verbatim.
+  The golden encoding the wrong assumption (an anchored project getting a guess) now asserts the opposite.
+- **F2 · HIGH · the Summary ⋮ retag corrected the RECORD but not the CARD** — found independently by
+  **three** lenses. `movedLocally` mirrored area+project only: a deliverable-only retag hit
+  `applyOverrides`' idempotency guard and changed nothing, while a category/project retag's `inject` rebuilt
+  the card and dropped the deliverable. Either way the signature was re-stamped → the page read **"Up to
+  date"** while the sub-header and the exported tag showed the OLD deliverable. **This is v0.31.0's F1
+  repeated on the new axis**; it couldn't bite before because cards carried no deliverable.
+- **MED · PART B's echoed deliverable was the ONE deliverable name never resolved** against a real
+  identity. A paraphrase (ordinary LLM behaviour) minted a sub-header for a deliverable that doesn't exist
+  and printed it into the doc the user hands their manager. Now snapped to the rollup's own names at the
+  single point the cached document becomes screen state, so render and export cannot disagree.
+- **MED · the deliverable index was the only uncapped collection** in the aggregator (bounded-input
+  contract). **MED · the summary golden's "24/9 entries" were numbers the real serializer can never
+  emit** from 4 and 2 un-capped, un-merged highlights — the harness was measuring fiction.
+  **MED · eval honesty:** `on track` / `is being` dropped from `IN_PROGRESS_WORDS` (they read fine in a
+  completed story; against a seed-fixed model a false fail doesn't flake, it **wedges** a 100% AND-gate).
+- **LOW · reorder stays FOLDER-scoped.** Scoping it to the deliverable group looked tidier and quietly
+  **destroyed the feature**: rule 2 gives each deliverable exactly one achievement, so every group had one
+  item and the arrows vanished from the whole folder. Also: the loose group gained a visual boundary (it
+  read as more of the last deliverable's thread), and the flat one-project-per-area branch sub-groups too
+  (the export tagged a level the screen never showed).
+
+### 🚫 Refuted / deliberately open — do NOT re-fix (carry v0.33.1's list too)
+- Everything in `## Status: v0.33.1` → "🚫 Refuted repeatedly" **still applies**, especially:
+  **"re-add the `anchorGoalArea IS NULL` escape hatch"** — it was REMOVED for causing a cross-category
+  **mis-file**. It is a regression. Do not re-add it.
+- **"`inboxPrecision` is a flake — just re-run"** → **FALSE, disproved 2026-07-17.** The seed is fixed;
+  two runs gave an identical 88.5% with the same cases 0/3. See "⚠️ OPEN" above.
+- **"Preselect the deliverable in the Summary retag sheet now that cards carry one"** → **NO.** The axis
+  is opt-in ("Leave as is") — that is v0.33.1's F1 fix and still right: one card can merge several entries
+  with DIFFERENT deliverables, so any single preselect silently retags the rest on Apply.
+- **`SummaryOverrides.inject` also drops `metric`** — pre-existing, untouched, out of scope.
+- **A trim asymmetry** between `EntryProcessor.prepare`'s parent-match (no trim) and `run.mjs`'s (trims) —
+  only bites on padded names, which the dialogs prevent. LOW, recorded, not actioned.
 
 ---
 
