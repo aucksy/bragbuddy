@@ -277,11 +277,14 @@ The committed baseline is `0.8846…` = **exactly 23/26**, so v0.34.0 moved this
 was shown the evidence and **chose to ship and log it separately** (2026-07-17). Do not read the red job
 as "v0.34.0 broke something".
 
-⚠️ **`eval-run-v0.34.0-r2` was a WASTED round (~₹9) — learn from it.** It was a *bare re-run*, on the
-strength of a note claiming "a re-run clears the flaky inboxPrecision floor". **`run.mjs` sends a fixed
-`seed`**, so a bare re-run reproduces the same answer; it returned an identical 88.5% with the same cases
-failing 0/3. Consensus-of-3 already de-noises each case. **A bare re-run is not a remedy here** — if a
-gate is red, either the prompt or the golden has to change.
+⚠️ **The "just re-run it" remedy DID NOT WORK THIS TIME — and that is the useful finding.** v0.30.0's
+lore is real: there, a bare `-r2` re-run flipped one borderline inbox case 23→24/26 and the gate went
+green. So `-r2` was tried here on the same reasoning. It came back **identical: 88.5%, same cases failing
+0/3** (`run.mjs` sends a fixed `seed`, and consensus-of-3 already de-noises each case). **So r2 was not
+wasted — it was the control**: it proved this miss is *stable and structural*, not the 23↔24 coin flip
+v0.30.0 hit, which is what sent me looking for a cause and found the Example-3 conflict below.
+**Update the rule: a bare re-run is worth exactly ONE attempt, and only as a diagnostic.** If it
+reproduces, stop re-running — the prompt or the golden has to change.
 
 ### ⚠️ OPEN — the inbox-precision gap (deliberately not fixed here)
 **The prompt's own Example 3 teaches the model to fail the golden that fails.** Verbatim, and untouched
