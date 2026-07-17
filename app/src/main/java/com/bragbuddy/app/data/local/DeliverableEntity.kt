@@ -45,7 +45,7 @@ val DELIVERABLE_LABEL_PLURAL: String get() = "${DELIVERABLE_LABEL}s"
  * [EntryEntity.deliverable] references this row by **name**, mirroring how [EntryEntity.project]
  * references [ProjectEntity] — so the same rule follows: a rename is not free, it must be remapped
  * across every referencing column ([EntryDao.remapDeliverableScoped]), and a delete must clear the
- * anchors that point here ([EntryDao.clearDeliverableAnchor]). See [Index] below for the scoping.
+ * anchors that point here ([EntryDao.clearDeliverable]). See [Index] below for the scoping.
  */
 @Entity(
     tableName = "deliverables",

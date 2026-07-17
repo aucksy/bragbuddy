@@ -209,9 +209,11 @@ private fun deliverableGroups(
  * on Home", and applying it per group would quietly turn one project with five deliverables into fifty
  * inline bullets — the wall of text the depth check exists to prevent.
  *
- * [doneGroups] are excluded from the budget because they render collapsed: they cost one row each, and
- * their entries aren't drawn until the user asks. A done deliverable never *hides* its entries (the
- * owner's rule) — it just doesn't shout them.
+ * [doneGroups] don't draw from that shared budget — they render collapsed, so they cost one row each
+ * until the user opens one. But they ARE capped individually: an expanded done deliverable holding 200
+ * entries would otherwise pour all 200 onto Home, bypassing the cap entirely (found in review). A done
+ * deliverable never *hides* its entries (the owner's rule) — the full list is one tap away on the folder
+ * screen, which is uncapped by design — it just doesn't shout them.
  */
 data class InlineProjectView(
     val groups: List<DeliverableGroup>,
@@ -221,7 +223,6 @@ data class InlineProjectView(
 )
 
 fun ProjectBullets.inlineView(cap: Int): InlineProjectView {
-    val done = doneDeliverables
     if (deliverables.isEmpty()) {
         return InlineProjectView(emptyList(), entries.take(cap), emptyList(), entries.size > cap)
     }
@@ -241,6 +242,12 @@ fun ProjectBullets.inlineView(cap: Int): InlineProjectView {
     val looseAll = loose
     val looseShown = looseAll.take(budget.coerceAtLeast(0))
     if (looseShown.size < looseAll.size) dropped = true
+    // Each done group gets its own cap rather than a share of the budget: they're independent, opened
+    // one at a time and deliberately, so spending the shared budget on one would starve the live work
+    // above it. The header still states the true count, so a capped list never reads as the whole story.
+    val done = doneDeliverables.map { g ->
+        if (g.entries.size <= cap) g else { dropped = true; g.copy(entries = g.entries.take(cap)) }
+    }
     return InlineProjectView(shown, looseShown, done, dropped)
 }
 

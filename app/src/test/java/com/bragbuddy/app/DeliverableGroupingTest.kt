@@ -167,15 +167,31 @@ class DeliverableGroupingTest {
     }
 
     @Test
-    fun `done groups render collapsed and so never consume the cap`() {
-        val done = (1..9).map { entry(deliverable = "Shipped") }
-        val live = entry()
+    fun `a done group does not spend the shared budget - it renders collapsed`() {
+        val done = (1..4).map { entry(deliverable = "Shipped") }
+        val live = (1..5).map { entry() }
         val p = projectOf(done + live, listOf(deliverable("Shipped", done = true)))
         val view = p.inlineView(cap = 5)
 
-        assertThat(view.doneGroups.single().entries).hasSize(9)
-        assertThat(view.loose.map { it.id }).containsExactly(live.id)
+        // The live work gets its full allowance despite 4 done entries existing — a done deliverable
+        // costs one collapsed row, not a share of the budget.
+        assertThat(view.loose.map { it.id }).containsExactlyElementsIn(live.map { it.id })
+        assertThat(view.doneGroups.single().entries).hasSize(4)
         assertThat(view.truncated).isFalse()
+    }
+
+    @Test
+    fun `an expanded done group is still capped so it cannot bypass the cap entirely`() {
+        // Without its own cap, opening one done deliverable would pour every entry onto Home — the wall
+        // of text the cap exists to prevent. The full list stays one tap away on the folder screen.
+        val p = projectOf(
+            (1..9).map { entry(deliverable = "Shipped") },
+            listOf(deliverable("Shipped", done = true)),
+        )
+        val view = p.inlineView(cap = 5)
+
+        assertThat(view.doneGroups.single().entries).hasSize(5)
+        assertThat(view.truncated).isTrue() // → "See all N"
     }
 
     @Test

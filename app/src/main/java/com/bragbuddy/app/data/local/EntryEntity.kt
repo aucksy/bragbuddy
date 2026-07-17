@@ -150,7 +150,7 @@ data class EntryEntity(
      * v0.34.0, prompt-first and eval-gated.
      *
      * Meaningful only alongside a real project — a deliverable lives inside one. Cleared when its
-     * deliverable is deleted ([EntryDao.clearDeliverableAnchor]), and followed on rename
+     * deliverable is deleted ([EntryDao.clearDeliverable]), and followed on rename
      * ([EntryDao.remapDeliverableScoped]) — the v0.31.0 anchor lessons, which cost two rounds to learn.
      */
     val anchorDeliverable: String? = null,
