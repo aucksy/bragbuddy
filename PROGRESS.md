@@ -134,8 +134,106 @@ current code — that is the context, not chat history.
 > **M3 (Play Store + Billing) moves to v0.32.0** (owner-confirmed 2026-07-16). Full detail in
 > `## Status: v0.31.0` below.
 >
-> **Exact next step: Phase M3 (v0.32.0) — Play Store + Billing + paywall/trial + metering.** Fresh chat
-> pointed at `CONTEXT.md`.
+> **⚠️ SUPERSEDED — see the ROADMAP RESHAPE below. M3 (Play Store + Billing) is DEFERRED to the very end.**
+
+---
+
+## ▶ ROADMAP RESHAPE — Transcript access + Deliverables (owner, 2026-07-17)
+
+> **M3 (Play Store + Billing + paywall/trial + metering) is DEFERRED to the VERY END** — the owner wants to
+> finish thorough on-device testing first. It keeps its scope; only its position moved. Everything below
+> comes first. **Do NOT start M3 until the owner says testing is done.**
+
+**Owner decisions (AskUserQuestion 2026-07-17 — do not re-litigate):**
+- **The new level is called "Deliverable"** — hierarchy becomes **Category → Project → Deliverable → entries**.
+  *(I flagged that "Deliverable" may not fit softer non-delivery threads e.g. "stakeholder management"; the
+  owner chose it knowingly. **Build the word as ONE display-label constant** — like `NO_PROJECT_LABEL` — so a
+  later rename is display-only and never a data migration.)*
+- **Filing = tap-in first, AI second.** Tapping into a deliverable and logging **pins** the entry there with
+  NO AI guess (reuse the proven `anchorProject` folder-tap mechanism). The AI only picks a deliverable when
+  the user captures from the generic "+", and a wrong pick is correctable with the v0.31.0 ⋮ retag.
+  *Rationale: mis-classification is the owner's #1 complaint; a 3rd level makes the guess HARDER, so the
+  deterministic path must be primary.*
+- **Deliverables have a lifecycle: Active / Done.** A Done deliverable reads in the summary as a completed
+  story with its outcome, and drops out of the log-into list. (No target date — considered, not chosen.)
+- **Sequence: v0.32.0 transcript access → v0.33.0 deliverables (structure, manual) → v0.34.0 AI filing +
+  per-deliverable summary → … → M3 last.**
+
+---
+
+### ▶ v0.32.0 — Original-transcript access (SMALL; no prompt change → **NO eval gate**)
+
+> **⭐ FINDING (verified in code 2026-07-17 — this shrank the phase from "major upgrade" to a small fix).**
+> The owner asked to "retain the transcriptions on device… so this will update our privacy policy". **All
+> three premises were already satisfied:**
+> 1. **Already retained, permanently.** `EntryEntity.rawTranscript` is written **before any AI step** and is
+>    never cleared — the "never lose an entry" invariant (`CONTEXT.md` §2).
+> 2. **Already viewable.** `EntryDetailSheet` (tap a card, not the ⋮) renders a **"WHAT YOU SAID"** block with
+>    the full transcript above the AI's cleaned bullet (`EntryDetailSheet.kt:207-214`).
+> 3. **NO privacy-policy change needed → do NOT bump `PrivacyPolicy.VERSION`** (a bump force-re-prompts every
+>    user). The policy's claims are about what is **SENT** to Groq/the relay ("stores nothing, logs no
+>    content") and about local-first storage — retaining local transcripts is already true and already
+>    disclosed. *(If any wording is added, it must NOT be material → still no VERSION bump.)*
+
+**So the actual work is two things:**
+1. **Discoverability (the owner's literal ask).** Add **"See original"** to the card ⋮ menu
+   (`ui/common/EntryBulletRow.kt::BulletMenu`, currently Edit text / Redo / Delete) → opens the existing
+   `EntryDetailSheet`. The transcript is already there; it was just behind a tap, which the owner never found.
+   Wire it on Home + the pillar/folder views (the same shared row).
+2. **⭐ THE REAL GAP — an edit DESTROYS the original transcript.** `EntryDetailSheet.editBaseline` seeds the
+   editor from the **BULLET** (`entry.bullet ?: entry.rawTranscript`, :111) and `EntryProcessor.replace()`
+   writes that edited text straight into `rawTranscript` (:109). So editing the AI's polished bullet
+   **permanently replaces the user's original spoken words with the bullet text** — exactly the "details I
+   may need months later" loss the owner fears, and it survives no backup either.
+   **Fix:** new `EntryEntity.originalTranscript: String?` (**Room v6→v7**, additive nullable, `MIGRATION_6_7`
+   mirroring `MIGRATION_5_6`) — captured **ONCE**, on the first mutation of `rawTranscript`, from the
+   *then-current* value; **never overwritten after**. Both mutation paths must set it: `replace()` (:109) and
+   `addImpact()`'s combine (:159-169, which APPENDS — not a loss, but it still changes the text).
+   `EntryDetailSheet` shows `originalTranscript ?: rawTranscript` under "WHAT YOU SAID" (+ a quiet
+   "edited since" hint when they differ). **`BackupCodec` MUST carry it** — v0.31.0's `anchorGoalArea` bug
+   taught this: an un-serialised column is silently dropped by a Drive restore.
+- Migration back-fills NULL = "never edited", which is exactly right for existing rows.
+- Rides the standing rituals: debug-build compile gate → adversarial review → tag → direct APK URL.
+
+---
+
+### ▶ v0.33.0 — Deliverables · structure + manual filing (no prompt change → **NO eval gate**)
+
+The container exists and the user drives it; the AI stays out. Ships fast, immediately testable, low risk.
+- **Data:** a deliverable belongs to a project. Either a new `DeliverableEntity(name, project, goalArea,
+  status, description)` or extend `ProjectEntity` with a parent — **decide by reading how `ProjectEntity`'s
+  `(name, goalArea)` unique index + the v0.19.0 rename-remap work first**; whichever is chosen, the
+  `(name, project, goalArea)` identity must be unique and renames must cascade like projects do.
+  `EntryEntity` gains `deliverable` + `anchorDeliverable` (**Room v7→v8**).
+- **Status Active/Done** on the deliverable; Done drops out of the log-into list but never hides its entries.
+- **UI:** a third level on Home + the pillar view (Category → Project → **Deliverable** → bullets); create /
+  rename / mark-Done; **"Add entry" on a deliverable → the capture launcher with the deliverable anchored**
+  (mirror `CaptureLauncher.openChooser` + the `anchorProject` plumbing exactly).
+- **Retag:** extend the v0.31.0 `RetagSheet` to a third picker level (category → project → deliverable),
+  and `EntryProcessor.recategorize` to anchor it. **Every anchor lesson from v0.31.0 applies:** anchor BOTH/ALL
+  axes, follow renames, clear on delete, carry in `BackupCodec`, and order the remap anchor-update BEFORE the
+  row update (its WHERE reads a column the other rewrites).
+- ⚠️ **Depth check:** Category → Project → Deliverable → entry is 4 levels on a phone. Watch the Home
+  document's readability; consider collapsing by default at the deliverable level.
+
+---
+
+### ▶ v0.34.0 — AI files into deliverables + per-deliverable summary (**EVAL-GATED** — the risky half)
+
+- **Categorizer:** `{{PROJECTS}}` / the framework block gain each project's **Active** deliverables; the model
+  picks one when unanchored. **Mirror EVERY prompt-shape change in `eval/run.mjs`** (v0.31.0's F4 drifted the
+  JS mirror and made the fix unmeasured) and add categorizer goldens WITH deliverables.
+- **Rollup:** `RollupItem.deliverable` → aggregate per deliverable so the model gets *"DELIVERABLE 'X' — 47
+  entries over 6 months"* instead of 47 loose bullets. **This is the real payoff:** today the arc-merge is the
+  model guessing from wording (prompt rule 1), which can't hold over hundreds of entries; a deliverable gives
+  it a deterministic anchor.
+- **Summary:** a nested level under the project folder + a PART B rule so each deliverable becomes ONE
+  outcome-led story (a Done one written as delivered). Schema addition must be **defaulted** (old cached
+  summaries must still decode — the v0.30.0 `competencies` lesson).
+- **Eval:** new goldens (a long-running deliverable; a Done one) + a gated check that a deliverable's entries
+  produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
+  ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
+  went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
 
 ---
 

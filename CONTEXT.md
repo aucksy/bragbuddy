@@ -283,8 +283,15 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   categorizer magic) → AI-2 (v0.27.0 summary + impact-coach) → M1 (v0.28.0 managed AI proxy) →
   **M2 (v0.29.0 first-session & polish)** → v0.29.1 hardening patch → **Summary phase (items 4+5)
   v0.30.0** → v0.30.1 bottom-bar fix → **v0.31.0 Summary-correction fix batch (F1–F4)** all SHIPPED.**
-  Exact next step: **Phase M3 (v0.32.0) — Play Store + Billing + paywall/trial + metering** (M3 moved
-  from v0.31.0, which the fix batch took). **v0.31.0 (fix batch):** a **⋮ retag on summary cards** that
+  **▶ ROADMAP RESHAPED 2026-07-17 (owner): M3 (Play Store + Billing + metering) is DEFERRED TO THE VERY END**
+  — the owner wants to finish thorough on-device testing first. **Exact next step: v0.32.0 —
+  original-transcript access** (small; NO eval gate; **NO privacy-policy VERSION bump** — the transcript is
+  ALREADY stored permanently as `EntryEntity.rawTranscript` and ALREADY shown as "WHAT YOU SAID" in
+  `EntryDetailSheet`, so the work is ⋮-menu discoverability **plus the real gap: an edit overwrites the
+  original transcript** → new `originalTranscript` column, Room v6→v7). Then **v0.33.0 Deliverables**
+  (Category → Project → **Deliverable** → entries; tap-in pins with no AI guess, AI guesses only from "+";
+  Active/Done; manual only, no eval gate) → **v0.34.0** AI files into deliverables + per-deliverable summary
+  (EVAL-GATED). Full spec + the owner's locked decisions: `PROGRESS.md` "▶ ROADMAP RESHAPE". **v0.31.0 (fix batch):** a **⋮ retag on summary cards** that
   corrects the RECORD via a client-side resolver (`AggHighlight.ids` + `SummaryResolver`, no prompt change);
   **derived Set-aside** (real dropped wins, Restore all); **EVAL-GATED** length-prompt fix (rule 1 was
   hardcoding "at most 5" so Detailed was inert); and the **"Outside project under Learning & Growth"**
