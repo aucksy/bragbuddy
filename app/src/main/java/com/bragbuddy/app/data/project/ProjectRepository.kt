@@ -64,11 +64,20 @@ class ProjectRepository @Inject constructor(
                 description = description?.trim()?.takeIf { it.isNotBlank() },
             ),
         )
-        // Only when the identity actually moved — a description-only edit must not churn the table.
-        // Runs AFTER the project update purely for readability; there's no ordering hazard here, since
-        // this reads the `deliverables` table and the line above writes `projects`.
-        if (!clean.equals(existing.name, ignoreCase = true) || !area.equals(existing.goalArea, ignoreCase = true)) {
-            deliverables.remapProject(existing.name, existing.goalArea, clean, area)
+        // Cascade on the EFFECT, not the intent — re-read rather than trusting `clean`/`area`.
+        // [ProjectDao.update] is `UPDATE OR IGNORE`, so a rename that collides with a sibling folder
+        // under the same goal area is silently skipped, and no caller validates that up front. Gating on
+        // the requested name would then move this project's deliverables to a project the user never
+        // touched (found in review, v0.33.0): rename "Alpha" → "Beta" where Beta exists, the folder stays
+        // "Alpha", but "Alpha"'s deliverables re-parent under Beta — leaving Alpha's entries tagged to a
+        // deliverable that is no longer there, and Beta owning one nobody created.
+        // Before this phase the IGNOREd update was a harmless no-op; it only desynchronises now that a
+        // second table hangs off the name.
+        val after = dao.getById(id) ?: return
+        if (!after.name.equals(existing.name, ignoreCase = true) ||
+            !after.goalArea.equals(existing.goalArea, ignoreCase = true)
+        ) {
+            deliverables.remapProject(existing.name, existing.goalArea, after.name, after.goalArea)
         }
     }
 

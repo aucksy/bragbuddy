@@ -12,7 +12,12 @@ import kotlinx.coroutines.flow.Flow
  *
  * Mirrors [ProjectDao] deliberately, including its conflict strategy: IGNORE on insert/update so a
  * duplicate name (or a rename that would collide with a sibling) is a silent no-op rather than a crash.
- * The UI validates uniqueness up front; these are the safety net.
+ *
+ * ⚠️ **A silent no-op is only safe if callers check the EFFECT.** `UPDATE OR IGNORE` reports nothing —
+ * no exception, no row count — so code that assumes the requested name landed and then cascades on it
+ * will corrupt data (this is exactly what a v0.33.0 review caught: entries remapped into a deliverable
+ * the rename never reached). `DeliverableRepository.rename` therefore pre-checks the collision AND
+ * re-reads the row; the name dialogs additionally block a duplicate before it gets here.
  *
  * **Every cascade query here is scoped by BOTH parents** (`project` AND `goalArea`). A deliverable's
  * identity is `(name, project, goalArea)` — scoping by project alone would touch a same-named project's

@@ -365,10 +365,19 @@ fun HomeScreen(
         )
     }
 
+    // The sibling names a new/renamed deliverable must not collide with — scoped by BOTH parents,
+    // because that triple is its identity (the same name under another project is a different thing).
+    fun takenNames(t: DeliverableTarget) = deliverables
+        .filter {
+            it.project.equals(t.project, ignoreCase = true) && it.goalArea.equals(t.goalArea, ignoreCase = true)
+        }
+        .map { it.name }
+
     createDeliverableFor?.let { target ->
         NameDeliverableDialog(
             title = "New ${DELIVERABLE_LABEL.lowercase()} in ${target.project}",
             initial = "",
+            taken = takenNames(target),
             palette = palette,
             onConfirm = {
                 viewModel.createDeliverable(it, target.project, target.goalArea)
@@ -381,6 +390,7 @@ fun HomeScreen(
         NameDeliverableDialog(
             title = "Rename ${DELIVERABLE_LABEL.lowercase()}",
             initial = target.name,
+            taken = takenNames(target),
             palette = palette,
             onConfirm = {
                 viewModel.renameDeliverableByName(target.name, target.project, target.goalArea, it)
@@ -1275,35 +1285,57 @@ private fun CreateFolderDialog(palette: BragPalette, onConfirm: (String) -> Unit
     )
 }
 
-/** Create / rename a deliverable — one dialog for both, since they ask the same single question.
- *  Mirrors [CreateFolderDialog], the sibling level's dialog, so the two levels read the same. */
+/**
+ * Create / rename a deliverable — one dialog for both, since they ask the same single question.
+ * Mirrors [CreateFolderDialog], the sibling level's dialog, so the two levels read the same.
+ *
+ * [taken] is the sibling names under the same (project, category). A duplicate is blocked HERE and said
+ * out loud, because the layer below can only fail silently: the DAO is `UPDATE OR IGNORE`, so a
+ * colliding rename is a no-op with nothing to report. The repository refuses it safely either way — but
+ * a Save button that appears to work and changes nothing is its own bug.
+ */
 @Composable
 private fun NameDeliverableDialog(
     title: String,
     initial: String,
+    taken: List<String>,
     palette: BragPalette,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by remember { mutableStateOf(initial) }
+    val trimmed = name.trim()
+    val unchanged = trimmed.equals(initial.trim(), ignoreCase = true)
+    val duplicate = !unchanged && taken.any { it.equals(trimmed, ignoreCase = true) }
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(
                 onClick = { onConfirm(name) },
-                enabled = name.isNotBlank() && !name.trim().equals(initial.trim(), ignoreCase = true),
+                enabled = trimmed.isNotEmpty() && !unchanged && !duplicate,
             ) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
         title = { Text(title, color = palette.text1) },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                singleLine = true,
-                placeholder = { Text("e.g. Merchant onboarding", color = palette.text3) },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    isError = duplicate,
+                    placeholder = { Text("e.g. Merchant onboarding", color = palette.text3) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (duplicate) {
+                    Spacer(Modifier.height(Spacing.s2))
+                    Text(
+                        "There's already one called “$trimmed” here.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
         },
         containerColor = palette.surface,
     )

@@ -108,6 +108,10 @@ class SettingsViewModel @Inject constructor(
         // Preserve the folder's existing detail — the Settings dialog doesn't edit it, and passing null
         // silently wiped it before. Only the name / goal area change here.
         projectRepository.update(id, name, goalArea, description = existing?.description)
+        // ⚠️ ORDER IS LOAD-BEARING (v0.33.0): the update above is AWAITED, and it is what moves this
+        // folder's deliverables to their new parent. The remap offered below resolves each entry's
+        // deliverable tag by asking whether it EXISTS at the destination — so a remap that ran before
+        // the move would find nothing and wipe every tag. See EntryDao.clearDeliverablesNotUnder.
         // A rename of an existing folder with filed records → offer the 3-option remap (Phase B2b).
         // The Settings dialog can change the folder's goal area too, so match on the OLD area
         // (existing.goalArea) and carry to the NEW area (goalArea).

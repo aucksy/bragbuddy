@@ -430,11 +430,21 @@ fun PillarDetailScreen(
             onDismiss = { showAddProject = false },
         )
     }
+    // Sibling names a new/renamed deliverable must not collide with. Scoped by BOTH parents — this
+    // screen IS one category, so its own name supplies the area (see the VM's currentArea()).
+    fun takenNames(project: String) = deliverables
+        .filter {
+            it.project.equals(project, ignoreCase = true) &&
+                it.goalArea.equals(if (detail.singleFolder) detail.blurb else detail.name, ignoreCase = true)
+        }
+        .map { it.name }
+
     createDeliverableFor?.let { target ->
         AddProjectDialog(
             palette = palette,
             title = "New ${DELIVERABLE_LABEL.lowercase()} in ${target.project}",
             placeholder = "e.g. Merchant onboarding",
+            taken = takenNames(target.project),
             onConfirm = { viewModel.createDeliverable(it, target.project); createDeliverableFor = null },
             onDismiss = { createDeliverableFor = null },
         )
@@ -446,6 +456,7 @@ fun PillarDetailScreen(
             placeholder = "e.g. Merchant onboarding",
             initial = target.name,
             confirmLabel = "Save",
+            taken = takenNames(target.project),
             onConfirm = {
                 viewModel.renameDeliverableByName(target.name, target.project, it)
                 renameDeliverable = null
@@ -620,8 +631,14 @@ private fun AddProjectDialog(
     placeholder: String = "e.g. Raven Migration",
     initial: String = "",
     confirmLabel: String = "Create",
+    /** Sibling names this must not collide with. A duplicate is blocked and said out loud here,
+     *  because the DAO below is `UPDATE OR IGNORE` and can only fail silently. */
+    taken: List<String> = emptyList(),
 ) {
     var name by remember { mutableStateOf(initial) }
+    val trimmed = name.trim()
+    val unchanged = trimmed.equals(initial.trim(), ignoreCase = true)
+    val duplicate = !unchanged && taken.any { it.equals(trimmed, ignoreCase = true) }
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -629,19 +646,30 @@ private fun AddProjectDialog(
                 onClick = { onConfirm(name) },
                 // A rename to the same name is a no-op the VM would drop anyway — disabling it here
                 // means the button never looks like it did something it didn't.
-                enabled = name.isNotBlank() && !name.trim().equals(initial.trim(), ignoreCase = true),
+                enabled = trimmed.isNotEmpty() && !unchanged && !duplicate,
             ) { Text(confirmLabel) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
         title = { Text(title, color = palette.text1) },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                singleLine = true,
-                placeholder = { Text(placeholder, color = palette.text3) },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    isError = duplicate,
+                    placeholder = { Text(placeholder, color = palette.text3) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (duplicate) {
+                    Spacer(Modifier.height(Spacing.s2))
+                    Text(
+                        "There's already one called “$trimmed” here.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
         },
         containerColor = palette.surface,
     )

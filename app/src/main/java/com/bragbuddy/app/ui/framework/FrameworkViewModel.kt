@@ -148,6 +148,11 @@ class FrameworkViewModel @Inject constructor(
             }.getOrDefault(id ?: 0L)
             onSaved(newId)
             val prev = previousName?.trim()
+            // ⚠️ ORDER IS LOAD-BEARING (v0.33.0): `projects.update` above is AWAITED before the remap is
+            // offered below, and it is what moves this project's deliverables to their new parent. The
+            // remap's `clearDeliverablesNotUnder` then asks whether each tagged deliverable EXISTS at the
+            // destination — so if the offer ever raced ahead of the update, a plain "carry" would find
+            // nothing there and wipe every entry's deliverable tag.
             // A project row's category (`area`) doesn't change here, so old area == new area == area.
             if (id != null && !prev.isNullOrBlank() && !prev.equals(rn, ignoreCase = true)) {
                 val count = runCatching { entries.countProjectReferences(prev, area) }.getOrDefault(0)
