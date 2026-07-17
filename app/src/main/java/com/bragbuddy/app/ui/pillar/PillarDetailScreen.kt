@@ -296,33 +296,49 @@ fun PillarDetailScreen(
                     AddRow("Add a note", palette) { capture(null) }
                 }
             } else if (detail.singleFolder) {
-                // Scoped to one folder ("See more" from Home): entries directly, no folder headers.
+                // Scoped to one folder ("See more" from Home): no folder header — but the deliverable
+                // grouping DOES render here. This screen exists precisely because the project outgrew
+                // Home's inline cap, so it is the likeliest place to have deliverables at all; a flat
+                // list here would drop the structure exactly where it matters most.
                 val proj = detail.projects.firstOrNull()
                 val entries = proj?.entries.orEmpty()
-                if (entries.isEmpty()) {
+                if (entries.isEmpty() && proj?.deliverables.isNullOrEmpty()) {
                     item(key = "folder-empty") { PillarEmpty("No entries here yet.", palette) }
-                } else {
+                } else if (proj != null) {
                     item(key = "folder-entries") {
                         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s3)) {
-                            entries.forEach { entry ->
-                                EntryBulletRow(
-                                    entry = entry,
-                                    hue = hue.solid,
-                                    showFromProject = false,
-                                    selectionMode = selectionMode,
-                                    isSelected = selected.contains(entry.id),
-                                    onToggleSelect = { toggle(entry.id) },
-                                    onLongPress = { enterSelection(entry.id) },
-                                    onEdit = { editTarget = entry },
-                                    onRedo = { redo(entry) },
-                                    onDelete = { deleteTarget = entry },
-                                    onTap = { detailEntry = entry },
-                                )
-                            }
+                            ProjectBody(
+                                project = proj,
+                                hue = hue.solid,
+                                palette = palette,
+                                selectionMode = selectionMode,
+                                isSelected = { selected.contains(it) },
+                                isDeliverableExpanded = { expandedDeliverables.contains("${proj.name}::$it") },
+                                onToggleDeliverable = { toggleDeliverable("${proj.name}::$it") },
+                                onToggleSelect = { toggle(it) },
+                                onEnterSelection = { enterSelection(it) },
+                                onEdit = { editTarget = it },
+                                onRedo = { redo(it) },
+                                onDeleteEntry = { deleteTarget = it },
+                                onTapEntry = { detailEntry = it },
+                                onAddEntryTo = { d -> captureInto(proj.name, d) },
+                                onRenameDeliverable = { d -> renameDeliverable = DeliverableTarget(proj.name, d) },
+                                onSetDeliverableDone = { d, done ->
+                                    viewModel.setDeliverableDoneByName(d, proj.name, done)
+                                },
+                                onDeleteDeliverable = { d -> deleteDeliverable = DeliverableTarget(proj.name, d) },
+                            )
                         }
                     }
                 }
                 if (!detail.synthetic) {
+                    item(key = "add-folder-deliverable") {
+                        if (proj?.isOutside != true) {
+                            AddRow("Add ${DELIVERABLE_LABEL.lowercase()}", palette) {
+                                createDeliverableFor = DeliverableTarget(detail.name, "")
+                            }
+                        }
+                    }
                     item(key = "add-folder-entry") {
                         val outside = proj?.isOutside == true
                         AddRow(if (outside) "Add a note" else "Add entry to ${detail.name}", palette) {
@@ -341,89 +357,31 @@ fun PillarDetailScreen(
                                     Modifier.padding(top = Spacing.s2),
                                     verticalArrangement = Arrangement.spacedBy(Spacing.s3),
                                 ) {
-                                    // The deliverable level, rendered exactly as on Home — same order
-                                    // (active groups → loose wins → done, collapsed), same shared header.
-                                    // Uncapped here: this IS the deep view, so nothing is held back.
-                                    project.deliverables.filterNot { it.done }.forEach { g ->
-                                        DeliverableHeader(
-                                            group = g,
-                                            hue = hue.solid,
-                                            palette = palette,
-                                            expanded = true,
-                                            collapsible = false,
-                                            onToggle = {},
-                                            onAddEntry = { captureInto(project.name, g.name) },
-                                            onRename = { renameDeliverable = DeliverableTarget(project.name, g.name) },
-                                            onToggleDone = { viewModel.setDeliverableDoneByName(g.name, project.name, true) },
-                                            onDelete = { deleteDeliverable = DeliverableTarget(project.name, g.name) },
-                                        )
-                                        g.entries.forEach { entry ->
-                                            EntryBulletRow(
-                                                entry = entry,
-                                                hue = hue.solid,
-                                                showFromProject = false,
-                                                selectionMode = selectionMode,
-                                                isSelected = selected.contains(entry.id),
-                                                indent = true,
-                                                onToggleSelect = { toggle(entry.id) },
-                                                onLongPress = { enterSelection(entry.id) },
-                                                onEdit = { editTarget = entry },
-                                                onRedo = { redo(entry) },
-                                                onDelete = { deleteTarget = entry },
-                                                onTap = { detailEntry = entry },
-                                            )
-                                        }
-                                    }
-                                    project.loose.forEach { entry ->
-                                        EntryBulletRow(
-                                            entry = entry,
-                                            hue = hue.solid,
-                                            showFromProject = false,
-                                            selectionMode = selectionMode,
-                                            isSelected = selected.contains(entry.id),
-                                            onToggleSelect = { toggle(entry.id) },
-                                            onLongPress = { enterSelection(entry.id) },
-                                            onEdit = { editTarget = entry },
-                                            onRedo = { redo(entry) },
-                                            onDelete = { deleteTarget = entry },
-                                            onTap = { detailEntry = entry },
-                                        )
-                                    }
-                                    project.deliverables.filter { it.done }.forEach { g ->
-                                        // Selection mode force-opens everything, same as the project
-                                        // level above — a hidden win can't be bulk-selected.
-                                        val open = selectionMode || expandedDeliverables.contains("${project.name}::${g.name}")
-                                        DeliverableHeader(
-                                            group = g,
-                                            hue = hue.solid,
-                                            palette = palette,
-                                            expanded = open,
-                                            collapsible = true,
-                                            onToggle = { toggleDeliverable("${project.name}::${g.name}") },
-                                            onAddEntry = { captureInto(project.name, g.name) },
-                                            onRename = { renameDeliverable = DeliverableTarget(project.name, g.name) },
-                                            onToggleDone = { viewModel.setDeliverableDoneByName(g.name, project.name, false) },
-                                            onDelete = { deleteDeliverable = DeliverableTarget(project.name, g.name) },
-                                        )
-                                        if (open) {
-                                            g.entries.forEach { entry ->
-                                                EntryBulletRow(
-                                                    entry = entry,
-                                                    hue = hue.solid,
-                                                    showFromProject = false,
-                                                    selectionMode = selectionMode,
-                                                    isSelected = selected.contains(entry.id),
-                                                    indent = true,
-                                                    onToggleSelect = { toggle(entry.id) },
-                                                    onLongPress = { enterSelection(entry.id) },
-                                                    onEdit = { editTarget = entry },
-                                                    onRedo = { redo(entry) },
-                                                    onDelete = { deleteTarget = entry },
-                                                    onTap = { detailEntry = entry },
-                                                )
-                                            }
-                                        }
-                                    }
+                                    ProjectBody(
+                                        project = project,
+                                        hue = hue.solid,
+                                        palette = palette,
+                                        selectionMode = selectionMode,
+                                        isSelected = { selected.contains(it) },
+                                        isDeliverableExpanded = { expandedDeliverables.contains("${project.name}::$it") },
+                                        onToggleDeliverable = { toggleDeliverable("${project.name}::$it") },
+                                        onToggleSelect = { toggle(it) },
+                                        onEnterSelection = { enterSelection(it) },
+                                        onEdit = { editTarget = it },
+                                        onRedo = { redo(it) },
+                                        onDeleteEntry = { deleteTarget = it },
+                                        onTapEntry = { detailEntry = it },
+                                        onAddEntryTo = { d -> captureInto(project.name, d) },
+                                        onRenameDeliverable = { d ->
+                                            renameDeliverable = DeliverableTarget(project.name, d)
+                                        },
+                                        onSetDeliverableDone = { d, done ->
+                                            viewModel.setDeliverableDoneByName(d, project.name, done)
+                                        },
+                                        onDeleteDeliverable = { d ->
+                                            deleteDeliverable = DeliverableTarget(project.name, d)
+                                        },
+                                    )
                                     if (!project.isOutside) {
                                         AddRow("Add entry to ${project.name}", palette) { capture(project.name) }
                                         AddRow("Add ${DELIVERABLE_LABEL.lowercase()}", palette) {
@@ -692,3 +650,85 @@ private fun AddProjectDialog(
 /** A deliverable this screen is acting on. The goal area comes from the screen itself (its pillar), so
  *  only the project + name need carrying. [name] is "" for a pending create. */
 private data class DeliverableTarget(val project: String, val name: String)
+
+/**
+ * One project's entries with the **deliverable** level folded in (v0.33.0), in the order Home uses:
+ * active groups (heading + wins, no extra tap) → loose wins (no heading) → done groups, collapsed.
+ *
+ * Shared by this screen's two renderings — the pillar view's project cards and the single-folder
+ * ("See all") screen — because they show the same thing and would otherwise drift. Uncapped: this is
+ * the deep view, so nothing is held back.
+ */
+@Composable
+private fun ProjectBody(
+    project: ProjectBullets,
+    hue: Color,
+    palette: BragPalette,
+    selectionMode: Boolean,
+    isSelected: (Long) -> Boolean,
+    isDeliverableExpanded: (String) -> Boolean,
+    onToggleDeliverable: (String) -> Unit,
+    onToggleSelect: (Long) -> Unit,
+    onEnterSelection: (Long) -> Unit,
+    onEdit: (EntryEntity) -> Unit,
+    onRedo: (EntryEntity) -> Unit,
+    onDeleteEntry: (EntryEntity) -> Unit,
+    onTapEntry: (EntryEntity) -> Unit,
+    onAddEntryTo: (String) -> Unit,
+    onRenameDeliverable: (String) -> Unit,
+    onSetDeliverableDone: (String, Boolean) -> Unit,
+    onDeleteDeliverable: (String) -> Unit,
+) {
+    @Composable
+    fun bullet(entry: EntryEntity, indent: Boolean) {
+        EntryBulletRow(
+            entry = entry,
+            hue = hue,
+            showFromProject = false,
+            selectionMode = selectionMode,
+            isSelected = isSelected(entry.id),
+            indent = indent,
+            onToggleSelect = { onToggleSelect(entry.id) },
+            onLongPress = { onEnterSelection(entry.id) },
+            onEdit = { onEdit(entry) },
+            onRedo = { onRedo(entry) },
+            onDelete = { onDeleteEntry(entry) },
+            onTap = { onTapEntry(entry) },
+        )
+    }
+
+    project.activeDeliverables.forEach { g ->
+        DeliverableHeader(
+            group = g,
+            hue = hue,
+            palette = palette,
+            expanded = true,
+            collapsible = false,
+            onToggle = {},
+            onAddEntry = { onAddEntryTo(g.name) },
+            onRename = { onRenameDeliverable(g.name) },
+            onToggleDone = { onSetDeliverableDone(g.name, true) },
+            onDelete = { onDeleteDeliverable(g.name) },
+        )
+        g.entries.forEach { bullet(it, indent = true) }
+    }
+    project.loose.forEach { bullet(it, indent = false) }
+    project.doneDeliverables.forEach { g ->
+        // Selection mode force-opens everything, exactly as the project level does — a hidden win
+        // can't be bulk-selected, and a done deliverable's wins are still part of the record.
+        val open = selectionMode || isDeliverableExpanded(g.name)
+        DeliverableHeader(
+            group = g,
+            hue = hue,
+            palette = palette,
+            expanded = open,
+            collapsible = true,
+            onToggle = { onToggleDeliverable(g.name) },
+            onAddEntry = { onAddEntryTo(g.name) },
+            onRename = { onRenameDeliverable(g.name) },
+            onToggleDone = { onSetDeliverableDone(g.name, false) },
+            onDelete = { onDeleteDeliverable(g.name) },
+        )
+        if (open) g.entries.forEach { bullet(it, indent = true) }
+    }
+}

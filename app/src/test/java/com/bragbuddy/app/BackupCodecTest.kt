@@ -4,6 +4,7 @@ import com.bragbuddy.app.data.backup.BackupCodec
 import com.bragbuddy.app.data.backup.BackupSettings
 import com.bragbuddy.app.data.backup.BackupSnapshot
 import com.bragbuddy.app.data.framework.Framework
+import com.bragbuddy.app.data.local.DeliverableEntity
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.local.EntryStatus
@@ -22,7 +23,8 @@ class BackupCodecTest {
                 id = 7, createdAt = 1000, occurredAt = 900, source = EntrySource.VOICE,
                 status = EntryStatus.PROCESSED, rawTranscript = "shipped the thing",
                 originalTranscript = "shipped the thing on tuesday with raj",
-                anchorProject = "Atlas", bullet = "Shipped Atlas v2.", project = "Atlas",
+                anchorProject = "Atlas", anchorDeliverable = "Checkout rebuild",
+                bullet = "Shipped Atlas v2.", project = "Atlas", deliverable = "Checkout rebuild",
                 goalCategory = "Performance Goals", demonstrates = listOf("Leadership & Behaviours"),
                 isExtra = true, impact = 0.8, routine = false, routineType = null,
                 metric = "drop-off down 18%", confidence = 0.95, suggestedProjects = emptyList(),
@@ -42,6 +44,12 @@ class BackupCodecTest {
             defaultCaptureMethod = DefaultCaptureMethod.IMAGE,
         ),
         summariesRaw = """{"YEAR_END::ONE_PAGE":{"period":"YEAR_END"}}""",
+        deliverables = listOf(
+            DeliverableEntity(
+                id = 11, name = "Checkout rebuild", project = "Atlas", goalArea = "Performance Goals",
+                done = true, description = "the v2 flow", createdAt = 6, sortOrder = 2,
+            ),
+        ),
     )
 
     @Test
@@ -63,10 +71,16 @@ class BackupCodecTest {
         // dropped on restore (the v0.31.0 anchorGoalArea bug) — here that would mean the restore itself
         // destroys what the user said, which is the exact loss this column exists to prevent.
         assertThat(e.originalTranscript).isEqualTo("shipped the thing on tuesday with raj")
+        // Same rule for the third placement axis (v0.33.0): dropping the tag would un-file every entry
+        // from its deliverable on restore, and dropping the anchor would let the AI silently re-guess a
+        // placement the user pinned by hand.
+        assertThat(e.deliverable).isEqualTo("Checkout rebuild")
+        assertThat(e.anchorDeliverable).isEqualTo("Checkout rebuild")
 
         val e2 = decoded.entries.first { it.id == 8L }
         assertThat(e2.occurredAt).isNull()
         assertThat(e2.originalTranscript).isNull() // never edited
+        assertThat(e2.deliverable).isNull() // not part of one — the ordinary case
         assertThat(e2.impact).isNull()
         assertThat(e2.suggestedProjects).containsExactly("Atlas", "Raven")
 
@@ -83,6 +97,33 @@ class BackupCodecTest {
         assertThat(decoded.settings.reviewYearStartMonth).isEqualTo(4)
 
         assertThat(decoded.summariesRaw).contains("YEAR_END::ONE_PAGE")
+
+        assertThat(decoded.deliverables).hasSize(1)
+        val d = decoded.deliverables.first()
+        assertThat(d.id).isEqualTo(11)
+        assertThat(d.name).isEqualTo("Checkout rebuild")
+        assertThat(d.project).isEqualTo("Atlas")
+        assertThat(d.goalArea).isEqualTo("Performance Goals")
+        assertThat(d.done).isTrue()
+        assertThat(d.description).isEqualTo("the v2 flow")
+        assertThat(d.sortOrder).isEqualTo(2)
+    }
+
+    @Test
+    fun `a pre-v0_33 backup with no deliverables key still restores`() {
+        // It is still a valid BragBuddy backup — it just had none. Rejecting it, or failing on the
+        // missing key, would make an older backup unrestorable for no reason.
+        val json = BackupCodec.encode(snapshot).replace("\"deliverables\"", "\"ignoredLegacyKey\"")
+        val decoded = BackupCodec.decode(json)!!
+        assertThat(decoded.deliverables).isEmpty()
+        assertThat(decoded.entries).hasSize(2) // the rest of the restore is unaffected
+    }
+
+    @Test
+    fun `a deliverable with no parents is dropped rather than restored unreachable`() {
+        val json = BackupCodec.encode(snapshot).replace("\"project\":\"Atlas\",\"goalArea\"", "\"goalArea\"")
+        val decoded = BackupCodec.decode(json)!!
+        assertThat(decoded.deliverables).isEmpty()
     }
 
     @Test
