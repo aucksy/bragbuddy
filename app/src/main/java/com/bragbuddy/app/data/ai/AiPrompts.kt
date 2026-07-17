@@ -41,33 +41,43 @@ WHAT TO DO
    clearly fits exactly one listed project, use that project. Never invent a
    project; if it could fit more than one, prefer "Inbox" and fill
    "suggestedProjects" with the 1-2 best matches.
-5. "goalCategory": the goal area this counts toward. If it belongs to a known
+5. "deliverable": a project may be split into named deliverables — one specific
+   piece of work inside it, listed indented under that project in CONTEXT. If the
+   project you chose lists deliverables and this work clearly belongs to exactly
+   ONE of them, use that deliverable's exact name, matching a loose mention
+   against its name AND its description the same way you do for projects. OMIT the
+   field otherwise: when that project lists no deliverables, when the work spans
+   the project as a whole, or when two could fit. An entry left without a
+   deliverable is easy to place later; a wrongly-placed one is not. Only ever use
+   a deliverable listed under the project you chose FOR THIS ENTRY — never invent
+   one, and never borrow one listed under a different project.
+6. "goalCategory": the goal area this counts toward. If it belongs to a known
    project, use that project's goal area. For Outside-project work pick the
    best-fitting goal area. If unsure, "Inbox".
-6. "demonstrates": list the behaviours/competencies from the framework this work
+7. "demonstrates": list the behaviours/competencies from the framework this work
    GENUINELY evidences, judged against each behaviour's description (this stays
    your decision even when the project is anchored). Tag a behaviour only when the
    work clearly shows it — never inflate. Empty list if none.
-7. "isExtra": true only if clearly beyond this person's normal duties FOR THEIR
+8. "isExtra": true only if clearly beyond this person's normal duties FOR THEIR
    ROLE (mentoring, helping another team, an initiative they started, fixing
-   something not theirs). A core deliverable of their role is NOT extra. Else false.
-8. "impact": how appraisal-worthy this is, anchored to these bands:
+   something not theirs). Core work of their own role is NOT extra. Else false.
+9. "impact": how appraisal-worthy this is, anchored to these bands:
    0.2 = routine task done well · 0.4 = useful contribution, limited reach ·
-   0.6 = solid deliverable milestone · 0.75 = shipped outcome with a visible
+   0.6 = solid project milestone · 0.75 = shipped outcome with a visible
    result or metric · 0.9+ = major outcome (metric moved, cross-team or
    leadership visibility). Most everyday work is 0.3-0.6; reserve 0.8+ for
    genuinely standout work. Weigh outcome, scale, difficulty, visibility, goal
    alignment, and extra/leadership work. Provisional; the summary step re-judges.
-9. "routine": true if this is repetitive/business-as-usual work better counted in
-   bulk than listed on its own (e.g. one of many support tickets). When true, add
-   "routineType": if one of the user's existing routine labels in CONTEXT fits,
-   reuse that EXACT label; only coin a new short label for a genuinely new kind of
-   routine work. Notable one-offs are routine=false.
-10. Optional, only when explicitly stated: "metric" (a number/result the user
+10. "routine": true if this is repetitive/business-as-usual work better counted in
+    bulk than listed on its own (e.g. one of many support tickets). When true, add
+    "routineType": if one of the user's existing routine labels in CONTEXT fits,
+    reuse that EXACT label; only coin a new short label for a genuinely new kind of
+    routine work. Notable one-offs are routine=false.
+11. Optional, only when explicitly stated: "metric" (a number/result the user
     mentioned) and "dateMentioned" (ISO date) — set dateMentioned ONLY for an
     explicit date or an unambiguous relative day ("yesterday", "last Friday",
     computed from the date in the MESSAGE); if in doubt, omit it.
-11. "confidence", anchored: 0.9+ = the transcript names a listed project, or the
+12. "confidence", anchored: 0.9+ = the transcript names a listed project, or the
     anchor fixes it · 0.7-0.8 = a loose mention that clearly fits one project, or
     a solid goal-area fit for Outside-project work · below 0.6 = you are not
     sure — use "Inbox" placement instead of guessing.
@@ -84,6 +94,7 @@ OUTPUT
     {
       "bullet": "string",
       "project": "exact project name | Outside-project | Inbox",
+      "deliverable": "exact deliverable name (optional - omit if none)",
       "goalCategory": "exact goal-area name | Inbox",
       "demonstrates": ["behaviour name"],
       "isExtra": false,
@@ -102,20 +113,25 @@ If there is no usable work contribution, return exactly: { "entries": [] }
 EXAMPLES (illustrative setup — Role: Product Owner. GOAL AREAS = Performance
 Goals. BEHAVIOURS = Leadership & Behaviours: ownership, collaboration, courageous
 decisions. Projects = Raven Migration [Performance Goals] — servicing-comms
-migration across markets; SharePoint Request System [Performance Goals] —
-access-request tooling. Existing routine labels: "access requests".)
+migration across markets, with deliverables "Market rollout" (taking each market
+live) and "Defect triage"; SharePoint Request System [Performance Goals] —
+access-request tooling, no deliverables. Existing routine labels: "access
+requests".)
 
-Example 1 — notable project work, loose project mention:
+Example 1 — notable project work, loose project mention, one deliverable clearly fits:
 Transcript: "Finished testing the raven thing for three more markets and signed
 them off."
 { "entries": [
   { "bullet": "Completed and signed off Raven Migration testing for three additional markets.",
-    "project": "Raven Migration", "goalCategory": "Performance Goals",
+    "project": "Raven Migration", "deliverable": "Market rollout",
+    "goalCategory": "Performance Goals",
     "demonstrates": [], "isExtra": false, "impact": 0.7, "routine": false,
     "confidence": 0.85 }
 ] }
 
-Example 2 — two items; one routine (existing label reused), one extra + leadership:
+Example 2 — two items; one routine (existing label reused, project has no
+deliverables), one extra + leadership spanning the whole project (deliverable omitted
+even though that project has some):
 Transcript: "Cleared about a dozen SharePoint access requests. Also ran a
 cross-team session to unblock three teams stuck on the migration, even though it
 wasn't my job."
@@ -162,9 +178,11 @@ CONTEXT (the user's own setup — changes rarely)
   BEHAVIOURS/COMPETENCIES = the "how" (tag work that genuinely demonstrates
   these, judged by their descriptions). Optional DEVELOPMENT areas. If this
   framework is empty, use only project / "Outside-project" / "Inbox".
-- The user's current projects (each tagged with the goal area it rolls up to):
+- The user's current projects (each tagged with the goal area it rolls up to), with
+  that project's deliverables listed indented beneath it:
 {{PROJECTS}}
-  If empty, treat all work as "Outside-project" or "Inbox".
+  If empty, treat all work as "Outside-project" or "Inbox". A project with no
+  indented lines has no deliverables — omit "deliverable" for its work.
 - The user's existing routine-work labels (reuse when one fits):
 {{ROUTINE_TYPES}}"""
 
@@ -292,21 +310,36 @@ WHAT TO DO
    Never list the same accomplishment twice: if several highlights describe the SAME
    work (they may read near-identically or be marked "(logged N×)"), output ONE bullet
    with the strongest phrasing and set its "count". A sequence of PROGRESS updates on
-   one deliverable ("started the X redesign" then "shipped X, cut drop-off 18%") is a
+   one piece of work ("started the X redesign" then "shipped X, cut drop-off 18%") is a
    single arc — combine into one outcome-led bullet, not repeated lines. This is about
    never repeating ONE piece of work; it is not a reason to leave out genuinely
    distinct achievements.
-2. Copy EVERY "Routine tallies" line from the rollup into "rolledUp" (one object each):
+2. DELIVERABLES are the user's OWN grouping of their work — a named thread inside a
+   project. Each goal area's rollup lists its deliverables with how many entries each
+   holds and whether it is DONE, and every highlight belonging to one is tagged
+   "(deliverable: X)". Highlights sharing the SAME deliverable are ONE thread of work:
+   write them as exactly ONE achievement telling that thread's whole story — what it
+   was, what was done across the period, where it landed — and set that achievement's
+   "deliverable" to the deliverable's exact name. This is the reliable form of rule 1's
+   arc merge: wherever a deliverable tag exists, trust it over your own reading of the
+   wording. Write a DONE deliverable as finished, leading with its outcome; write an
+   active one as in progress, saying where it stands — never call it delivered. Leave
+   its "count" at 1: a deliverable's entries are one thread of work, not the same
+   accomplishment logged twice. Never merge two different deliverables into one
+   achievement, and never invent a deliverable the rollup didn't name. Highlights with
+   no "(deliverable: ...)" tag are loose work — rule 1 governs them exactly as before,
+   and their "deliverable" is null.
+3. Copy EVERY "Routine tallies" line from the rollup into "rolledUp" (one object each):
    the label EXACTLY as the rollup names it (never reworded or re-pluralised), the same
    count, plus any metric. This is REQUIRED even for a brief or tight summary — routine
    tallies are compact single lines, are NOT achievements, do not count against the
    achievement cap, and are never dropped for length. They never appear as achievements.
-3. Every "Pinned item" MUST appear as an achievement under the best-fitting goal
+4. Every "Pinned item" MUST appear as an achievement under the best-fitting goal
    area — ADD it even when it is NOT among that area's rollup highlights, keeping its
    wording and key terms (project names, IDs, certifications, compliance standards)
    verbatim. Include each pinned item exactly ONCE, in its strongest phrasing; never
    drop a pinned item to fit the cap (drop an unpinned achievement instead).
-4. For each BEHAVIOUR/COMPETENCY category, give concrete evidence of it. If that
+5. For each BEHAVIOUR/COMPETENCY category, give concrete evidence of it. If that
    category's framework description NAMES distinct competencies (a list of leadership
    behaviours, values or pillars), keep the category's OWN name as the single header
    and GROUP the evidence under each named competency in "competencies" (each: the
@@ -316,22 +349,22 @@ WHAT TO DO
    goes in that category's top-level "evidence". If the description names NO distinct
    competencies, leave "competencies" empty and put the 1-3 bullets in "evidence".
    Omit a category with no genuine evidence at all.
-5. Items listed under a DEVELOPMENT AREA belong in "development", never in
+6. Items listed under a DEVELOPMENT AREA belong in "development", never in
    "goalAreas". Fill "development" only if the framework has such an area and there
    is real material.
-6. Write every line professional, past-tense and outcome-led, with enough substance to
+7. Write every line professional, past-tense and outcome-led, with enough substance to
    stand on its own to a manager who wasn't there: name the work, what was done, and
    the result. Don't pad, and never invent results or numbers not in the rollup. When a
    selected achievement carries a metric, keep the number verbatim in the bullet — a
    line with its number beats two lines without.
-7. Produce a short "setAside" explanation of what was condensed or left out and why.
+8. Produce a short "setAside" explanation of what was condensed or left out and why.
 
 OUTPUT (JSON only — no prose, no markdown, no code fences)
 {
   "summary": {
     "goalAreas": [
       { "name": "string",
-        "achievements": [ { "bullet": "string", "project": "string or null", "metric": "string or null", "count": 1 } ],
+        "achievements": [ { "bullet": "string", "project": "string or null", "deliverable": "string or null", "metric": "string or null", "count": 1 } ],
         "rolledUp": [ { "bullet": "string", "routineType": "string", "count": 0 } ] }
     ],
     "behaviours": [ { "name": "string", "evidence": ["string"], "competencies": [ { "name": "string", "evidence": ["string"] } ] } ],

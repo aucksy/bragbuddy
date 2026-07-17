@@ -26,21 +26,36 @@ WHAT TO DO
    Never list the same accomplishment twice: if several highlights describe the SAME
    work (they may read near-identically or be marked "(logged N×)"), output ONE bullet
    with the strongest phrasing and set its "count". A sequence of PROGRESS updates on
-   one deliverable ("started the X redesign" then "shipped X, cut drop-off 18%") is a
+   one piece of work ("started the X redesign" then "shipped X, cut drop-off 18%") is a
    single arc — combine into one outcome-led bullet, not repeated lines. This is about
    never repeating ONE piece of work; it is not a reason to leave out genuinely
    distinct achievements.
-2. Copy EVERY "Routine tallies" line from the rollup into "rolledUp" (one object each):
+2. DELIVERABLES are the user's OWN grouping of their work — a named thread inside a
+   project. Each goal area's rollup lists its deliverables with how many entries each
+   holds and whether it is DONE, and every highlight belonging to one is tagged
+   "(deliverable: X)". Highlights sharing the SAME deliverable are ONE thread of work:
+   write them as exactly ONE achievement telling that thread's whole story — what it
+   was, what was done across the period, where it landed — and set that achievement's
+   "deliverable" to the deliverable's exact name. This is the reliable form of rule 1's
+   arc merge: wherever a deliverable tag exists, trust it over your own reading of the
+   wording. Write a DONE deliverable as finished, leading with its outcome; write an
+   active one as in progress, saying where it stands — never call it delivered. Leave
+   its "count" at 1: a deliverable's entries are one thread of work, not the same
+   accomplishment logged twice. Never merge two different deliverables into one
+   achievement, and never invent a deliverable the rollup didn't name. Highlights with
+   no "(deliverable: ...)" tag are loose work — rule 1 governs them exactly as before,
+   and their "deliverable" is null.
+3. Copy EVERY "Routine tallies" line from the rollup into "rolledUp" (one object each):
    the label EXACTLY as the rollup names it (never reworded or re-pluralised), the same
    count, plus any metric. This is REQUIRED even for a brief or tight summary — routine
    tallies are compact single lines, are NOT achievements, do not count against the
    achievement cap, and are never dropped for length. They never appear as achievements.
-3. Every "Pinned item" MUST appear as an achievement under the best-fitting goal
+4. Every "Pinned item" MUST appear as an achievement under the best-fitting goal
    area — ADD it even when it is NOT among that area's rollup highlights, keeping its
    wording and key terms (project names, IDs, certifications, compliance standards)
    verbatim. Include each pinned item exactly ONCE, in its strongest phrasing; never
    drop a pinned item to fit the cap (drop an unpinned achievement instead).
-4. For each BEHAVIOUR/COMPETENCY category, give concrete evidence of it. If that
+5. For each BEHAVIOUR/COMPETENCY category, give concrete evidence of it. If that
    category's framework description NAMES distinct competencies (a list of leadership
    behaviours, values or pillars), keep the category's OWN name as the single header
    and GROUP the evidence under each named competency in "competencies" (each: the
@@ -50,22 +65,22 @@ WHAT TO DO
    goes in that category's top-level "evidence". If the description names NO distinct
    competencies, leave "competencies" empty and put the 1-3 bullets in "evidence".
    Omit a category with no genuine evidence at all.
-5. Items listed under a DEVELOPMENT AREA belong in "development", never in
+6. Items listed under a DEVELOPMENT AREA belong in "development", never in
    "goalAreas". Fill "development" only if the framework has such an area and there
    is real material.
-6. Write every line professional, past-tense and outcome-led, with enough substance to
+7. Write every line professional, past-tense and outcome-led, with enough substance to
    stand on its own to a manager who wasn't there: name the work, what was done, and
    the result. Don't pad, and never invent results or numbers not in the rollup. When a
    selected achievement carries a metric, keep the number verbatim in the bullet — a
    line with its number beats two lines without.
-7. Produce a short "setAside" explanation of what was condensed or left out and why.
+8. Produce a short "setAside" explanation of what was condensed or left out and why.
 
 OUTPUT (JSON only — no prose, no markdown, no code fences)
 {
   "summary": {
     "goalAreas": [
       { "name": "string",
-        "achievements": [ { "bullet": "string", "project": "string or null", "metric": "string or null", "count": 1 } ],
+        "achievements": [ { "bullet": "string", "project": "string or null", "deliverable": "string or null", "metric": "string or null", "count": 1 } ],
         "rolledUp": [ { "bullet": "string", "routineType": "string", "count": 0 } ] }
     ],
     "behaviours": [ { "name": "string", "evidence": ["string"], "competencies": [ { "name": "string", "evidence": ["string"] } ] } ],

@@ -19,6 +19,7 @@ import com.bragbuddy.app.data.net.ConnectivityMonitor
 import com.bragbuddy.app.data.prefs.SettingsStore
 import com.bragbuddy.app.data.project.ProjectRepository
 import com.bragbuddy.app.data.rollup.AggregatedRollup
+import com.bragbuddy.app.data.rollup.DeliverableFact
 import com.bragbuddy.app.data.rollup.PeriodWindow
 import com.bragbuddy.app.data.rollup.ReviewPeriods
 import com.bragbuddy.app.data.rollup.RollupAggregator
@@ -135,21 +136,35 @@ class SummaryViewModel @Inject constructor(
         frameworkStore.framework,
         settingsStore.settings,
         entryRepository.observePinned(),
-        projectRepository.observeActive(),
-    ) { rollup, fw, settings, pinned, folders ->
-        Inputs(rollup.items, fw, settings.groqApiKey, settings.jobRole, settings.reviewYearStartMonth, pinned, folders)
+        // Folders + deliverables are nested into ONE flow so this stays combine's 5-argument TYPED form
+        // (a 6th drops to the untyped vararg and loses compile-time safety on a hot path). Deliverables
+        // belong in `inputs` rather than beside it because the rollup now depends on them (v0.34.0), and
+        // both retag write-back sites recompute the signature from `inputs.first()` — reading them from
+        // a separate WhileSubscribed StateFlow there could see an empty list and compute a signature the
+        // screen never would, permanently stranding the summary as stale.
+        combine(projectRepository.observeActive(), deliverableRepository.observeAll()) { f, d -> f to d },
+    ) { rollup, fw, settings, pinned, structure ->
+        Inputs(
+            rollup.items, fw, settings.groqApiKey, settings.jobRole, settings.reviewYearStartMonth,
+            pinned, structure.first, structure.second,
+        )
     }
 
     /**
      * Every deliverable — the retag picker's third level (v0.33.0), unfiltered for the same reason
      * [ScreenState.allFolders] is: a correction must reach anywhere.
      *
-     * Kept as its own flow rather than folded into [inputs] / [ScreenState] for two reasons: `inputs` is
-     * already at `combine`'s 5-argument typed limit (a 6th would drop to the untyped vararg form and
-     * lose compile-time safety over a hot path), and the picker's options genuinely aren't summary
-     * state — nothing computed from the rollup depends on them. The summary's own cards carry NO
-     * deliverable yet: the model isn't told they exist this phase, so the sheet can SET one but has none
-     * to preselect. The rollup and PART B learn about them in v0.34.0, eval-gated.
+     * Kept as its own flow rather than read off [inputs] because the two answer different questions and
+     * must NOT converge: this one is the PICKER's options, deliberately **unfiltered** (a correction has
+     * to reach anywhere — including a Done deliverable, and one under a project this summary never
+     * mentions), whereas [Inputs.deliverables] feeds the ROLLUP, where `done` is a fact to report rather
+     * than a filter.
+     *
+     * Since v0.34.0 a card CAN now carry a deliverable (the model files into them). That does **not**
+     * make it a preselect: the sheet's deliverable axis stays opt-in ("Leave as is"), which is the
+     * v0.33.1 F1 fix and is still right for the same reason — one card can be a merge of several
+     * entries with DIFFERENT deliverables, so any single preselected value would silently retag the
+     * rest of them on Apply.
      */
     val allDeliverables: StateFlow<List<DeliverableEntity>> = deliverableRepository.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -162,6 +177,8 @@ class SummaryViewModel @Inject constructor(
         val reviewStartMonth: Int,
         val pinned: List<EntryEntity>,
         val folders: List<ProjectEntity>,
+        /** Live deliverable rows — the rollup reads `done` from these (v0.34.0). */
+        val deliverables: List<DeliverableEntity>,
     )
 
     val state: StateFlow<ScreenState?> = combine(
@@ -192,7 +209,13 @@ class SummaryViewModel @Inject constructor(
         val window = ReviewPeriods.windowFor(period, inp.reviewStartMonth)
         // Length drives how many candidate highlights per area the model sees (Detailed = more).
         val agg = RollupAggregator.aggregate(
-            inp.items, window.startMillis, window.endMillisExclusive, inp.framework, length.highlightCap,
+            inp.items, window.startMillis, window.endMillisExclusive, inp.framework,
+            // v0.34.0 · supplies each deliverable's live Done state, which the rollup items can't carry.
+            // It rides in the serialized rollup, so marking one Done correctly marks the summary stale.
+            deliverables = inp.deliverables.map {
+                DeliverableFact(name = it.name, project = it.project, goalArea = it.goalArea, done = it.done)
+            },
+            highlightCap = length.highlightCap,
         )
         val rollupString = RollupAggregator.serialize(agg)
 

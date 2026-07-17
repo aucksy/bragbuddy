@@ -43,6 +43,19 @@ data class CategorizedEntry(
     // Default to Inbox so a model that omits a placement field still parses (→ routed to Inbox),
     // rather than failing the whole entry's parse. The prompt always asks for these.
     val project: String = "Inbox",
+    /**
+     * The model's deliverable guess (v0.34.0) — a name only, and a name is **not an identity**: a
+     * deliverable is unique by `(name, project, goalArea)`, so this is meaningless until resolved
+     * against the parents the row is actually FILED under. Null/blank is the normal case (the prompt
+     * tells the model to omit it unless exactly one clearly fits).
+     *
+     * Deliberately NOT snapped by [com.bragbuddy.app.data.entry.CategorizedNormalizer] like `project`
+     * is: the normalizer only knows the model's OWN project, but an anchored capture's real project is
+     * decided later (`anchor ?: c.project`). Validating here would check the guess against the wrong
+     * parent and could file a real deliverable under a project it doesn't belong to. It is resolved in
+     * `EntryProcessor.applyCategorized` instead, via [com.bragbuddy.app.data.entry.DeliverableGuess].
+     */
+    val deliverable: String? = null,
     val goalCategory: String = "Inbox",
     val demonstrates: List<String> = emptyList(),
     val isExtra: Boolean = false,
@@ -80,6 +93,13 @@ data class SummaryRequest(
 data class SummaryAchievement(
     val bullet: String,
     val project: String? = null,
+    /**
+     * The deliverable this achievement tells the story of (v0.34.0), or null for loose work. Set by
+     * PART B rule 2: every highlight tagged with one deliverable collapses into exactly ONE achievement
+     * carrying its name. Defaulted so summaries cached before this field existed still decode — a
+     * decode failure would silently wipe the WHOLE cache (`SummaryStore` falls back to an empty map).
+     */
+    val deliverable: String? = null,
     val metric: String? = null,
     /**
      * How many times this same accomplishment was logged in the period (de-dup, Phase 1). 1 = a normal

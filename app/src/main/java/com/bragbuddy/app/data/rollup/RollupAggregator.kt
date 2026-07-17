@@ -38,6 +38,9 @@ fun EntryEntity.toRollupItem(): RollupItem? {
         timeMillis = occurredAt ?: createdAt,
         goalArea = area,
         project = proj,
+        // Dropped when the project is absent (v0.34.0): a deliverable is unique by (name, project,
+        // goalArea), so a tag with no project names nothing this side could ever group or look up.
+        deliverable = proj?.let { deliverable?.trim()?.takeIf { d -> d.isNotBlank() } },
         bullet = text,
         metric = metric?.takeIf { it.isNotBlank() },
         impact = impact ?: 0.0,
@@ -70,6 +73,9 @@ object RollupAggregator {
         startMillis: Long,
         endMillisExclusive: Long,
         framework: Framework,
+        /** Live deliverable state (v0.34.0) — supplies `done`, which no [RollupItem] can carry without
+         *  going stale. A tag with no matching fact still aggregates; it just reads as active. */
+        deliverables: List<DeliverableFact> = emptyList(),
         highlightCap: Int = HIGHLIGHT_CAP,
     ): AggregatedRollup {
         val windowed = items.filter { it.timeMillis in startMillis until endMillisExclusive }
@@ -91,16 +97,49 @@ object RollupAggregator {
         // "DEVELOPMENT AREA:" header (AI-2) so the summary routes them into development[].
         val devKeys = framework.pillars.filter { it.kind == PillarKind.DEVELOPMENT }.map { it.name.lowercase() }.toSet()
 
+        // Live `done` state, keyed by the deliverable's FULL identity — a name alone is not one.
+        val factByIdentity = deliverables.associateBy {
+            Triple(norm(it.name), norm(it.project), norm(it.goalArea))
+        }
+
         val goalAreas = orderedKeys.map { key ->
             val group = byArea.getValue(key)
             // De-dup (Phase 1): collapse exact/normalized-identical non-routine bullets in the same
             // project into ONE highlight with a count, BEFORE the cap so the count stays accurate even
-            // when repeats exceed the highlight cap. Progressive notes on one deliverable normalize
-            // differently, so an arc ("started X" → "shipped X, cut 18%") is NOT merged here.
+            // when repeats exceed the highlight cap. Progressive notes on one piece of work normalize
+            // differently, so an arc ("started X" → "shipped X, cut 18%") is NOT merged here — that
+            // stays the model's call, which is exactly what the v0.34.0 deliverable tag anchors.
             val highlights = mergeNotable(group.filter { !it.routine })
                 .sortedWith(compareByDescending<MergedNotable> { it.impact }.thenByDescending { it.timeMillis })
                 .take(highlightCap)
-                .map { AggHighlight(it.bullet, it.project, it.metric, it.impact, it.isExtra, it.demonstrates, it.count, it.ids) }
+                .map {
+                    AggHighlight(
+                        bullet = it.bullet, project = it.project, metric = it.metric, impact = it.impact,
+                        isExtra = it.isExtra, demonstrates = it.demonstrates, deliverable = it.deliverable,
+                        count = it.count, ids = it.ids,
+                    )
+                }
+            // v0.34.0 · the area's deliverable index. Counts EVERY windowed entry of the thread — routine
+            // ones and ones the highlight cap dropped — so the model can write "a 6-month, 47-entry
+            // thread" honestly from the handful of bullets it can actually see. Grouped by (project,
+            // deliverable): the same deliverable name under two projects is two different threads.
+            val deliverableGroups = group
+                .filter { !it.deliverable.isNullOrBlank() && !it.project.isNullOrBlank() }
+                .groupBy { norm(it.project) to norm(it.deliverable) }
+                .map { (_, rows) ->
+                    val rep = rows.first()
+                    val name = rep.deliverable!!.trim()
+                    val proj = rep.project!!.trim()
+                    AggDeliverable(
+                        name = name,
+                        project = proj,
+                        done = factByIdentity[Triple(norm(name), norm(proj), norm(areaDisplay.getValue(key)))]?.done ?: false,
+                        entryCount = rows.size,
+                        firstMillis = rows.minOf { it.timeMillis },
+                        lastMillis = rows.maxOf { it.timeMillis },
+                    )
+                }
+                .sortedWith(compareByDescending<AggDeliverable> { it.entryCount }.thenBy { it.name })
             val routine = group.filter { it.routine }
                 .groupBy { (it.routineType ?: "Other").trim().ifBlank { "Other" } }
                 .map { (type, rows) ->
@@ -110,7 +149,10 @@ object RollupAggregator {
             val metrics = group.filter { it.routine }
                 .mapNotNull { it.metric?.takeIf { m -> m.isNotBlank() } }
                 .distinct().take(METRIC_CAP)
-            AggGoalArea(areaDisplay.getValue(key), highlights, routine, metrics, isDevelopment = key in devKeys)
+            AggGoalArea(
+                areaDisplay.getValue(key), highlights, routine, metrics,
+                deliverables = deliverableGroups, isDevelopment = key in devKeys,
+            )
         }
 
         // Behaviour evidence: concrete bullets from notable work, ranked by impact.
@@ -131,11 +173,21 @@ object RollupAggregator {
     fun serialize(agg: AggregatedRollup): String = buildString {
         agg.goalAreas.forEach { area ->
             appendLine("${if (area.isDevelopment) "DEVELOPMENT AREA" else "GOAL AREA"}: ${area.name}")
+            if (area.deliverables.isNotEmpty()) {
+                appendLine("  Deliverables (the user's own grouping — each is ONE thread of work):")
+                area.deliverables.forEach { d ->
+                    append("  - \"").append(d.name).append("\" (project: ").append(d.project).append(") — ")
+                    append(d.entryCount).append(if (d.entryCount == 1) " entry" else " entries")
+                    spanLabel(d.firstMillis, d.lastMillis)?.let { append(" ").append(it) }
+                    appendLine(if (d.done) ", DONE" else ", active")
+                }
+            }
             if (area.highlights.isNotEmpty()) {
                 appendLine("  Highlights (ranked by impact):")
                 area.highlights.forEach { h ->
                     append("  - [impact ").append(fmt(h.impact)).append("] ").append(h.bullet)
                     h.project?.let { append(" (project: ").append(it).append(")") }
+                    h.deliverable?.let { append(" (deliverable: ").append(it).append(")") }
                     h.metric?.let { append(" (metric: ").append(it).append(")") }
                     if (h.count > 1) append(" (logged ").append(h.count).append("×)")
                     if (h.isExtra) append(" (standout)")
@@ -175,6 +227,28 @@ object RollupAggregator {
         val clamped = v.coerceIn(0.0, 1.0)
         return ((clamped * 100).toInt() / 100.0).toString()
     }
+
+    /**
+     * "over 6 months" for a deliverable's date span, or null when it's too short to be worth saying.
+     *
+     * Deliberately pure arithmetic on the millisecond span — NOT a calendar conversion. Turning epochs
+     * into dates would need a time zone, which would drag an environment dependency into a function the
+     * unit tests rely on being deterministic, to say something no more true than this.
+     */
+    internal fun spanLabel(firstMillis: Long, lastMillis: Long): String? {
+        val days = ((lastMillis - firstMillis).coerceAtLeast(0L) / 86_400_000L).toInt()
+        return when {
+            days < 7 -> null
+            days < 14 -> "over 1 week"
+            days < 60 -> "over ${days / 7} weeks"
+            else -> "over ${days / 30} months"
+        }
+    }
+
+    private val WS = Regex("\\s+")
+
+    /** The identity-comparison normal form: trimmed, lowercased, single-spaced. */
+    private fun norm(s: String?): String = (s ?: "").trim().lowercase().replace(WS, " ")
 }
 
 /** A de-duped highlight carrying the merge count (+ recency, for the secondary sort). */
@@ -185,6 +259,7 @@ private data class MergedNotable(
     val impact: Double,
     val isExtra: Boolean,
     val demonstrates: List<String>,
+    val deliverable: String?,
     val count: Int,
     val timeMillis: Long,
     /** Every source entry id merged into this one — client-side only, never serialized to the model. */
@@ -192,15 +267,25 @@ private data class MergedNotable(
 )
 
 /**
- * Collapse exact/normalized-identical bullets in the SAME project into one [MergedNotable] with a
- * count. Deterministic (string-normalization only) so it never falsely merges genuinely-distinct or
- * progressive work — the semantic near-duplicate calls are left to the capped summary model. The
+ * Collapse exact/normalized-identical bullets in the SAME project **and deliverable** into one
+ * [MergedNotable] with a count. Deterministic (string-normalization only) so it never falsely merges
+ * genuinely-distinct or progressive work — the semantic near-duplicate calls are left to the capped
+ * summary model, which from v0.34.0 gets the deliverable tag to make them on. The
  * representative keeps the highest-impact row's phrasing; metrics/behaviour-evidence are unioned.
  */
 private fun mergeNotable(items: List<RollupItem>): List<MergedNotable> {
     val groups = LinkedHashMap<String, MutableList<RollupItem>>()
     for (row in items) {
-        val key = (row.project?.trim()?.lowercase() ?: "") + " " + normalizeBullet(row.bullet)
+        // The deliverable joins the key (v0.34.0): the same bullet under two different deliverables is
+        // two genuinely different threads of work, so merging them would fold one thread into the other
+        // and drop a tag. Pre-v0.34.0 rows carry none, so their key — and their merging — is unchanged.
+        //
+        // The separator is an ESCAPED NUL, not a literal one. It stays collision-proof — a user cannot
+        // type it into a project or deliverable name, so ("a", "b x") can never key-collide with
+        // ("a b", "x") — while keeping this file TEXT: the raw byte that used to sit here made git
+        // treat the whole file as binary, so it rendered no diff in review and grep skipped it.
+        val key = (row.project?.trim()?.lowercase() ?: "") + "\u0000" +
+            (row.deliverable?.trim()?.lowercase() ?: "") + "\u0000" + normalizeBullet(row.bullet)
         groups.getOrPut(key) { mutableListOf() }.add(row)
     }
     return groups.values.map { rows ->
@@ -213,6 +298,8 @@ private fun mergeNotable(items: List<RollupItem>): List<MergedNotable> {
             impact = rep.impact,
             isExtra = rows.any { it.isExtra },
             demonstrates = rows.flatMap { it.demonstrates }.distinct(),
+            // Safe to take from the representative: the key means every row here shares its deliverable.
+            deliverable = rep.deliverable,
             count = rows.size,
             timeMillis = rows.maxOf { it.timeMillis },
             // Representative-first so a single-target action (retag) hits the row whose phrasing the

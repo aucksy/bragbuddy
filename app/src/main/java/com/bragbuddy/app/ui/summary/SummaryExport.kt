@@ -13,7 +13,12 @@ import com.bragbuddy.app.data.ai.SummaryResult
  * unit-tested.
  */
 
-private fun achievementLine(bullet: String, project: String?, metric: String?): String? {
+private fun achievementLine(
+    bullet: String,
+    project: String?,
+    metric: String?,
+    deliverable: String? = null,
+): String? {
     val text = bullet.trim()
     if (text.isEmpty()) return null
     val withMetric = if (!metric.isNullOrBlank() && !text.contains(metric.trim(), ignoreCase = true)) {
@@ -21,8 +26,13 @@ private fun achievementLine(bullet: String, project: String?, metric: String?): 
     } else {
         text
     }
-    val proj = project?.trim()?.takeIf { it.isNotBlank() }
-    return "  • " + withMetric + if (proj != null) "  [$proj]" else ""
+    val proj = project?.trim()?.takeIf { it.isNotBlank() } ?: return "  • $withMetric"
+    // The deliverable rides INSIDE the project's tag (v0.34.0), never on its own: a deliverable name is
+    // only meaningful under its project ("Phase 1" alone says nothing to a manager), and it is dropped
+    // entirely when there's no project to qualify it rather than pasted as a tag nobody can place.
+    val del = deliverable?.trim()?.takeIf { it.isNotBlank() }
+    val tag = if (del != null) "$proj ▸ $del" else proj
+    return "  • $withMetric  [$tag]"
 }
 
 private fun rolledUpLine(bullet: String, routineType: String, count: Int): String? {
@@ -33,7 +43,7 @@ private fun rolledUpLine(bullet: String, routineType: String, count: Int): Strin
 
 /** One goal area as text: `NAME` heading, then achievements, then rolled-up lines. */
 fun exportGoalArea(area: SummaryGoalArea): String {
-    val lines = area.achievements.mapNotNull { achievementLine(it.bullet, it.project, it.metric) } +
+    val lines = area.achievements.mapNotNull { achievementLine(it.bullet, it.project, it.metric, it.deliverable) } +
         area.rolledUp.mapNotNull { rolledUpLine(it.bullet, it.routineType, it.count) }
     val sb = StringBuilder(area.name.uppercase())
     if (lines.isNotEmpty()) {

@@ -756,6 +756,8 @@ class EntryProcessor @Inject constructor(
         val anchorDeliverable: String?,
         val placementNames: List<String>,
         val pillars: List<Pillar>,
+        /** The deliverables the prompt offered — the only ones the model's guess may resolve to. */
+        val deliverableUniverse: List<DeliverableRef>,
     )
 
     /** Does this exact deliverable exist under this exact ([project], [area])? A deliverable's name is
@@ -782,11 +784,31 @@ class EntryProcessor @Inject constructor(
         // offered a single folder there. The AI and the manual UI now agree on one placement universe.
         val goalNames = fw.pillars.filter { it.kind != PillarKind.BEHAVIOUR }.map { it.name }
         val placement = activeProjects.filter { p -> goalNames.any { it.equals(p.goalArea, ignoreCase = true) } }
+        // v0.34.0 · the deliverables the model is OFFERED: ACTIVE ones (a Done deliverable has shipped —
+        // it drops out of the log-into list, so the AI must not file new work into it either) whose parent
+        // is a placement project. `offered` is used for BOTH the prompt lines below and the universe the
+        // guess is resolved against, so "what the model was shown" and "what it may pick" cannot drift.
+        val allDeliverables = runCatching { deliverableDao.observeAll().first() }.getOrDefault(emptyList())
+        val offered = allDeliverables.filter { d ->
+            !d.done && placement.any { p ->
+                p.name.equals(d.project, ignoreCase = true) && p.goalArea.equals(d.goalArea, ignoreCase = true)
+            }
+        }
         val projects = placement.map { p ->
             buildString {
                 append("- ").append(p.name).append(" [").append(p.goalArea).append("]")
                 // Cap the description (rides on EVERY call + the cached prefix) at 300 chars (AI-1).
                 p.description?.takeIf { it.isNotBlank() }?.let { append(" — ").append(TextCaps.cap(it)) }
+                // Deliverables nest INDENTED under their project (prompt rule 5 reads them that way), so
+                // the parent is unambiguous: two projects can each own a "Phase 1", and a flat list would
+                // ask the model to pick between two identical names.
+                offered.filter {
+                    it.project.equals(p.name, ignoreCase = true) && it.goalArea.equals(p.goalArea, ignoreCase = true)
+                }.forEach { d ->
+                    appendLine()
+                    append("    · ").append(d.name)
+                    d.description?.takeIf { it.isNotBlank() }?.let { append(" — ").append(TextCaps.cap(it)) }
+                }
             }
         }
         // AI-1 · routine-label reuse: the user's existing routine labels (most-used first) so the model
@@ -806,15 +828,15 @@ class EntryProcessor @Inject constructor(
         // folder (the long-standing folder-tap behaviour).
         val anchorGoalArea = entry.anchorGoalArea?.takeIf { it.isNotBlank() }
             ?: namedAnchor?.let { name -> activeProjects.firstOrNull { it.name.equals(name, ignoreCase = true) }?.goalArea }
-        // The DELIVERABLE anchor (v0.33.0) — the only thing that can put an entry in a deliverable at
-        // this version. It is deliberately NOT added to the CategorizeRequest: no prompt change ships in
-        // this phase (hence no eval gate), so the model is never told deliverables exist and can never
-        // guess one. It binds purely deterministically in applyCategorized. Teaching the categorizer to
-        // pick one is v0.34.0's job — prompt-first, eval-gated, with the JS mirror in `eval/run.mjs`
-        // updated in the same breath (v0.31.0's F4 drifted that mirror and shipped the fix unmeasured).
+        // The DELIVERABLE anchor (v0.33.0) — a tap-in pin, which still OUTRANKS the model's guess
+        // (v0.34.0): filing is tap-in first, AI second, because a third level makes the guess harder and
+        // mis-classification is the owner's #1 complaint.
         //
         // Re-validated against the anchored parents on every re-file rather than trusted: an edit can
         // land long after the capture, and the deliverable may have been deleted or renamed since.
+        // Checked via the DAO, NOT against `offered` above: that set is Active-and-placement-only
+        // because it's what the model was shown, whereas a pin the user made while the deliverable was
+        // Active must keep binding after they mark it Done — a decision doesn't expire.
         val anchorDeliverable = entry.anchorDeliverable
             ?.takeIf { deliverableExists(it, namedAnchor, anchorGoalArea) }
         return Prep(
@@ -833,6 +855,7 @@ class EntryProcessor @Inject constructor(
             anchorDeliverable,
             placement.map { it.name },
             fw.pillars,
+            offered.map { DeliverableRef(it.name, it.project, it.goalArea) },
         )
     }
 
@@ -851,11 +874,11 @@ class EntryProcessor @Inject constructor(
                 } else {
                     // First result updates the captured row; extras become sibling rows.
                     val firstRow = entry.applyCategorized(
-                        result.entries.first(), p.anchor, p.anchorGoalArea, p.anchorDeliverable,
+                        result.entries.first(), p.anchor, p.anchorGoalArea, p.anchorDeliverable, p.deliverableUniverse,
                     )
                     val siblings = result.entries.drop(1).map { extra ->
                         entry.copy(id = 0, bullet = null)
-                            .applyCategorized(extra, p.anchor, p.anchorGoalArea, p.anchorDeliverable)
+                            .applyCategorized(extra, p.anchor, p.anchorGoalArea, p.anchorDeliverable, p.deliverableUniverse)
                     }
                     // Atomic: the first-row update + every sibling insert commit together. Without this,
                     // a crash mid-split leaves row 1 PROCESSED (so processPending skips it forever) while
@@ -887,7 +910,7 @@ class EntryProcessor @Inject constructor(
                 val result = CategorizedNormalizer.normalize(raw, p.placementNames, p.pillars)
                 val first = result.entries.firstOrNull()
                 val updated = if (first == null) entry.copy(status = EntryStatus.INBOX, confidence = 0.0)
-                else entry.applyCategorized(first, p.anchor, p.anchorGoalArea, p.anchorDeliverable)
+                else entry.applyCategorized(first, p.anchor, p.anchorGoalArea, p.anchorDeliverable, p.deliverableUniverse)
                 entryDao.update(updated)
                 syncRollup(updated)
             },
@@ -910,24 +933,28 @@ class EntryProcessor @Inject constructor(
      * the whole point of the v0.31.0 column, since a manual category chosen alongside "no specific
      * project" has no folder to derive a category from.
      *
-     * [anchorDeliverable] is the **only** source of a deliverable in v0.33.0 — the model is never told
-     * they exist (no prompt change this phase), so there is nothing to fall back to and no guess to
-     * override. `deliverable` is therefore assigned outright rather than `anchorDeliverable ?: c.<x>`:
-     * an unanchored entry has none, which is the normal case. v0.34.0 adds the model's guess as the
-     * fallback, at which point this becomes the same `anchor ?: guess` shape as the two axes above.
+     * [anchorDeliverable] is now the same `anchor ?: guess` shape as the two axes above (v0.34.0): the
+     * user's pin wins outright, and only an unpinned row falls back to the model's [CategorizedEntry.
+     * deliverable] guess. The guess is **resolved, never trusted** — [DeliverableGuess.resolve] keeps it
+     * only if it names a real deliverable of the parents this row is actually being FILED under, which is
+     * why it is resolved HERE and not in [CategorizedNormalizer]: `anchor ?: c.project` is decided on this
+     * very line, and the normalizer (which runs earlier, knowing only the model's own project guess) would
+     * have validated it against the wrong parent. Anything unresolvable → null, the normal, safe answer.
      */
     private fun EntryEntity.applyCategorized(
         c: CategorizedEntry,
         anchor: String?,
         anchorGoalArea: String?,
         anchorDeliverable: String?,
+        deliverableUniverse: List<DeliverableRef>,
     ): EntryEntity = copy(
         status = statusFor(c, anchored = anchor != null || anchorGoalArea != null),
         occurredAt = c.dateMentioned.toEpochMillisOrNull() ?: occurredAt,
         bullet = c.bullet.ifBlank { null },
         project = anchor ?: c.project,
         goalCategory = anchorGoalArea ?: c.goalCategory,
-        deliverable = anchorDeliverable,
+        deliverable = anchorDeliverable
+            ?: DeliverableGuess.resolve(c.deliverable, anchor ?: c.project, anchorGoalArea ?: c.goalCategory, deliverableUniverse),
         demonstrates = c.demonstrates,
         isExtra = c.isExtra,
         impact = c.impact,

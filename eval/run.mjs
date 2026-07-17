@@ -80,6 +80,11 @@ const THRESHOLDS = {
   routineReuse: 1.0,
   impactBand: 0.8,
   coachPass: 0.9, // and zero invented numbers = hard fail
+  // v0.34.0 · does the categorizer file into the right deliverable (and, just as importantly, leave it
+  // EMPTY when nothing clearly fits)? PROVISIONAL until the first gate round measures it — this floor
+  // must be set to what the model RELIABLY does, not what it should: v0.31.0's lengthHonoured floor was
+  // set aspirationally at 6 and went red because gpt-oss-120b is conservative even after a correct fix.
+  deliverableAccuracy: 0.8,
   summaryChecks: 1.0,
 };
 
@@ -246,11 +251,43 @@ function placementAreaNames(framework) {
   return (framework.pillars || []).filter(PLACEMENT_KINDS).map((p) => p.name.toLowerCase());
 }
 
-function projectLines(framework, projects) {
+/** APP-MIRROR (v0.34.0) — the deliverables `prepare()` OFFERS the model: ACTIVE ones (a Done deliverable
+ *  has shipped, so the AI must not file new work into it) whose parent is a placement project. The app
+ *  builds the prompt lines AND the guess-resolution universe from this one list, so what the model is
+ *  shown and what it may pick cannot drift; `deliverableUniverse` below mirrors that same pairing. */
+function offeredDeliverables(framework, projects, deliverables) {
+  const placement = placementProjects(framework, projects);
+  return (deliverables || []).filter(
+    (d) =>
+      !d.done &&
+      placement.some(
+        (p) =>
+          p.name.trim().toLowerCase() === String(d.project ?? '').trim().toLowerCase() &&
+          p.goalArea.trim().toLowerCase() === String(d.goalArea ?? '').trim().toLowerCase(),
+      ),
+  );
+}
+
+function placementProjects(framework, projects) {
   const goalNames = placementAreaNames(framework);
-  return projects
-    .filter((p) => goalNames.includes(p.goalArea.trim().toLowerCase()))
-    .map((p) => `- ${p.name} [${p.goalArea}]${p.description && p.description.trim() ? ` — ${capDescription(p.description)}` : ''}`);
+  return (projects || []).filter((p) => goalNames.includes(p.goalArea.trim().toLowerCase()));
+}
+
+function projectLines(framework, projects, deliverables) {
+  const offered = offeredDeliverables(framework, projects, deliverables);
+  return placementProjects(framework, projects).map((p) => {
+    const head = `- ${p.name} [${p.goalArea}]${p.description && p.description.trim() ? ` — ${capDescription(p.description)}` : ''}`;
+    // APP-MIRROR: deliverables nest INDENTED under their project ("    · Name — desc"), which is how
+    // prompt rule 5 reads them. A flat list would ask the model to choose between two projects' twins.
+    const kids = offered
+      .filter(
+        (d) =>
+          String(d.project).trim().toLowerCase() === p.name.trim().toLowerCase() &&
+          String(d.goalArea).trim().toLowerCase() === p.goalArea.trim().toLowerCase(),
+      )
+      .map((d) => `    · ${d.name}${d.description && d.description.trim() ? ` — ${capDescription(d.description)}` : ''}`);
+    return [head, ...kids].join('\n');
+  });
 }
 
 /** Mirrors AiPrompts.categorizer + GroqAiProvider.categorize: one system message (the filled
@@ -261,7 +298,7 @@ function buildCategorizerMessages(templates, c) {
   const framework = ctx.framework || { pillars: [] };
   const projects = ctx.projects || [];
   const fwBlock = categorizerFrameworkBlock(framework, projects);
-  const projBlock = projectLines(framework, projects);
+  const projBlock = projectLines(framework, projects, ctx.deliverables);
   const replacements = {
     TODAY: ctx.today || '2026-07-11',
     ROLE: (ctx.role || '').trim() || '(not set)',
@@ -483,6 +520,20 @@ function snapGoal(value, pillarNames) {
   return hit ?? String(value ?? '').trim(); // unknown stays verbatim (Uncategorized guarantee)
 }
 
+/** APP-MIRROR (v0.34.0): DeliverableGuess.resolve (data/entry/DeliverableGuess.kt). A deliverable's
+ *  identity is (name, project, goalArea) — a name alone is not one — and the project/area MUST be the
+ *  ones the row is actually FILED under (`anchor ?: c.project`), never the model's own guess. Anything
+ *  unresolvable → null, which is the normal, safe answer. Returns the STORED casing. */
+function resolveDeliverable(guess, project, goalArea, universe) {
+  const g = norm(guess);
+  const p = norm(project);
+  const a = norm(goalArea);
+  if (!g || !p || !a) return null;
+  if (p === 'outside-project' || p === 'inbox') return null;
+  const hit = (universe || []).find((d) => norm(d.name) === g && norm(d.project) === p && norm(d.goalArea) === a);
+  return hit ? hit.name : null;
+}
+
 /** APP-MIRROR: EntryProcessor.statusFor — Inbox when placement says Inbox or confidence < 0.6;
  *  an anchored capture is never parked. Applied post-snap (phantom projects park too). */
 function isParked(entry, anchored, placementNames) {
@@ -498,7 +549,8 @@ function scoreCategorizerCase(c, record) {
   const projects = ctx.projects || [];
   // APP-MIRROR: EntryProcessor.prepare's `placement` list — must use the SAME kinds as projectLines
   // above (v0.31.0: any non-behaviour category), or the scorer snaps against a universe the app never had.
-  const placementNames = projectLines(framework, projects).length
+  const universe = offeredDeliverables(framework, projects, ctx.deliverables);
+  const placementNames = projectLines(framework, projects, ctx.deliverables).length
     ? projects
         .filter((p) =>
           (framework.pillars || [])
@@ -528,6 +580,7 @@ function scoreCategorizerCase(c, record) {
     // live branch uses (so metric denominators stay identical either way).
     const why = record.error || 'no parsed result';
     if (expect.placements) fail('placements', why);
+    if (expect.placements?.some((w) => 'deliverable' in w)) fail('deliverables', why);
     if (expect.entryCount != null) fail('entryCount', why);
     if (expect.inboxExpected != null) fail('inbox', why);
     if (Array.isArray(expect.routineTypes)) fail(expect.routineTypes.length === 0 ? 'routineNone' : 'routine', why);
@@ -548,13 +601,27 @@ function scoreCategorizerCase(c, record) {
   // placements — greedy 1:1 matching of expected (project, goalCategory) pairs onto output entries.
   let firstMatched = entries[0] ?? null;
   if (expect.placements) {
-    const remaining = entries.map((e) => ({
-      e,
-      project: anchored ? anchorProjectName : snapProject(e.project ?? 'Inbox', placementNames),
-      goal: anchored ? (anchorGoalArea ?? snapGoal(e.goalCategory ?? 'Inbox', pillarNames)) : snapGoal(e.goalCategory ?? 'Inbox', pillarNames),
-      used: false,
-    }));
+    const remaining = entries.map((e) => {
+      const project = anchored ? anchorProjectName : snapProject(e.project ?? 'Inbox', placementNames);
+      const goal = anchored
+        ? (anchorGoalArea ?? snapGoal(e.goalCategory ?? 'Inbox', pillarNames))
+        : snapGoal(e.goalCategory ?? 'Inbox', pillarNames);
+      return {
+        e,
+        project,
+        goal,
+        // Resolved against the FILED parents, exactly as applyCategorized does — which is why this is
+        // computed HERE, from `project`/`goal` above, and not from the model's own raw output.
+        deliverable: resolveDeliverable(e.deliverable, project, goal, universe),
+        used: false,
+      };
+    });
     const misses = [];
+    // v0.34.0 · the deliverable is scored as its OWN check, deliberately not folded into the match key
+    // above: matching on it would let a wrong deliverable read as a wrong PLACEMENT and quietly move
+    // placementAccuracy, the metric with the longest baseline history in this suite.
+    const delMisses = [];
+    const wantsDeliverable = expect.placements.some((w) => 'deliverable' in w);
     expect.placements.forEach((want, idx) => {
       const hit = remaining.find(
         (r) => !r.used && norm(r.project) === norm(want.project) && norm(r.goal) === norm(want.goalCategory),
@@ -562,8 +629,14 @@ function scoreCategorizerCase(c, record) {
       if (hit) {
         hit.used = true;
         if (idx === 0) firstMatched = hit.e;
+        if ('deliverable' in want && norm(hit.deliverable) !== norm(want.deliverable)) {
+          delMisses.push({ expected: want.deliverable ?? null, got: hit.deliverable ?? null });
+        }
       } else {
         misses.push(want);
+        // A placement that never matched can't have a right deliverable either — fail both, or a
+        // mis-filed entry would score a free pass on the axis this phase exists to add.
+        if ('deliverable' in want) delMisses.push({ expected: want.deliverable ?? null, got: '(no matching entry)' });
       }
     });
     misses.length === 0
@@ -574,6 +647,11 @@ function scoreCategorizerCase(c, record) {
             remaining.map((r) => ({ project: r.project, goalCategory: r.goal })),
           )}`,
         );
+    if (wantsDeliverable) {
+      delMisses.length === 0
+        ? pass('deliverables')
+        : fail('deliverables', `${JSON.stringify(delMisses)}`);
+    }
   }
 
   // Inbox discipline
@@ -699,6 +777,12 @@ function scoreCoachCase(c, record) {
 // Scoring — summary (structural checks)
 // ---------------------------------------------------------------------------
 
+/** Phrases that say "still running". Used ONLY to catch a DONE deliverable written as in-progress —
+ *  never the reverse: "delivered" has too many honest synonyms to enumerate, so asserting an active
+ *  thread ISN'T finished would fail good output. Word-bounded, so "ongoing support" doesn't match
+ *  inside another word. */
+const IN_PROGRESS_WORDS = /\b(in progress|ongoing|underway|on track|continuing|currently|is being|are being|remains?|still)\b/i;
+
 function jaccard(a, b) {
   const A = contentWords(a);
   const B = contentWords(b);
@@ -727,6 +811,7 @@ function scoreSummaryCase(c, record) {
     if (expect.setAsideNonEmpty) checks.setAside = { pass: false, detail: why };
     if (Array.isArray(expect.developmentKeys)) checks.developmentPlacement = { pass: false, detail: why };
     if (expect.competencyGrouping && expect.competencyGrouping.category) checks.competencyGrouping = { pass: false, detail: why };
+    if (Array.isArray(expect.deliverableStories)) checks.deliverableGrouping = { pass: false, detail: why };
     if (expect.minAchievements) checks.lengthHonoured = { pass: false, detail: why };
     return { checks, advisory };
   }
@@ -834,6 +919,42 @@ function scoreSummaryCase(c, record) {
       short.length === 0
         ? { pass: true }
         : { pass: false, detail: `too few achievements: ${short.map((s) => `${s.area} ${s.n}<${s.min}`).join('; ')}` };
+  }
+
+  // GATED (v0.34.0 · PART B rule 2): a deliverable is the user's OWN grouping, so every highlight
+  // tagged with one is a single thread of work and must collapse into EXACTLY ONE achievement carrying
+  // that deliverable's name. This is the phase's whole payoff: before it, the arc-merge was the model
+  // guessing from wording (rule 1), which cannot hold over hundreds of entries.
+  //
+  // Checks per expected deliverable: exactly one achievement claims it, and — when `done` is asserted —
+  // the story reads as delivered rather than in-progress. Name matching is loose + BIDIRECTIONAL for
+  // the same reason competencyGrouping's is: a model that echoes "Market rollout" as "market rollout"
+  // has grouped correctly, and failing it would wedge the 100% gate on casing, seed-fixed forever.
+  //
+  // Deliberately NOT asserted: that nothing ELSE mentions the deliverable's words. Loose work in the
+  // same project legitimately shares vocabulary ("rollout"), so that would fail honest output.
+  if (Array.isArray(expect.deliverableStories)) {
+    const looseName = (s) => norm(s).replace(/&/g, 'and').replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+    const allAch = body.goalAreas.flatMap((g) => g.achievements || []);
+    const problems = [];
+    for (const want of expect.deliverableStories) {
+      const target = looseName(want.name);
+      const claimed = allAch.filter((a) => {
+        const got = looseName(a.deliverable || '');
+        return got !== '' && (got === target || got.includes(target) || target.includes(got));
+      });
+      if (claimed.length !== 1) {
+        problems.push(`"${want.name}" claimed by ${claimed.length} achievements (want exactly 1)`);
+        continue;
+      }
+      // An in-progress thread must not be written as finished, and a shipped one must not read as
+      // still running — the whole reason a Done deliverable is worth telling the model about.
+      if (want.done === true && IN_PROGRESS_WORDS.test(claimed[0].bullet || '')) {
+        problems.push(`"${want.name}" is DONE but reads as in progress: "${claimed[0].bullet}"`);
+      }
+    }
+    checks.deliverableGrouping =
+      problems.length === 0 ? { pass: true } : { pass: false, detail: problems.join('; ') };
   }
 
   // GATED since AI-2 (serializer heads development pillars "DEVELOPMENT AREA:" + summary rule 5
@@ -1048,6 +1169,7 @@ async function main() {
   const metricKept = by(catResults, 'metric');
   const dateMentioned = by(catResults, 'dateMentioned');
   const routineNone = by(catResults, 'routineNone');
+  const deliverables = by(catResults, 'deliverables');
 
   const coachEvaluated = coachResults.filter((r) => Object.keys(r.checks).length > 0);
   const coachPassed = coachEvaluated.filter((r) => Object.values(r.checks).every((c) => c.pass));
@@ -1066,6 +1188,7 @@ async function main() {
     impactBand: ratio(impactBand.pass, impactBand.total),
     coachPass: ratio(coachPassed.length, coachEvaluated.length),
     coachNoInventedNumbers: coachEvaluated.length ? (inventedNumbers.length === 0 ? 1 : 0) : null,
+    deliverableAccuracy: ratio(deliverables.pass, deliverables.total),
     summaryChecks: ratio(summaryPass, summaryChecksAll.length),
     // report-only metrics (not gated)
     entryCountAccuracy: ratio(entryCount.pass, entryCount.total),
@@ -1086,6 +1209,7 @@ async function main() {
     routineReuse: routine.total,
     impactBand: impactBand.total,
     coachPass: coachEvaluated.length,
+    deliverableAccuracy: deliverables.total,
     summaryChecks: summaryChecksAll.length,
     entryCountAccuracy: entryCount.total,
     demonstratesAccuracy: demonstrates.total,
@@ -1107,6 +1231,7 @@ async function main() {
   gate('impactBand', metrics.impactBand, THRESHOLDS.impactBand);
   gate('coachPass', metrics.coachPass, THRESHOLDS.coachPass);
   gate('coachNoInventedNumbers', metrics.coachNoInventedNumbers, 1); // hard fail
+  gate('deliverableAccuracy', metrics.deliverableAccuracy, THRESHOLDS.deliverableAccuracy);
   gate('summaryChecks', metrics.summaryChecks, THRESHOLDS.summaryChecks);
 
   // Baseline comparison (AI-1+: every metric must be ≥ the committed baseline) — within ONE golden

@@ -26,7 +26,14 @@ class RollupAggregatorTest {
         metric: String? = null,
         demonstrates: List<String> = emptyList(),
         project: String? = null,
-    ) = RollupItem(id, time, area, project, bullet, metric, impact, routine, routineType, false, demonstrates)
+        deliverable: String? = null,
+    // NAMED args deliberately: RollupItem gained `deliverable` between `project` and `bullet` in
+    // v0.34.0, and a positional call here silently shifts every field after it.
+    ) = RollupItem(
+        id = id, timeMillis = time, goalArea = area, project = project, deliverable = deliverable,
+        bullet = bullet, metric = metric, impact = impact, routine = routine,
+        routineType = routineType, isExtra = false, demonstrates = demonstrates,
+    )
 
     // ---- toRollupItem projection ----
 

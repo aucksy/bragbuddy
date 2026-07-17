@@ -640,32 +640,98 @@ private fun ProjectFolder(
         ) {
             Column(Modifier.padding(start = Spacing.s3)) {
                 Spacer(Modifier.height(Spacing.s2))
-                val many = folder.items.size > 1
-                folder.items.forEachIndexed { localIndex, ia ->
-                    val ach = ia.achievement
-                    val prevFlat = folder.items.getOrNull(localIndex - 1)?.flatIndex
-                    val nextFlat = folder.items.getOrNull(localIndex + 1)?.flatIndex
-                    AchievementRow(
-                        text = achievementDisplay(ach.bullet, ach.metric, null),
-                        hue = hue,
-                        palette = palette,
-                        pinned = isPinned(state.pinnedBullets, ach.bullet),
-                        count = ach.count,
-                        showControls = many,
-                        canUp = prevFlat != null,
-                        canDown = nextFlat != null,
-                        onUp = { prevFlat?.let { onSwap(areaName, ia.flatIndex, it) } },
-                        onDown = { nextFlat?.let { onSwap(areaName, ia.flatIndex, it) } },
-                        onLongPress = { onLongPress(ach.bullet) },
-                        onEdit = { onEdit(ach.bullet) },
-                        onDelete = { onDelete(ach.bullet) },
-                        onRetag = { onRetag(retagTargetFor(ach, areaName)) },
+                // v0.34.0 · the third level: sub-group this folder's wins by deliverable. Null = no
+                // structure worth drawing (all one deliverable / all loose) → render exactly as before.
+                val groups = groupFolderByDeliverable(folder.items)
+                if (groups != null) {
+                    groups.forEach { g ->
+                        g.name?.let { DeliverableSubHeader(it, hue, palette) }
+                        AchievementRows(
+                            g.items, areaName, hue, state, palette,
+                            onSwap, onLongPress, onEdit, onDelete, onRetag,
+                        )
+                    }
+                } else {
+                    AchievementRows(
+                        folder.items, areaName, hue, state, palette,
+                        onSwap, onLongPress, onEdit, onDelete, onRetag,
                     )
-                    Spacer(Modifier.height(Spacing.s2))
                 }
             }
         }
     }
+}
+
+/**
+ * The achievement rows of ONE list — a whole project folder, or one deliverable group inside it.
+ *
+ * Reorder is scoped to whatever list it is handed: the arrows swap real slots in the area's flat
+ * `achievements`, but only ever with a neighbour from this same list, so a win can't be shuffled out of
+ * its deliverable by an arrow tap. Same mechanism the folder level has always used, one level deeper.
+ */
+@Composable
+private fun AchievementRows(
+    items: List<IndexedAchievement>,
+    areaName: String,
+    hue: PillarColor,
+    state: SummaryViewModel.ScreenState,
+    palette: BragPalette,
+    onSwap: (String, Int, Int) -> Unit,
+    onLongPress: (String) -> Unit,
+    onEdit: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    onRetag: (RetagTarget) -> Unit,
+) {
+    val many = items.size > 1
+    items.forEachIndexed { localIndex, ia ->
+        val ach = ia.achievement
+        val prevFlat = items.getOrNull(localIndex - 1)?.flatIndex
+        val nextFlat = items.getOrNull(localIndex + 1)?.flatIndex
+        AchievementRow(
+            text = achievementDisplay(ach.bullet, ach.metric, null),
+            hue = hue,
+            palette = palette,
+            pinned = isPinned(state.pinnedBullets, ach.bullet),
+            count = ach.count,
+            showControls = many,
+            canUp = prevFlat != null,
+            canDown = nextFlat != null,
+            onUp = { prevFlat?.let { onSwap(areaName, ia.flatIndex, it) } },
+            onDown = { nextFlat?.let { onSwap(areaName, ia.flatIndex, it) } },
+            onLongPress = { onLongPress(ach.bullet) },
+            onEdit = { onEdit(ach.bullet) },
+            onDelete = { onDelete(ach.bullet) },
+            onRetag = { onRetag(retagTargetFor(ach, areaName)) },
+        )
+        Spacer(Modifier.height(Spacing.s2))
+    }
+}
+
+/**
+ * A deliverable heading inside a project folder (v0.34.0). Deliberately NOT the shared
+ * [com.bragbuddy.app.ui.common.DeliverableHeader]: that one carries the lifecycle (add entry / rename /
+ * mark done / delete) against Home's `DeliverableGroup` model, and none of it belongs on a
+ * read-and-copy screen whose only correction path is the ⋮ retag. It borrows the same visual
+ * vocabulary — the small hue square — so the two levels still read as one record.
+ */
+@Composable
+private fun DeliverableSubHeader(name: String, hue: PillarColor, palette: BragPalette) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(6.dp).clip(RoundedCornerShape(2.dp)).background(hue.ink))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            name,
+            style = MaterialTheme.typography.labelSmall,
+            color = palette.text2,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+    Spacer(Modifier.height(Spacing.s1))
 }
 
 @Composable

@@ -1,0 +1,17 @@
+{
+  "id": "deliverable-stories",
+  "note": "v0.34.0 · Deliverables are the user's OWN grouping, so PART B rule 2 must collapse each one's highlights into EXACTLY ONE outcome-led story — the reliable form of rule 1's arc merge. Covers both required shapes at once: a long-running DONE deliverable (4 progress notes spanning 7 months, must read as delivered) and an ACTIVE one (2 notes, must not be called delivered), plus loose work in another project that must stay its own separate achievement. The two deliverables live under the SAME project, so a model that groups by project instead of deliverable fails.",
+  "period": "full-year review",
+  "lengthCap": "about one page — at most 5 achievements per goal area",
+  "role": "Product Owner",
+  "frameworkBlock": "GOAL AREAS (results / projects map here):\n- Performance Goals: What you delivered — business and delivery objectives; projects nest here.\nBEHAVIOURS / COMPETENCIES (tag work that demonstrates these):\n- Leadership & Behaviours: How you worked — ownership, decisions, collaboration, communication.\nDEVELOPMENT (optional):\n- Learning & Growth: Skills and development.",
+  "pinned": [],
+  "rollup": "GOAL AREA: Performance Goals\n  Deliverables (the user's own grouping — each is ONE thread of work):\n  - \"Market rollout\" (project: Raven Migration) — 24 entries over 7 months, DONE\n  - \"Defect triage\" (project: Raven Migration) — 9 entries over 5 months, active\n  Highlights (ranked by impact):\n  - [impact 0.9] Completed the Raven Migration market rollout across all 14 markets (project: Raven Migration) (deliverable: Market rollout) (metric: 14 markets live)\n  - [impact 0.7] Signed off rollout testing for three further markets (project: Raven Migration) (deliverable: Market rollout)\n  - [impact 0.6] Cut the post-migration defect backlog from 40 to 12 (project: Raven Migration) (deliverable: Defect triage) (metric: 40 down to 12)\n  - [impact 0.55] Rebuilt the access-request approval flow (project: SharePoint Request System)\n  - [impact 0.5] Started the market rollout with two pilot markets (project: Raven Migration) (deliverable: Market rollout)\n  - [impact 0.45] Set up a weekly defect triage forum with the vendor (project: Raven Migration) (deliverable: Defect triage)\n  - [impact 0.4] Ran the rollout readiness review with the servicing team (project: Raven Migration) (deliverable: Market rollout)",
+  "expect": {
+    "noDuplicates": true,
+    "deliverableStories": [
+      { "name": "Market rollout", "done": true },
+      { "name": "Defect triage", "done": false }
+    ]
+  }
+}

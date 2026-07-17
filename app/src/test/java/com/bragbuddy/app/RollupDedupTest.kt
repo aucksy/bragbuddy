@@ -11,6 +11,8 @@ class RollupDedupTest {
 
     private val fw = Framework.DEFAULT
 
+    // NAMED args deliberately: RollupItem gained `deliverable` between `project` and `bullet` in
+    // v0.34.0, and a positional call here silently shifts every field after it.
     private fun item(
         id: Long,
         time: Long,
@@ -18,7 +20,12 @@ class RollupDedupTest {
         impact: Double = 0.5,
         project: String? = null,
         metric: String? = null,
-    ) = RollupItem(id, time, "Performance Goals", project, bullet, metric, impact, false, null, false, emptyList())
+        deliverable: String? = null,
+    ) = RollupItem(
+        id = id, timeMillis = time, goalArea = "Performance Goals", project = project,
+        deliverable = deliverable, bullet = bullet, metric = metric, impact = impact,
+        routine = false, routineType = null, isExtra = false, demonstrates = emptyList(),
+    )
 
     @Test
     fun `identical bullets merge into one highlight with a count`() {
@@ -116,8 +123,14 @@ class RollupDedupTest {
     fun `merge unions metric, isExtra and demonstrates across merged rows`() {
         val items = listOf(
             // rep (higher impact) has NO metric and isExtra=false; the merged row supplies them.
-            RollupItem(1, 1100, "Performance Goals", null, "Shipped feature", null, 0.9, false, null, false, listOf("Leadership & Behaviours")),
-            RollupItem(2, 1200, "Performance Goals", null, "shipped feature.", "cut latency 30%", 0.4, false, null, true, listOf("Learning & Growth")),
+            RollupItem(
+                id = 1, timeMillis = 1100, goalArea = "Performance Goals", bullet = "Shipped feature",
+                impact = 0.9, isExtra = false, demonstrates = listOf("Leadership & Behaviours"),
+            ),
+            RollupItem(
+                id = 2, timeMillis = 1200, goalArea = "Performance Goals", bullet = "shipped feature.",
+                metric = "cut latency 30%", impact = 0.4, isExtra = true, demonstrates = listOf("Learning & Growth"),
+            ),
         )
         val hi = RollupAggregator.aggregate(items, 1000, 2000, fw).goalAreas.single().highlights.single()
         assertThat(hi.count).isEqualTo(2)

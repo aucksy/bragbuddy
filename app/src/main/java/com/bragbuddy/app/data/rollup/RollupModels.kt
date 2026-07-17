@@ -25,6 +25,17 @@ data class RollupItem(
     val goalArea: String,
     /** The named project, or null for Outside-project / unnamed. */
     val project: String? = null,
+    /**
+     * The deliverable within [project] this entry was filed into (v0.34.0), or null for loose work.
+     * Only ever meaningful WITH [project] — a deliverable is unique by `(name, project, goalArea)`, so
+     * the projection drops it whenever the project is absent. Defaulted so a rollup persisted before
+     * this field existed still decodes (the whole blob is one JSON value; a throw resets it to empty).
+     *
+     * **This is the phase's real payoff.** Without it the summary's arc-merge is the model guessing
+     * from wording (PART B rule 1), which cannot hold over hundreds of entries; a deliverable is the
+     * user's OWN grouping, so it gives the merge a deterministic anchor to trust instead.
+     */
+    val deliverable: String? = null,
     /** The cleaned, appraisal-ready bullet. */
     val bullet: String,
     /** A number/result the user stated, if any. */
@@ -47,6 +58,36 @@ data class RollupState(val items: List<RollupItem> = emptyList())
 
 // ---------------- Aggregated view (windowed, bounded — the summary's input) ----------------
 
+/**
+ * A live fact about one deliverable that a [RollupItem] deliberately cannot carry (v0.34.0).
+ *
+ * `done` is state on the `deliverables` TABLE, not on an entry: marking a deliverable Done touches no
+ * entry, so a copy denormalized into the rollup would silently go stale the moment the user finished
+ * something. The aggregate therefore reads it live, and an entry tagged with a deliverable that no
+ * longer exists simply has no fact — it still reports as active, and its entries are never lost.
+ */
+data class DeliverableFact(
+    val name: String,
+    val project: String,
+    val goalArea: String,
+    val done: Boolean = false,
+)
+
+/**
+ * One deliverable's aggregated presence in a goal area (v0.34.0) — the deterministic anchor PART B
+ * rule 2 groups on. It reports the FULL windowed count and span even though only the capped highlights
+ * are shown, so the model can honestly write "a 6-month thread" from the handful of bullets it sees.
+ */
+data class AggDeliverable(
+    val name: String,
+    val project: String,
+    val done: Boolean,
+    /** Every windowed entry filed into it — routine ones included (this is the thread's real size). */
+    val entryCount: Int,
+    val firstMillis: Long,
+    val lastMillis: Long,
+)
+
 /** One notable (non-routine) highlight candidate within a goal area. */
 data class AggHighlight(
     val bullet: String,
@@ -55,6 +96,9 @@ data class AggHighlight(
     val impact: Double,
     val isExtra: Boolean,
     val demonstrates: List<String>,
+    /** The deliverable this highlight belongs to (v0.34.0), or null for loose work. Serialized as a
+     *  "(deliverable: X)" tag so PART B rule 2 can collapse the thread into ONE story. */
+    val deliverable: String? = null,
     /** How many exact/normalized-identical entries were merged into this highlight (de-dup, Phase 1). */
     val count: Int = 1,
     /**
@@ -79,6 +123,9 @@ data class AggGoalArea(
     val highlights: List<AggHighlight>,
     val routine: List<AggRoutine>,
     val metrics: List<String>,
+    /** The deliverables this area's windowed entries were filed into (v0.34.0), ranked by size.
+     *  Defaulted: an area whose work is all loose has none, which is the pre-v0.34.0 shape. */
+    val deliverables: List<AggDeliverable> = emptyList(),
     /** True when this area is a DEVELOPMENT-kind framework pillar (AI-2): the serializer then heads
      *  it "DEVELOPMENT AREA:" so the summary model routes its items into `development[]`, not
      *  `goalAreas[]`. Areas not in the framework (the catch-all guarantee) stay goal areas. */
