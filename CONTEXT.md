@@ -316,19 +316,24 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   `ProjectRepository.update` cascaded on the *requested* name — a colliding rename left the row untouched
   on screen while its entries were durably remapped into an unrelated deliverable. Both now act on the
   **effect** (re-read the row). Detail in `## Status: v0.33.0`.
-  **⛔ EXACT NEXT STEP = FINISH `v0.33.1` (Deliverables hardening) — see `PROGRESS.md` → `## ⛔ v0.33.1 …
-  UNFINISHED`.** State (2026-07-17): the **`v0.33.0` tag has a live data bug** (the Summary ⋮ retag
-  silently wipes a win's deliverable + anchor — don't recommend that APK); `main` @ `873df22` has every
-  confirmed fix, compiles green with tests, but is **UNTAGGED and UNVERIFIED** — the adversarial
-  verification was stopped after 6 rounds (`8/1 → 6/1 → 4/4 → 3/3 → 5/3 → 6/2` confirmed/refuted, never
-  clean; **3 of 6 rounds found bugs introduced by the previous round's fixes**). Round 7 was cancelled
-  mid-flight, so its findings are unknown — **re-run the verification before tagging**. The root cause of
-  most of it, now fixed at source: **an anchor is made of NAMES, and a name is not an identity** — a
-  tap-in didn't pin its category, so the app had to guess which same-named project was meant; and **an
+  **`v0.33.1 — Deliverables hardening` is SHIPPED** (signed; `versionCode 40`; **Room stays v8**; compile
+  + unit-test gate green pre-tag; NO eval gate). **It supersedes `v0.33.0`, whose tag has a live data bug**
+  (the Summary ⋮ retag silently wipes a win's deliverable — don't recommend that APK). The root cause of
+  most of the batch, now fixed at source: **an anchor is made of NAMES, and a name is not an identity** —
+  a tap-in didn't pin its category, so the app had to guess which same-named project was meant; and **an
   anchor must be scoped by ANCHOR columns**, because a pin exists at capture while the filed columns
-  don't exist until the categorizer runs. Full findings, the open list, and the "already refuted — don't
-  re-fix" list are in that PROGRESS.md block.
-  **Only after v0.33.1 ships:** `v0.34.0` — AI files into deliverables + per-deliverable summary
+  don't exist until the categorizer runs. **⭐ The process lesson (read before reviewing this code
+  again):** seven verification rounds ran; rounds 1–6 (`8/1 → 6/1 → 4/4 → 3/3 → 5/3 → 6/2`
+  confirmed/refuted) never came clean and **3 of 6 found bugs introduced by the previous round's fixes**.
+  The owner stopped the loop; a **final single 5-lens pass** fixed 3 real defects (category-delete
+  mis-file · the retag sheet's fallback category · a cancellable retag loop) and the phase was tagged on
+  its result **deliberately without re-reviewing the fixes**. **The loop was the failure mode, not the
+  code — don't reopen a review round on v0.33.1; fix anything found later in a later version.** That pass
+  also re-raised, as a HIGH, the exact `anchorGoalArea IS NULL` clause round 5 removed for causing a
+  cross-category mis-file — it was **not** re-fixed. Full findings, the open list, and the **"already
+  refuted — don't re-fix"** list (feed it to any future reviewer) are in `PROGRESS.md`
+  `## Status: v0.33.1`.
+  **▶ EXACT NEXT STEP:** `v0.34.0` — AI files into deliverables + per-deliverable summary
   (⚠️ EVAL-GATED — the FIRST prompt change since v0.31.0; mirror every prompt-shape change in
   `eval/run.mjs`, budget ≥2 gate rounds). Full spec + the owner's locked decisions: `PROGRESS.md`
   "▶ ROADMAP RESHAPE". **v0.31.0 (fix batch):** a **⋮ retag on summary cards** that
