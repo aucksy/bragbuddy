@@ -94,8 +94,16 @@ object Recategorize {
      * The deliverable to preselect within ([category], [folder]): the entry's current one when it still
      * names a real deliverable there, else null ("not part of one"). Scoped by both parents for the same
      * reason [defaultFolder] is scoped by category — a deliverable's name is not an identity on its own,
-     * so switching the project must clear a deliverable that belonged to the old one rather than silently
-     * matching a same-named deliverable somewhere else.
+     * so asking about a DIFFERENT project must clear a deliverable that belonged to the old one rather
+     * than silently matching a same-named deliverable somewhere else.
+     *
+     * That last clause is why the entry's own parents are checked first, and not just the name. The tag
+     * is only a name: it means "Phase 1 **of the project this entry is filed in**". Matching it against
+     * the target project's list alone would quietly hand the entry that project's *different* "Phase 1" —
+     * and names like "Phase 1" / "Q1" / "Discovery" repeat across projects, so this is the common case,
+     * not an exotic one. (Reachable only if a caller ever asks about somewhere the entry isn't; today's
+     * callers pass the entry's own placement. A unit test pins it either way — the same trap did reach
+     * the record through the Summary retag sheet.)
      */
     fun defaultDeliverable(
         entry: EntryEntity,
@@ -104,6 +112,8 @@ object Recategorize {
         deliverables: List<DeliverableEntity>,
     ): String? {
         val current = entry.deliverable?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        if (!entry.project.orEmpty().trim().equals(folder.orEmpty().trim(), ignoreCase = true)) return null
+        if (!entry.goalCategory.orEmpty().trim().equals(category.orEmpty().trim(), ignoreCase = true)) return null
         return deliverablesFor(category, folder, deliverables)
             .firstOrNull { it.name.equals(current, ignoreCase = true) }?.name
     }
