@@ -253,29 +253,58 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
 
 ---
 
-## ⛔ v0.33.1 — Deliverables hardening · **UNFINISHED, HANDED OFF 2026-07-17**
+## Status: v0.33.1 — Deliverables hardening ✅ SHIPPED (signed · `versionCode 40` · Room stays **v8** · compile + unit tests GREEN on the free debug gate before the tag · **NOT a prompt phase → no eval gate**)
 
-> **READ THIS BEFORE TOUCHING THE DELIVERABLES CODE.** `main` is green (compile + unit tests) at
-> `873df22` and is **strictly better than the `v0.33.0` tag**, but **v0.33.1 was never tagged** and the
-> verification never came back clean. The owner stopped the loop; finish it in a fresh chat.
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.33.1/BragBuddy-v0.33.1.apk` (`.aab` alongside).
 
-### Where it stands
-- **`v0.33.0` (tag, `versionCode 39`) is SHIPPED but has a data bug** — see F1 below. Don't recommend it.
-- **`main` @ `873df22`** has every confirmed finding through review round 6 fixed; compile + unit tests
-  GREEN. **Not tagged, not built as an APK.**
-- **Round 7 of the verification was cancelled mid-flight.** Its findings are UNKNOWN. The previous six
-  rounds each found something real, so **assume round 7 would too** — re-run it before tagging.
+> **`v0.33.1` supersedes `v0.33.0`, which has a live data bug** (the Summary ⋮ retag silently wipes a
+> win's deliverable — F1 below). Don't recommend the v0.33.0 APK to anyone.
 
-### How to re-run the verification (this is the tool that found everything)
-A 5-lens adversarial workflow, each finding independently refuted by two skeptics before it counts:
-`C:\Users\Aakash Pahuja\.claude\projects\D--Apps-BragBuddy-Codebase\<session>\workflows\scripts\verify-deliverables-fixbatch-*.js`
-It diffs `3c85a28..HEAD`. It needs **ultracode / an explicit Workflow opt-in**. If that's off, run the
-same five lenses as ordinary `Agent` subagents — the lens prompts are in the script. **Do not skip this
-and tag anyway**: every round of "surely it's clean now" was wrong.
+### How this phase ended — read this before starting another review loop
+Seven verification rounds happened in total. Rounds 1–6 scored `8/1 → 6/1 → 4/4 → 3/3 → 5/3 → 6/2`
+(confirmed/refuted) and **never came back clean; three of the six found bugs introduced by the previous
+round's fixes.** The owner stopped the loop as non-converging. A **final, single** 5-lens pass then ran
+(2026-07-17, plain `Agent` subagents, the lens prompts below) and the phase was tagged on its result —
+deliberately, without a re-review of the fixes. **The loop was the failure mode, not the code.** If you
+pick up a finding here later, fix it in a *later* version; do not reopen a review round on this one.
 
-### Round-by-round score (confirmed / refuted)
-`8/1 → 6/1 → 4/4 → 3/3 → 5/3 → 6/2`. It never converged. **Three of the six rounds found bugs introduced
-by the previous round's fixes.** That is the headline risk for whoever picks this up.
+**The final pass found 3 real defects (all fixed, all below) and the LOWs recorded in "OPEN".** Its most
+useful outcome was negative: **it re-raised the `anchorGoalArea IS NULL` escape hatch as a HIGH**, which
+is the exact clause round 5 REMOVED because it leaked pins across same-named projects in different
+categories. Two lenses split on it (one HIGH, one LOW, with the LOW's reasoning stronger — the entry is
+never lost, only its grouping degrades, and only for rows left unfiled *across the upgrade*). **It was
+not re-fixed.** See OPEN item 2.
+
+### The 5 lenses (this is the tool that found everything — reuse it, once)
+`regression` (highest yield) · `cascade-matrix` (highest yield) · `summary-retag` · `rename-atomicity` ·
+`compose`. Preserved as a workflow script at
+`C:\Users\Aakash Pahuja\.claude\projects\D--Apps-BragBuddy-Codebase\e646fd6e-6c9e-46f2-9b30-5f889be4e0b8\workflows\scripts\verify-deliverables-fixbatch-wf_375c53d7-46e.js`
+(diffs `3c85a28..HEAD`; needs a Workflow opt-in — the lens prompts run fine as plain `Agent` subagents).
+**Feed it the "refuted repeatedly" list below**, or it will re-raise them: it did, twice, unprompted.
+
+### Fixed in the final pass (on top of rounds 1–6)
+- **F7 · Deleting a category mis-filed a queued win into another category's twin (MED, data).**
+  `clearAnchorGoalArea` nulled the category pin but left `anchorProject`/`anchorDeliverable` behind — so
+  `prepare()` fell back to resolving the pin by project NAME and filed a still-queued tap-in capture into
+  a *different* category's same-named "Payments ▸ Phase 1". Durably anchored, no signal. **This path was
+  the one place that erased the pin's category and therefore re-armed the exact guess the whole batch
+  exists to eliminate.** New `EntryDao.clearAnchorsInCategory` runs FIRST, in one transaction with the
+  category clear. (Delete-*project* needs no twin: it leaves `anchorGoalArea` intact, so the pin stays
+  exact and `prepare()`'s re-validation drops it correctly.)
+- **F8 · The Summary retag sheet moved a win to a category the user never picked (MED, data).** When the
+  line's area named no live category, `initialCategory` fell back to `categories.first()` — and
+  `categoryChanged` then compared the fallback *to itself* and reported `false`. Apply wrote the fallback
+  category while "Leave as is" faithfully kept the entry's project: a durable `(project, goalArea)` pair
+  that exists nowhere, invisible to every editor (they all scope by `(name, goalArea)`). **Both earlier
+  answers here were wrong** — measuring against the line's raw area (wiped the deliverable on open) and
+  the fallback (this). It now preselects **nothing** and leaves Apply disabled: a sheet that doesn't know
+  must ask.
+- **F9 · The retag loop was cancellable mid-way (MED, data).** `recategorizeNow` ran on the caller's
+  `viewModelScope`, around a **loop** over a merged card's entries, behind a mutex a live Groq call holds
+  for seconds. Leaving the screen half-moved the record — entry 1 moved, 2 and 3 didn't, `wroteBack`
+  never re-stamped. Now `appScope.async{}.await()`: **awaiting and owning are different things.** Same
+  lesson as `renameDeliverable`, whose KDoc had claimed "every other durable mutation here runs on the
+  app scope" — which was false 20 lines above it, and is now true.
 
 ### ⭐ The one root cause behind most of it
 **An anchor is made of NAMES, and a name is not an identity.** A project is unique by `(name, goalArea)`;
@@ -323,7 +352,16 @@ dead control · menu state not keyed (async reorder → wrong-row Delete) · unc
 by Apply.
 
 ### ⚠️ OPEN — not fixed, deliberately
-1. **Round 7's findings are unknown.** Re-run first. ← *the actual next step*
+1. **A tap-in pinned before v0.33.1 and still unfiled at upgrade loses its deliverable on a rename (LOW).**
+   `anchorGoalArea` is only pinned by *this* version's capture path, so a pre-v0.33.1 tap-in that is still
+   RAW/FAILED/PENDING_* when the user upgrades has **both** `anchorGoalArea` and `goalCategory` NULL, and
+   matches neither branch of `remapDeliverableAnchor`/`remapAnchorScoped`. Rename its deliverable and the
+   pin goes stale → `prepare()` drops it → the win files into the project's loose list. **The entry is
+   never lost and never mis-filed; only the grouping degrades.** ⚠️ **The obvious fix is a trap:** adding
+   back an `anchorGoalArea IS NULL` escape hatch is the clause round 5 REMOVED for leaking pins into a
+   different category's same-named project — a mis-file, i.e. strictly worse. The only clean fix is a
+   one-time `anchorGoalArea` backfill migration (Room v8→v9), which was out of scope for a hardening
+   patch. **Re-raised as a HIGH by the final review; deliberately not actioned.**
 2. **Case-sensitivity seam.** The unique indices are case-SENSITIVE; every lookup uses `LOWER()`. So
    "Phase 1" and "phase 1" can coexist and `getByIdentity` picks arbitrarily. Inherited from
    `ProjectEntity`; fixing needs `COLLATE NOCASE` + a table-rebuild migration.
@@ -351,6 +389,9 @@ by Apply.
 - **`doSaveProject`'s `rejected` check uses ignoreCase vs a case-sensitive index** → refuted.
 - **`defaultDeliverable`'s stale-category preselect is unreachable from the sheet** → true, and the test
   pins the contract anyway.
+- **"Re-add the `anchorGoalArea IS NULL` escape hatch so the remap reaches in-flight rows"** → this is the
+  clause round 5 removed for causing a cross-category **mis-file**. Raised again by the final pass. The
+  gap it leaves is real but LOW (OPEN item 1); the hatch is a regression. **Do not re-add it.**
 
 ---
 
