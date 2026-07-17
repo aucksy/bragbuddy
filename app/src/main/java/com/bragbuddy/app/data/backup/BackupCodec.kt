@@ -79,6 +79,11 @@ object BackupCodec {
         put("source", source.name)
         put("status", status.name)
         put("rawTranscript", rawTranscript)
+        // The user's original words ride the backup too (v0.32.0). Dropping them would mean a Drive
+        // restore silently re-destroys exactly what this column exists to protect — the v0.31.0
+        // anchorGoalArea bug, repeated. An older backup has no key here → null → "never edited", which
+        // is the right reading of pre-v0.32.0 data.
+        putOpt("originalTranscript", originalTranscript)
         putOpt("anchorProject", anchorProject)
         // Both anchors ride the backup: they record the user's MANUAL placement decisions, and dropping
         // them would let the AI silently revert every correction on the entry's next edit after a
@@ -108,6 +113,7 @@ object BackupCodec {
             source = enumOr(optString("source"), EntrySource.TEXT),
             status = enumOr(optString("status"), EntryStatus.PROCESSED),
             rawTranscript = raw,
+            originalTranscript = optStringOrNull("originalTranscript"),
             anchorProject = optStringOrNull("anchorProject"),
             anchorGoalArea = optStringOrNull("anchorGoalArea"),
             bullet = optStringOrNull("bullet"),

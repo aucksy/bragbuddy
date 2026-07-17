@@ -634,7 +634,10 @@ class CaptureViewModel @Inject constructor(
         didSave = true
         viewModelScope.launch {
             val replace = replaceId
-            val id = if (replace != null) { entries.replaceText(replace, text, combineSingle); replace }
+            // replaceId is set ONLY by CaptureLauncher.redo → this branch is always a genuine re-record,
+            // so the fresh text becomes the entry's original (isRedo). The number-append below goes
+            // straight to replaceText WITHOUT the flag, so it preserves the original instead.
+            val id = if (replace != null) { entries.replaceText(replace, text, combineSingle, isRedo = true); replace }
                      else entries.capture(text, source, anchorProject = anchorProject, combineSingle = combineSingle)
             onDone()
             when {

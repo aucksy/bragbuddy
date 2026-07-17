@@ -14,12 +14,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * index composite `(name, goalArea)` so the same folder name can exist under different categories.
  * v4 adds `entries.audioPath` (the offline voice-note queue, Phase 7). v5 adds `entries.imagePath`
  * (the offline image-scan queue, M2). v6 adds `entries.anchorGoalArea` (the manual category anchor,
- * v0.31.0 — so a user's correction survives a re-file). All migrations keep existing data.
+ * v0.31.0 — so a user's correction survives a re-file). v7 adds `entries.originalTranscript` (the
+ * user's own words, preserved across an edit — v0.32.0). All migrations keep existing data.
  * exportSchema stays off (no schemaLocation ksp arg wired).
  */
 @Database(
     entities = [EntryEntity::class, ProjectEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -73,6 +74,19 @@ abstract class BragBuddyDatabase : RoomDatabase() {
         val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE entries ADD COLUMN anchorGoalArea TEXT")
+            }
+        }
+
+        /**
+         * v6→v7: add the nullable `originalTranscript` column to `entries` — the user's own words,
+         * preserved across an edit. Existing rows migrate to NULL, which reads as "never edited", so
+         * their `rawTranscript` IS still the original. That is exactly right: a row edited BEFORE this
+         * version already lost its original (the bug this column fixes), and there is nothing to
+         * recover — claiming otherwise would be a lie about what the user said.
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE entries ADD COLUMN originalTranscript TEXT")
             }
         }
     }

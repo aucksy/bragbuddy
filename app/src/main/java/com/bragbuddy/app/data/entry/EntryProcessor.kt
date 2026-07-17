@@ -91,8 +91,16 @@ class EntryProcessor @Inject constructor(
      * NOT split or touch sibling rows: an edit fixes a single entry, so re-filing it must never
      * delete/duplicate the other items from the same original capture. Runs under the processing lock
      * so it can't be clobbered by an in-flight categorization of the same row. No-op if the row is gone.
+     *
+     * [isRedo] distinguishes the two callers of this one path, which mean opposite things for the
+     * user's original words (v0.32.0):
+     *  - an **edit** (false) mutates the existing capture → snapshot [EntryEntity.originalTranscript]
+     *    once, so what the user actually said survives; the editor is seeded from the AI's *bullet*, so
+     *    without this the edit would silently overwrite their words with the AI's.
+     *  - a **redo** (true) is starting over → the fresh recording BECOMES the original, so the snapshot
+     *    resets to null and the scrapped attempt is let go (owner's call, 2026-07-17).
      */
-    suspend fun replace(id: Long, text: String, combineSingle: Boolean = false) {
+    suspend fun replace(id: Long, text: String, combineSingle: Boolean = false, isRedo: Boolean = false) {
         val clean = text.trim()
         if (clean.isEmpty()) return
         mutex.withLock {
@@ -100,6 +108,10 @@ class EntryProcessor @Inject constructor(
             // A manually-set ★ Standout is the user's call and must survive an edit (mirrors isPinned,
             // which is already preserved). Re-apply it after the AI re-file, which would otherwise reset it.
             val keepExtra = e.isExtra
+            // Capture the original words ONCE, from the value about to be overwritten, and never again.
+            val keepOriginal = OriginalTranscript.next(
+                current = e.rawTranscript, existing = e.originalTranscript, incoming = clean, isRedo = isRedo,
+            )
             // NOTE: `anchorProject` / `anchorGoalArea` are deliberately NOT reset below. A manual
             // placement is the user's call and must survive an edit for exactly the same reason ★ does —
             // prepare() re-reads them and applyCategorized() re-applies them, so the AI's fresh guess is
@@ -107,6 +119,7 @@ class EntryProcessor @Inject constructor(
             // re-derive: they are a property of the TEXT, which just changed. Placement is structural.
             val reset = e.copy(
                 rawTranscript = clean,
+                originalTranscript = keepOriginal,
                 status = EntryStatus.RAW,
                 occurredAt = null,
                 bullet = null,
@@ -167,6 +180,12 @@ class EntryProcessor @Inject constructor(
                 if (c != null && newBullet != null) {
                     val updated = e.copy(
                         rawTranscript = combined,
+                        // An append is not a loss, but it still changes the text — so snapshot the words
+                        // as first spoken (once, never overwritten), same rule as an edit (v0.32.0).
+                        originalTranscript = OriginalTranscript.next(
+                            current = e.rawTranscript, existing = e.originalTranscript,
+                            incoming = combined, isRedo = false,
+                        ),
                         bullet = newBullet,
                         metric = c.metric?.takeIf { it.isNotBlank() } ?: e.metric,
                         impact = c.impact,

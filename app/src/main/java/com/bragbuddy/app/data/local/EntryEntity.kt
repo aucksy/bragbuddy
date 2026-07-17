@@ -94,6 +94,25 @@ data class EntryEntity(
     val rawTranscript: String,
 
     /**
+     * The user's **original words**, snapshotted the FIRST time [rawTranscript] is mutated and never
+     * overwritten after. Null = never edited, i.e. [rawTranscript] still IS the original. Always read
+     * it as `originalTranscript ?: rawTranscript`. (Room v7 column.)
+     *
+     * Why this exists (v0.32.0): an Edit seeds its editor from the AI's polished *bullet*, and
+     * [EntryProcessor.replace] wrote that edited text straight into [rawTranscript] — so editing a
+     * bullet **permanently replaced what the user actually said** with the AI's wording, and no backup
+     * held a copy either. That is precisely the "details I may need months later" loss the record
+     * exists to prevent, and it quietly contradicted the "never lose an entry" invariant
+     * (`CONTEXT.md` §2), which had only ever been enforced against AI *failure*, not against the
+     * user's own edits.
+     *
+     * A **redo (re-record) resets this to null** — a redo is starting over, so the fresh recording
+     * becomes the original and the scrapped attempt is let go (owner's call, 2026-07-17). An **edit**
+     * and an **add-impact append** both preserve it.
+     */
+    val originalTranscript: String? = null,
+
+    /**
      * Explicit project anchor set at capture time (from tapping a project folder) **or by a manual
      * correction** (Inbox resolve / Recategorize). When present the categorizer must file this entry —
      * and its split siblings — into this exact project, skipping the guess. Null = infer the project as

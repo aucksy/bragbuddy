@@ -21,6 +21,7 @@ class BackupCodecTest {
             EntryEntity(
                 id = 7, createdAt = 1000, occurredAt = 900, source = EntrySource.VOICE,
                 status = EntryStatus.PROCESSED, rawTranscript = "shipped the thing",
+                originalTranscript = "shipped the thing on tuesday with raj",
                 anchorProject = "Atlas", bullet = "Shipped Atlas v2.", project = "Atlas",
                 goalCategory = "Performance Goals", demonstrates = listOf("Leadership & Behaviours"),
                 isExtra = true, impact = 0.8, routine = false, routineType = null,
@@ -58,9 +59,14 @@ class BackupCodecTest {
         assertThat(e.impact).isEqualTo(0.8)
         assertThat(e.metric).isEqualTo("drop-off down 18%")
         assertThat(e.isPinned).isTrue()
+        // The user's original words must survive a Drive restore. An un-serialised column is silently
+        // dropped on restore (the v0.31.0 anchorGoalArea bug) — here that would mean the restore itself
+        // destroys what the user said, which is the exact loss this column exists to prevent.
+        assertThat(e.originalTranscript).isEqualTo("shipped the thing on tuesday with raj")
 
         val e2 = decoded.entries.first { it.id == 8L }
         assertThat(e2.occurredAt).isNull()
+        assertThat(e2.originalTranscript).isNull() // never edited
         assertThat(e2.impact).isNull()
         assertThat(e2.suggestedProjects).containsExactly("Atlas", "Raven")
 
@@ -83,6 +89,15 @@ class BackupCodecTest {
     fun `decoding non-backup text returns null`() {
         assertThat(BackupCodec.decode("not json at all")).isNull()
         assertThat(BackupCodec.decode("""{"foo":1}""")).isNull()
+    }
+
+    @Test
+    fun `an older backup with no originalTranscript key decodes as never-edited`() {
+        // A pre-v0.32.0 backup simply has no key → null → "rawTranscript IS the original", which is the
+        // truthful reading of that data. It must not fail the restore.
+        val json = BackupCodec.encode(snapshot).replace("\"originalTranscript\"", "\"ignoredLegacyKey\"")
+        val decoded = BackupCodec.decode(json)!!
+        assertThat(decoded.entries.first { it.id == 7L }.originalTranscript).isNull()
     }
 
     @Test

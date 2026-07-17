@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Refresh
@@ -51,8 +52,11 @@ import com.bragbuddy.app.ui.theme.Spacing
 /**
  * One dated entry bullet — shared by the deep pillar view and the Home inline folder expansion so the
  * two always look identical. Shows the cleaned bullet, cross-references (behaviours it also evidences
- * / the project it came from), the ★ Standout + metric chips, and a ⋮ menu (edit / redo / delete).
- * In [selectionMode] the ⋮ menu is replaced by a checkbox and taps toggle selection.
+ * / the project it came from), the ★ Standout + metric chips, and a ⋮ menu (see original / edit /
+ * redo / delete). In [selectionMode] the ⋮ menu is replaced by a checkbox and taps toggle selection.
+ *
+ * [onTap] opens the entry-detail sheet; the ⋮ "See original" item routes to it too, so a caller that
+ * renders the menu must pass it (v0.32.0 — see [BulletMenu]).
  */
 @Composable
 fun EntryBulletRow(
@@ -164,13 +168,20 @@ fun EntryBulletRow(
                 colors = CheckboxDefaults.colors(checkedColor = palette.primary, uncheckedColor = palette.text3),
             )
         } else {
-            BulletMenu(onEdit = onEdit, onRedo = onRedo, onDelete = onDelete)
+            BulletMenu(onSeeOriginal = onTap, onEdit = onEdit, onRedo = onRedo, onDelete = onDelete)
         }
     }
 }
 
+/**
+ * [onSeeOriginal] is the row's own [EntryBulletRow.onTap] — "See original" and tapping the card are
+ * deliberately the same action (both open `EntryDetailSheet`, which shows the user's words under
+ * "WHAT YOU SAID"). It is listed here purely for **discoverability**: the transcript was always
+ * viewable, but only behind an undiscovered tap, so the owner never found it (v0.32.0). Any call site
+ * that shows this menu must therefore pass `onTap`.
+ */
 @Composable
-private fun BulletMenu(onEdit: () -> Unit, onRedo: () -> Unit, onDelete: () -> Unit) {
+private fun BulletMenu(onSeeOriginal: () -> Unit, onEdit: () -> Unit, onRedo: () -> Unit, onDelete: () -> Unit) {
     val palette = BragBuddyTheme.palette
     var open by remember { mutableStateOf(false) }
     Box {
@@ -178,6 +189,11 @@ private fun BulletMenu(onEdit: () -> Unit, onRedo: () -> Unit, onDelete: () -> U
             Icon(Icons.Outlined.MoreVert, "More", tint = palette.text3, modifier = Modifier.size(19.dp))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("See original") },
+                onClick = { open = false; onSeeOriginal() },
+                leadingIcon = { Icon(Icons.Outlined.Description, null, modifier = Modifier.size(18.dp)) },
+            )
             DropdownMenuItem(
                 text = { Text("Edit text") },
                 onClick = { open = false; onEdit() },

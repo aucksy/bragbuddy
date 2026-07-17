@@ -210,9 +210,13 @@ class EntryRepository @Inject constructor(
      * Replace an entry's text and re-file it from scratch (Home → Edit, or Redo's re-record). The
      * reset + re-categorize runs inside [EntryProcessor] under its lock, so it can't be clobbered by
      * an in-flight categorization of the same row and can't leave duplicate split rows.
+     *
+     * [isRedo] must be true ONLY for a genuine re-record (the user starting the capture over), never
+     * for an edit or an append — it decides whether the entry's original words are preserved or reset.
+     * See [EntryProcessor.replace].
      */
-    fun replaceText(id: Long, text: String, combineSingle: Boolean = false) {
-        appScope.launch { processor.replace(id, text, combineSingle) }
+    fun replaceText(id: Long, text: String, combineSingle: Boolean = false, isRedo: Boolean = false) {
+        appScope.launch { processor.replace(id, text, combineSingle, isRedo) }
     }
 
     /**

@@ -120,6 +120,11 @@ fun EntryDetailSheet(
     )
 
     val cleaned = entry.bullet?.takeIf { it.isNotBlank() }
+    // `originalTranscript` is null until the entry's text is first mutated, so the live transcript is
+    // still the original — always read the pair through this fallback (v0.32.0). The hint is gated on a
+    // real difference, not merely on the column being set, so a no-op round-trip never claims an edit.
+    val originalWords = entry.originalTranscript?.takeIf { it.isNotBlank() } ?: entry.rawTranscript
+    val wasEdited = originalWords.trim() != entry.rawTranscript.trim()
     val date = DateUtils.getRelativeTimeSpanString(
         entry.occurredAt ?: entry.createdAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
     ).toString()
@@ -204,14 +209,24 @@ fun EntryDetailSheet(
                 Spacer(Modifier.height(2.dp))
                 Text(date, style = MaterialTheme.typography.bodySmall, color = palette.text3)
 
-                // Raw transcript.
+                // The user's OWN words — the original when the entry has since been edited, else the
+                // live transcript (v0.32.0). Never the edited text: the whole point of the column is
+                // that an edit to the AI's bullet can't overwrite what was actually said.
                 Spacer(Modifier.height(Spacing.s4))
                 Text("WHAT YOU SAID", style = MaterialTheme.typography.labelSmall, color = palette.text3, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(Spacing.s2))
                 Box(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.md)).background(palette.surface2).padding(13.dp),
                 ) {
-                    Text(entry.rawTranscript, style = MaterialTheme.typography.bodyMedium, color = palette.text2)
+                    Text(originalWords, style = MaterialTheme.typography.bodyMedium, color = palette.text2)
+                }
+                if (wasEdited) {
+                    Spacer(Modifier.height(Spacing.s2))
+                    Text(
+                        "Edited since — this is what you originally said.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = palette.text3,
+                    )
                 }
 
                 // Recategorize picker (revealed on demand; hidden while editing the bullet). Two axes:
