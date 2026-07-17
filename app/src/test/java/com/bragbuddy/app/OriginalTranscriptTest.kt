@@ -87,7 +87,7 @@ class OriginalTranscriptTest {
     }
 
     @Test
-    fun `a rewrite that merely starts with the same words is still an append, not a loss`() {
+    fun `a rewrite that merely echoes the transcript's opening words is still protected`() {
         // Guard the boundary of the startsWith rule: a real edit is seeded from the AI's BULLET, which
         // does not begin with the transcript, so this leniency never swallows a genuine rewrite.
         assertThat(

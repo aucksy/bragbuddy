@@ -109,7 +109,8 @@ data class EntryEntity(
      * Set only when text is genuinely REPLACED. A **redo (re-record) resets this to null** — a redo is
      * starting over, so the fresh recording becomes the original and the scrapped attempt is let go
      * (owner's call, 2026-07-17). An **add-impact append** sets nothing: it only adds to the text, so
-     * the live transcript is still entirely the user's words. See [OriginalTranscript].
+     * the live transcript is still entirely the user's words. The full rule (and why each branch is
+     * what it is) lives in [com.bragbuddy.app.data.entry.OriginalTranscript].
      */
     val originalTranscript: String? = null,
 
