@@ -1366,19 +1366,17 @@ private fun RetagSheet(
     var selectedCategory by rememberSaveable(line) {
         mutableStateOf(categories.firstOrNull { it.name.equals(currentArea, ignoreCase = true) }?.name ?: categories.firstOrNull()?.name)
     }
-    var selectedFolder by rememberSaveable(line) {
-        // Scoped to the current category, mirroring Recategorize.defaultFolder: a folder is unique by
-        // (name, goalArea), so a project only preselects under the category it actually belongs to.
-        mutableStateOf(
-            currentProject?.takeIf { p ->
-                folders.any { it.name.equals(p, ignoreCase = true) && it.goalArea.equals(currentArea, ignoreCase = true) }
-            },
-        )
+    // Scoped to the current category, mirroring Recategorize.defaultFolder: a folder is unique by
+    // (name, goalArea), so a project only preselects under the category it actually belongs to.
+    val initialFolder = remember(line, currentProject, currentArea, folders) {
+        currentProject?.takeIf { p ->
+            folders.any { it.name.equals(p, ignoreCase = true) && it.goalArea.equals(currentArea, ignoreCase = true) }
+        }
     }
-    // True the moment the user answers the project question — or immediately, when the answer was already
-    // known and preselected (writing back the truth is a no-op). Only a DEVELOPMENT line starts false,
-    // because its project genuinely can't be resolved here.
-    var projectTouched by rememberSaveable(line) { mutableStateOf(currentProjectKnown) }
+    var selectedFolder by rememberSaveable(line) { mutableStateOf(initialFolder) }
+    // EXPLICIT answers only. The real question — "has the project been decided?" — is DERIVED below;
+    // storing it in this flag is what let a category change strand it.
+    var projectTouched by rememberSaveable(line) { mutableStateOf(false) }
     // The deliverable axis (v0.33.0). THREE states, not two — this is the fix for a HIGH found in the
     // v0.33.0 accuracy assessment. It previously hardcoded "no deliverable" as the selection, so a user
     // who opened this sheet to fix the CATEGORY of a win they had tap-in filed into a deliverable had
@@ -1412,8 +1410,19 @@ private fun RetagSheet(
     // `projectKnown` is false for DEVELOPMENT summary lines, whose project can't be resolved at render
     // time. There "unchanged" is unknowable, so an explicit pick is treated as a move.
     val categoryChanged = !selectedCategory.orEmpty().equals(currentArea, ignoreCase = true)
+    // Is the PROJECT question answered? Three ways, and it must be DERIVED, not stored:
+    //  - we knew the answer and preselected it (writing the truth back is a no-op);
+    //  - the user picked one;
+    //  - the CATEGORY moved, which answers it whether they like it or not: a folder is unique by
+    //    (name, goalArea), so the old one cannot exist in the category they just chose.
+    // That last clause fixes a HIGH. A development line (project unknown) whose category was changed kept
+    // "Leave as is" selected, so Apply wrote the OLD project name under the NEW category — a folder that
+    // lives nowhere, durably anchored, invisible to every editor (they all scope by (name, goalArea)) and
+    // beyond the reach of any later rename. The code even asserted "a known project can't survive a
+    // category change" while this very branch let it do exactly that.
+    val projectSettled = currentProjectKnown || projectTouched || categoryChanged
     val projectChanged =
-        if (!currentProjectKnown) projectTouched
+        if (!currentProjectKnown) projectSettled
         else !selectedFolder.orEmpty().equals(currentProject.orEmpty(), ignoreCase = true)
     val placementChanged = categoryChanged || projectChanged
     val effectiveTouched = deliverableTouched || placementChanged
@@ -1447,16 +1456,20 @@ private fun RetagSheet(
                     // Changing the category invalidates both narrower axes — they belong to the old one.
                     val pickCategory = {
                         if (!isSel) {
+                            val backHome = cat.name.equals(currentArea, ignoreCase = true)
                             selectedCategory = cat.name
-                            selectedFolder = null
+                            // Returning to the line's OWN category restores its real project instead of
+                            // leaving it blank: a round trip (A → B → A) landed on "No specific project",
+                            // so Apply silently un-filed a win the user never meant to touch and took its
+                            // deliverable with it. Any OTHER category genuinely cannot hold that folder,
+                            // so there it resets.
+                            selectedFolder = if (backHome) initialFolder else null
                             selectedDeliverable = null
                             newDeliverable = null
                             namingDeliverable = false
                             deliverableTouched = false
-                            // A known project can't survive a category change (a folder is unique by
-                            // (name, goalArea)), so the axis is settled-as-none until they pick again.
-                            // An unknown one goes back to "leave as is".
-                            projectTouched = currentProjectKnown
+                            // Explicit answers only; `projectSettled` re-derives the rest.
+                            projectTouched = false
                         }
                     }
                     Row(
@@ -1482,8 +1495,8 @@ private fun RetagSheet(
                             // Offered only when the line's project is genuinely UNKNOWN (a DEVELOPMENT
                             // line). Without it the sheet showed "No specific project" as though it were
                             // the answer, and Apply un-filed a win from a project the user never touched.
-                            if (!currentProjectKnown) {
-                                SelectChip("Leave as is", selected = !projectTouched, palette = palette) {
+                            if (!currentProjectKnown && !categoryChanged) {
+                                SelectChip("Leave as is", selected = !projectSettled, palette = palette) {
                                     projectTouched = false
                                     selectedFolder = null
                                     selectedDeliverable = null
@@ -1494,7 +1507,7 @@ private fun RetagSheet(
                             }
                             SelectChip(
                                 NO_PROJECT_LABEL,
-                                selected = projectTouched && selectedFolder == null,
+                                selected = projectSettled && selectedFolder == null,
                                 palette = palette,
                             ) {
                                 projectTouched = true
@@ -1509,10 +1522,10 @@ private fun RetagSheet(
                             catFolders.forEach { f ->
                                 SelectChip(
                                     f.name,
-                                    selected = projectTouched && selectedFolder?.equals(f.name, ignoreCase = true) == true,
+                                    selected = projectSettled && selectedFolder?.equals(f.name, ignoreCase = true) == true,
                                     palette = palette,
                                 ) {
-                                    if (!projectTouched || selectedFolder?.equals(f.name, ignoreCase = true) != true) {
+                                    if (!projectSettled || selectedFolder?.equals(f.name, ignoreCase = true) != true) {
                                         projectTouched = true
                                         selectedFolder = f.name
                                         selectedDeliverable = null
@@ -1526,7 +1539,7 @@ private fun RetagSheet(
                         // The deliverable level — only under a real project, the only place one exists.
                         // Also requires the project to be SETTLED: with an unknown project left
                         // "as is" there is no project to scope a deliverable list to.
-                        if (selectedFolder != null && projectTouched) {
+                        if (selectedFolder != null && projectSettled) {
                             val catDeliverables = Recategorize.deliverablesFor(cat.name, selectedFolder, deliverables)
                             Text(
                                 DELIVERABLE_LABEL.uppercase(),
@@ -1650,7 +1663,7 @@ private fun RetagSheet(
                             newDeliverable ?: selectedDeliverable,
                             newDeliverable != null,
                             effectiveTouched,
-                            projectTouched,
+                            projectSettled,
                         )
                     }
                 }

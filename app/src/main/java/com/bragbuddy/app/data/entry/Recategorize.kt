@@ -97,13 +97,18 @@ object Recategorize {
      * so asking about a DIFFERENT project must clear a deliverable that belonged to the old one rather
      * than silently matching a same-named deliverable somewhere else.
      *
-     * That last clause is why the entry's own parents are checked first, and not just the name. The tag
-     * is only a name: it means "Phase 1 **of the project this entry is filed in**". Matching it against
-     * the target project's list alone would quietly hand the entry that project's *different* "Phase 1" —
+     * That last clause is why the entry's own PROJECT is checked, and not just the name. The tag is only
+     * a name: it means "Phase 1 **of the project this entry is filed in**". Matching it against the
+     * target project's list alone would quietly hand the entry that project's *different* "Phase 1" —
      * and names like "Phase 1" / "Q1" / "Discovery" repeat across projects, so this is the common case,
-     * not an exotic one. (Reachable only if a caller ever asks about somewhere the entry isn't; today's
-     * callers pass the entry's own placement. A unit test pins it either way — the same trap did reach
-     * the record through the Summary retag sheet.)
+     * not an exotic one.
+     *
+     * The **category** deliberately is NOT compared against the entry's own. [deliverablesFor] already
+     * scopes the candidates to [category], which is the real guard — and the entry's `goalCategory` can
+     * legitimately be stale (its category was renamed or deleted, so the entry sits in the Uncategorized
+     * catch-all). Demanding a match there dropped the preselect for exactly those entries, and the
+     * entry-detail sheet's Apply then wiped a deliverable the user never touched — trading the bug this
+     * guard exists to prevent for a different one.
      */
     fun defaultDeliverable(
         entry: EntryEntity,
@@ -113,7 +118,6 @@ object Recategorize {
     ): String? {
         val current = entry.deliverable?.trim()?.takeIf { it.isNotBlank() } ?: return null
         if (!entry.project.orEmpty().trim().equals(folder.orEmpty().trim(), ignoreCase = true)) return null
-        if (!entry.goalCategory.orEmpty().trim().equals(category.orEmpty().trim(), ignoreCase = true)) return null
         return deliverablesFor(category, folder, deliverables)
             .firstOrNull { it.name.equals(current, ignoreCase = true) }?.name
     }

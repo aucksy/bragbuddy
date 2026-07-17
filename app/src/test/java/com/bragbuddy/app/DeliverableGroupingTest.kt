@@ -271,6 +271,21 @@ class DeliverableGroupingTest {
         assertThat(Recategorize.defaultDeliverable(e, goalArea, "Data", all)).isNull()
     }
 
+    @Test
+    fun `a stale category still preselects the deliverable - the candidate list is the guard`() {
+        // An entry whose category was renamed or deleted keeps its old goalCategory and sits in the
+        // Uncategorized catch-all. Its project and deliverable are still perfectly real, so opening the
+        // detail sheet must still preselect them — a guard that demanded the entry's own category match
+        // dropped the preselect here, and Apply then wiped a deliverable the user never touched.
+        val all = listOf(deliverable("Onboarding", project = "Payments"))
+        val stale = entry(project = "Payments", deliverable = "Onboarding", goal = "A Category Since Renamed")
+
+        assertThat(Recategorize.defaultDeliverable(stale, goalArea, "Payments", all)).isEqualTo("Onboarding")
+        // The candidate list still does the real scoping: ask about the wrong category and there is
+        // nothing to offer, so nothing preselects.
+        assertThat(Recategorize.defaultDeliverable(stale, "Learning & Growth", "Payments", all)).isNull()
+    }
+
     // ---------------- export ----------------
 
     @Test
