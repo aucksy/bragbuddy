@@ -18,7 +18,7 @@ eval/
 ├── golden/
 │   ├── categorizer.jsonl     # one case per line (schema below)
 │   ├── coach.jsonl           # rubric-scored coach cases
-│   └── summary/*.json        # 5 synthetic rollups with structural expectations
+│   └── summary/*.json        # 7 synthetic rollups with structural expectations
 ├── tools/from-backup.mjs     # bootstrap real-record cases from a device backup export
 ├── run.mjs                   # the runner (Node 20+, no deps)
 ├── report.md / report.json   # last run's output (gitignored-by-convention: commit only baselines)
@@ -102,7 +102,18 @@ Baseline runs never fail the job (they are the measurement); gate runs fail on a
 | Routine-label reuse (exact label when context provides one) | 100% |
 | Impact inside the case's band | ≥ 80% |
 | Coach rubric pass (short · concrete measure kind · grounded · **zero invented numbers = hard fail**) | ≥ 90% |
-| Summary structural checks (no dupes · arcs merged · metrics verbatim · pinned once · counts exact · setAside honest · competencies nested under their category · length target honoured) | 100% |
+| Deliverable filing (right deliverable — and EMPTY when none clearly fits) | ≥ 80% |
+| Summary structural checks (no dupes · arcs merged · metrics verbatim · pinned once · counts exact · setAside honest · competencies nested under their category · length target honoured · **one deliverable = one story**) | 100% |
+
+**`deliverableAccuracy` (gated since v0.34.0)** scores the `deliverable` axis on its own, deliberately
+NOT folded into the placement match key — a wrong deliverable must not read as a wrong *placement* and
+move `placementAccuracy`, the metric with the longest baseline history here. A case opts in by putting
+a `deliverable` key on an expected placement; `null` is a real expectation and most of the goldens use
+it, because **declining to file is the behaviour that matters most**: filing is tap-in first, AI second
+(owner's rule), so the model must leave the field empty whenever two could fit, the project lists none,
+the deliverable is Done (never offered), or it belongs to another project. The model's guess is scored
+through `resolveDeliverable`, the mirror of `DeliverableGuess.resolve` — so an invented or borrowed name
+scores as the `null` the app would actually store, not as the string the model emitted.
 
 Reported but not gated: entry-count accuracy, demonstrates (required tags present), metric field
 preservation, dateMentioned accuracy, routine false-positive rate. The development-placement check
@@ -127,10 +138,16 @@ closed** (exit 1).
     "anchor": null,                       // or a project name (folder-tap capture)
     "routineTypes": ["access requests"], // existing labels (only injected once the template has {{ROUTINE_TYPES}})
     "framework": { "pillars": [ { "name": "…", "kind": "GOAL_AREA|BEHAVIOUR|DEVELOPMENT", "blurb": "…" } ] },
-    "projects": [ { "name": "…", "goalArea": "…", "description": "…" } ]
+    "projects": [ { "name": "…", "goalArea": "…", "description": "…" } ],
+    // v0.34.0 — mirrors the `deliverables` TABLE. Only ACTIVE ones under a placement project are
+    // OFFERED to the model (a Done one has shipped), and `offered` builds BOTH the prompt lines and
+    // the universe a guess may resolve to, so "shown" and "pickable" can't drift.
+    "deliverables": [ { "name": "…", "project": "…", "goalArea": "…", "done": false, "description": "…" } ]
   },
   "expect": {                            // every field optional — score only what a case specifies
-    "placements": [ { "project": "…", "goalCategory": "…" } ],
+    // `deliverable` is optional per placement and opts the case into the deliverableAccuracy gate.
+    // null is a REAL expectation — "the model must decline to file" is most of what's tested.
+    "placements": [ { "project": "…", "goalCategory": "…", "deliverable": null } ],
     "entryCount": 1,
     "inboxExpected": false,
     "routineTypes": ["access requests"], // [] asserts NO routine entry
@@ -148,13 +165,19 @@ mode (the add-impact / add-detail merge path: exactly one entry, follow-up folde
 `CategorizeRequest.combineSingle`.
 
 `coach.jsonl`: `{ "id", "bullet", "project", "projectDetail", "goalArea", "role" }` — no expected
-string; scored by the rubric. `summary/*.json`: see the six files — `expect` supports
+string; scored by the rubric. `summary/*.json`: see the seven files — `expect` supports
 `noDuplicates`, `arcKeys`, `metrics`, `pinnedKeys`, `rolledUp`, `setAsideNonEmpty`,
 `developmentKeys` (gated since AI-2), `competencyGrouping` (gated since the Summary phase:
 `{ "category": "Leadership", "competencies": [...] }` — a BEHAVIOUR category whose framework
 description names competencies must group its evidence UNDER the category, nested, not surface each
-competency as its own top-level header), and `minAchievements` (gated since v0.31.0:
-`{ "Delivery": 6 }` — a per-goal-area FLOOR on how many achievements survive).
+competency as its own top-level header), `minAchievements` (gated since v0.31.0:
+`{ "Delivery": 6 }` — a per-goal-area FLOOR on how many achievements survive), and
+`deliverableStories` (gated since v0.34.0: `[{ "name": "Market rollout", "done": true }]` — every
+highlight tagged with one deliverable must collapse into EXACTLY ONE achievement carrying its name,
+and a `done` one must not read as still running). Note `done: false` asserts the grouping ONLY: the
+scorer checks the done→in-progress direction and not its reverse, because enumerating every honest
+synonym of "delivered" is the open-ended side, and a false fail against a seed-fixed model doesn't
+flake — it wedges the 100% AND-gate permanently.
 
 **On `minAchievements`.** Every other summary check scores whether the CONTENT is correct; none
 measured how MUCH survived. So when the owner reported "AI is shortening everything too much", the
