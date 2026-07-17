@@ -12,6 +12,7 @@ import com.bragbuddy.app.data.local.ProjectEntity
 import com.bragbuddy.app.data.prefs.CaptureMode
 import com.bragbuddy.app.data.prefs.DefaultCaptureMethod
 import com.google.common.truth.Truth.assertThat
+import org.json.JSONObject
 import org.junit.Test
 
 /** Round-trip tests for the backup serialiser (Phase 6). */
@@ -109,21 +110,28 @@ class BackupCodecTest {
         assertThat(d.sortOrder).isEqualTo(2)
     }
 
+    // NB: these mutate the encoded JSON through JSONObject rather than by string-replacing it. org.json
+    // gives no key-ORDER guarantee, and "project" is a key on BOTH an entry and a deliverable — so a
+    // textual replace would silently no-op (or hit the wrong object) and the test would assert nothing.
+
     @Test
     fun `a pre-v0_33 backup with no deliverables key still restores`() {
-        // It is still a valid BragBuddy backup — it just had none. Rejecting it, or failing on the
-        // missing key, would make an older backup unrestorable for no reason.
-        val json = BackupCodec.encode(snapshot).replace("\"deliverables\"", "\"ignoredLegacyKey\"")
-        val decoded = BackupCodec.decode(json)!!
+        // It is still a valid BragBuddy backup — it just had none. Failing on the missing key, or
+        // rejecting the file, would make every older backup unrestorable for no reason.
+        val root = JSONObject(BackupCodec.encode(snapshot))
+        root.remove("deliverables")
+        val decoded = BackupCodec.decode(root.toString())!!
         assertThat(decoded.deliverables).isEmpty()
         assertThat(decoded.entries).hasSize(2) // the rest of the restore is unaffected
     }
 
     @Test
-    fun `a deliverable with no parents is dropped rather than restored unreachable`() {
-        val json = BackupCodec.encode(snapshot).replace("\"project\":\"Atlas\",\"goalArea\"", "\"goalArea\"")
-        val decoded = BackupCodec.decode(json)!!
+    fun `a deliverable with no parent project is dropped rather than restored unreachable`() {
+        val root = JSONObject(BackupCodec.encode(snapshot))
+        root.getJSONArray("deliverables").getJSONObject(0).remove("project")
+        val decoded = BackupCodec.decode(root.toString())!!
         assertThat(decoded.deliverables).isEmpty()
+        assertThat(decoded.entries).hasSize(2) // and it doesn't take the rest of the backup with it
     }
 
     @Test
