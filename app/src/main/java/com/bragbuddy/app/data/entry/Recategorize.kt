@@ -3,6 +3,7 @@ package com.bragbuddy.app.data.entry
 import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
+import com.bragbuddy.app.data.local.DeliverableEntity
 import com.bragbuddy.app.data.local.EntryEntity
 
 /**
@@ -66,6 +67,46 @@ object Recategorize {
             .filter { p -> entry.demonstrates.any { it.trim().equals(p.name, ignoreCase = true) } }
             .map { it.name }
             .toSet()
+
+    /**
+     * The deliverables offerable for a given ([category], [folder]) — the picker's third level
+     * (v0.33.0). Empty whenever there's no named project selected: a deliverable lives *inside* a
+     * project, so "no specific project" has none to offer.
+     *
+     * **Done ones are still offered here**, deliberately. "Done drops out of the log-into list" is about
+     * *capture* — where you're adding new work. This is a *correction*: a win from six months ago
+     * genuinely belongs to the deliverable that shipped, and refusing to file it there would make the
+     * record wrong to keep a rule that was never about corrections.
+     */
+    fun deliverablesFor(
+        category: String?,
+        folder: String?,
+        deliverables: List<DeliverableEntity>,
+    ): List<DeliverableEntity> {
+        val cat = category?.trim()?.takeIf { it.isNotBlank() } ?: return emptyList()
+        val proj = folder?.trim()?.takeIf { it.isNotBlank() } ?: return emptyList()
+        return deliverables
+            .filter { it.project.equals(proj, ignoreCase = true) && it.goalArea.equals(cat, ignoreCase = true) }
+            .sortedWith(compareBy({ it.done }, { it.name.lowercase() }))
+    }
+
+    /**
+     * The deliverable to preselect within ([category], [folder]): the entry's current one when it still
+     * names a real deliverable there, else null ("not part of one"). Scoped by both parents for the same
+     * reason [defaultFolder] is scoped by category — a deliverable's name is not an identity on its own,
+     * so switching the project must clear a deliverable that belonged to the old one rather than silently
+     * matching a same-named deliverable somewhere else.
+     */
+    fun defaultDeliverable(
+        entry: EntryEntity,
+        category: String?,
+        folder: String?,
+        deliverables: List<DeliverableEntity>,
+    ): String? {
+        val current = entry.deliverable?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return deliverablesFor(category, folder, deliverables)
+            .firstOrNull { it.name.equals(current, ignoreCase = true) }?.name
+    }
 
     /** The minimal folder shape the pure helpers need (name + its goal area). */
     data class FolderRef(val name: String, val goalArea: String)

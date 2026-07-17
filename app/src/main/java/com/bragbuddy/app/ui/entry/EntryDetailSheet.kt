@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.sp
 import com.bragbuddy.app.data.entry.Recategorize
 import com.bragbuddy.app.ui.common.LocalBottomBarInset
 import com.bragbuddy.app.data.framework.Framework
+import com.bragbuddy.app.data.local.DELIVERABLE_LABEL
+import com.bragbuddy.app.data.local.DeliverableEntity
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.OUTSIDE_PROJECT
 import com.bragbuddy.app.data.local.ProjectEntity
@@ -70,7 +72,11 @@ import com.bragbuddy.app.ui.theme.Spacing
  * [entry] is a snapshot the host updates optimistically on toggle, so ★/Pin flip instantly.
  * [onSaveEdit] receives the edited text; the host re-files it (this re-runs the categorizer) and
  * dismisses. [onRecategorize] receives the chosen goal-area category, project (folder name or
- * [OUTSIDE_PROJECT]), and behaviour-evidence names — the host applies it deterministically (no AI).
+ * [OUTSIDE_PROJECT]), **deliverable** (v0.33.0 — null = not part of one) and behaviour-evidence names —
+ * the host applies it deterministically (no AI). `createDeliverable` = the deliverable was named right
+ * here and must be created before the win is filed into it (the owner's "move to an existing **or new**
+ * deliverable"); the host must route that to `EntryRepository.recategorize(createDeliverable = true)`,
+ * which does both under one lock rather than racing an insert against the file.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -78,8 +84,15 @@ fun EntryDetailSheet(
     entry: EntryEntity,
     folders: List<ProjectEntity>,
     framework: Framework,
+    deliverables: List<DeliverableEntity>,
     onSaveEdit: (String) -> Unit,
-    onRecategorize: (goalArea: String, project: String, demonstrates: List<String>) -> Unit,
+    onRecategorize: (
+        goalArea: String,
+        project: String,
+        deliverable: String?,
+        demonstrates: List<String>,
+        createDeliverable: Boolean,
+    ) -> Unit,
     onToggleExtra: (Boolean) -> Unit,
     onTogglePin: (Boolean) -> Unit,
     onDelete: () -> Unit,
@@ -105,6 +118,26 @@ fun EntryDetailSheet(
         )
     }
     var selectedBehaviours by remember(entry.id) { mutableStateOf(Recategorize.defaultBehaviours(entry, framework)) }
+    // The third axis (v0.33.0). Null = "not part of a deliverable" — the normal case, not an absence.
+    var selectedDeliverable by remember(entry.id) {
+        mutableStateOf(
+            Recategorize.defaultDeliverable(
+                entry,
+                Recategorize.defaultCategory(entry, framework),
+                Recategorize.defaultFolder(
+                    entry,
+                    Recategorize.defaultCategory(entry, framework),
+                    folders.map { Recategorize.FolderRef(it.name, it.goalArea) },
+                ),
+                deliverables,
+            ),
+        )
+    }
+    // A deliverable named right here, not yet created — held separately from `selectedDeliverable` so
+    // Apply can tell the host to create it first (one locked operation, no insert-vs-file race).
+    var newDeliverable by remember(entry.id) { mutableStateOf<String?>(null) }
+    var namingDeliverable by remember(entry.id) { mutableStateOf(false) }
+    var newDeliverableText by remember(entry.id) { mutableStateOf("") }
     // Inline edit state — keyed on the entry id so an optimistic ★/Pin recomposition of the SAME entry
     // doesn't reset a mid-edit, but opening a different entry starts fresh.
     var editing by remember(entry.id) { mutableStateOf(false) }
@@ -192,6 +225,9 @@ fun EntryDetailSheet(
                 // Placement + meta chips.
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Pill(projectName ?: OUTSIDE_PROJECT_LABEL, palette.primarySoft, palette.primary)
+                    // The deliverable, when it's in one. Shown only if set — "not in a deliverable" is
+                    // the normal case, so a chip announcing its absence would be noise on most entries.
+                    entry.deliverable?.takeIf { it.isNotBlank() }?.let { Pill(it, palette.primarySoft, palette.primary) }
                     entry.goalCategory?.takeIf { it.isNotBlank() }?.let { Pill(it, palette.surface2, palette.text2) }
                     if (entry.isExtra) Pill("★ Standout", palette.extraSoft, palette.extraInk)
                     if (entry.isPinned) Pill("Pinned", palette.primarySoft, palette.primary)
@@ -246,7 +282,16 @@ fun EntryDetailSheet(
                     placementCategories.forEach { cat ->
                         val isSel = selectedCategory?.equals(cat.name, ignoreCase = true) == true
                         RadioRow(selected = isSel, label = cat.name, palette = palette) {
-                            if (!isSel) { selectedCategory = cat.name; selectedFolder = null }
+                            if (!isSel) {
+                                selectedCategory = cat.name
+                                // Both narrower axes belong to the OLD category — a folder is unique by
+                                // (name, goalArea) and a deliverable by (name, project, goalArea), so
+                                // neither can survive the category changing.
+                                selectedFolder = null
+                                selectedDeliverable = null
+                                newDeliverable = null
+                                namingDeliverable = false
+                            }
                         }
                         // Folders within the selected category — pick one, or "No specific project".
                         if (isSel) {
@@ -258,14 +303,89 @@ fun EntryDetailSheet(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
-                                    SelectChip("No specific project", selected = selectedFolder == null, palette = palette) { selectedFolder = null }
+                                    SelectChip("No specific project", selected = selectedFolder == null, palette = palette) {
+                                        selectedFolder = null
+                                        // "No specific project" has no deliverables to be in.
+                                        selectedDeliverable = null
+                                        newDeliverable = null
+                                        namingDeliverable = false
+                                    }
                                     catFolders.forEach { f ->
                                         SelectChip(
                                             f.name,
                                             selected = selectedFolder?.equals(f.name, ignoreCase = true) == true,
                                             palette = palette,
-                                        ) { selectedFolder = f.name }
+                                        ) {
+                                            if (selectedFolder?.equals(f.name, ignoreCase = true) != true) {
+                                                selectedFolder = f.name
+                                                selectedDeliverable = null
+                                                newDeliverable = null
+                                                namingDeliverable = false
+                                            }
+                                        }
                                     }
+                                }
+                            }
+                            // The DELIVERABLE level (v0.33.0) — only under a real project, since that is
+                            // the only place one can exist. Offering "+ New" here is the owner's ask:
+                            // moving a win to a new deliverable shouldn't mean leaving to go make it first.
+                            val catDeliverables = Recategorize.deliverablesFor(cat.name, selectedFolder, deliverables)
+                            if (selectedFolder != null) {
+                                Spacer(Modifier.height(Spacing.s2))
+                                Text(
+                                    DELIVERABLE_LABEL.uppercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = palette.text3,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(start = 30.dp),
+                                )
+                                Spacer(Modifier.height(Spacing.s2))
+                                FlowRow(
+                                    Modifier.fillMaxWidth().padding(start = 30.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    SelectChip(
+                                        "None",
+                                        selected = selectedDeliverable == null && newDeliverable == null,
+                                        palette = palette,
+                                    ) { selectedDeliverable = null; newDeliverable = null; namingDeliverable = false }
+                                    catDeliverables.forEach { d ->
+                                        SelectChip(
+                                            // A done one is still offerable — this is a correction, and a
+                                            // win from months ago genuinely belongs to what shipped — but
+                                            // it's marked, so nobody files today's work into finished work
+                                            // without noticing.
+                                            if (d.done) "${d.name} · Done" else d.name,
+                                            selected = selectedDeliverable?.equals(d.name, ignoreCase = true) == true,
+                                            palette = palette,
+                                        ) { selectedDeliverable = d.name; newDeliverable = null; namingDeliverable = false }
+                                    }
+                                    newDeliverable?.let { pending ->
+                                        SelectChip("$pending · new", selected = true, palette = palette) {}
+                                    }
+                                    if (newDeliverable == null && !namingDeliverable) {
+                                        SelectChip("+ New", selected = false, palette = palette) {
+                                            namingDeliverable = true; newDeliverableText = ""
+                                        }
+                                    }
+                                }
+                                if (namingDeliverable) {
+                                    Spacer(Modifier.height(Spacing.s2))
+                                    NewDeliverableField(
+                                        value = newDeliverableText,
+                                        palette = palette,
+                                        onValueChange = { newDeliverableText = it },
+                                        onConfirm = {
+                                            val n = newDeliverableText.trim()
+                                            if (n.isNotEmpty()) {
+                                                newDeliverable = n
+                                                selectedDeliverable = null
+                                                namingDeliverable = false
+                                            }
+                                        },
+                                        onCancel = { namingDeliverable = false; newDeliverableText = "" },
+                                    )
                                 }
                             }
                         }
@@ -291,7 +411,13 @@ fun EntryDetailSheet(
                     Spacer(Modifier.height(Spacing.s4))
                     ApplyRecatButton(enabled = selectedCategory != null, palette = palette) {
                         val cat = selectedCategory ?: return@ApplyRecatButton
-                        onRecategorize(cat, selectedFolder ?: OUTSIDE_PROJECT, selectedBehaviours.toList())
+                        onRecategorize(
+                            cat,
+                            selectedFolder ?: OUTSIDE_PROJECT,
+                            newDeliverable ?: selectedDeliverable,
+                            selectedBehaviours.toList(),
+                            newDeliverable != null,
+                        )
                         onDismiss()
                     }
                 }
@@ -393,6 +519,61 @@ private fun RadioRow(selected: Boolean, label: String, palette: BragPalette, onC
         }
         Spacer(Modifier.width(Spacing.s3))
         Text(label, style = MaterialTheme.typography.titleSmall, color = palette.text1, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/**
+ * Name a brand-new deliverable without leaving the move sheet (the owner's "existing **or new**").
+ *
+ * Confirming here does NOT create anything — it only stages the name, which Apply then hands to the
+ * host with `createDeliverable = true`. That keeps the create and the file as ONE locked operation in
+ * the processor: creating on confirm would race the insert against a fast Apply, and the loser is the
+ * user's tag, silently dropped by the destination validation.
+ */
+@Composable
+private fun NewDeliverableField(
+    value: String,
+    palette: BragPalette,
+    onValueChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 30.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(Radii.md))
+                .border(1.5.dp, palette.primary, RoundedCornerShape(Radii.md))
+                .background(palette.surface)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            if (value.isEmpty()) {
+                Text(
+                    "Name this ${DELIVERABLE_LABEL.lowercase()}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.text3,
+                )
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(
+                    color = palette.text1,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
+                cursorBrush = SolidColor(palette.primary),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        SelectChip("Add", selected = value.isNotBlank(), palette = palette) { if (value.isNotBlank()) onConfirm() }
+        Spacer(Modifier.width(6.dp))
+        SelectChip("Cancel", selected = false, palette = palette, onClick = onCancel)
     }
 }
 

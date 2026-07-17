@@ -34,7 +34,11 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -63,11 +67,14 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.R
+import androidx.compose.ui.text.style.TextOverflow
+import com.bragbuddy.app.data.local.DELIVERABLE_LABEL
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.isNamedProject
 import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.ui.capture.CaptureLauncher
+import com.bragbuddy.app.ui.common.DeliverableHeader
 import com.bragbuddy.app.ui.common.EntryBulletRow
 import com.bragbuddy.app.ui.entry.EntryDetailSheet
 import com.bragbuddy.app.ui.role.RoleInput
@@ -108,6 +115,7 @@ fun HomeScreen(
     val doc by viewModel.doc.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val framework by viewModel.framework.collectAsStateWithLifecycle()
+    val deliverables by viewModel.deliverables.collectAsStateWithLifecycle()
     val showRolePrompt by viewModel.showRolePrompt.collectAsStateWithLifecycle()
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
     // M2 · the one-slot nudge queue: at most ONE dismissible card, resolved by priority in the VM.
@@ -159,8 +167,23 @@ fun HomeScreen(
         }
     }
 
+    // Deliverable-level expansion (only DONE ones collapse — active ones always show their wins).
+    // Keyed "<projectName>::<deliverableName>": a deliverable is unique by (name, project, goalArea),
+    // so the name alone would collide across projects.
+    val expandedDeliverables = remember { mutableStateListOf<String>() }
+    fun toggleDeliverable(key: String) {
+        if (expandedDeliverables.contains(key)) expandedDeliverables.remove(key) else expandedDeliverables.add(key)
+    }
+    // Pending deliverable dialogs, each carrying the full (project, goalArea) identity.
+    var createDeliverableFor by remember { mutableStateOf<DeliverableTarget?>(null) }
+    var renameDeliverable by remember { mutableStateOf<DeliverableTarget?>(null) }
+    var deleteDeliverable by remember { mutableStateOf<DeliverableTarget?>(null) }
+
     // In-context "+" (Add entry to a folder) → the 3-choice chooser, anchored to that folder.
     fun captureInto(project: String?) = CaptureLauncher.openChooser(context, project)
+    /** Tap-in filing: pins BOTH axes, so the AI guesses neither (v0.33.0). */
+    fun captureIntoDeliverable(project: String, deliverable: String) =
+        CaptureLauncher.openChooser(context, project, deliverable)
     fun redo(entry: EntryEntity) = CaptureLauncher.redo(context, entry.id)
 
     Column(
@@ -276,6 +299,21 @@ fun HomeScreen(
                         onRedo = { redo(it) },
                         onDelete = { deleteTarget = it },
                         onAddProject = { createFolderFor = CreateFolderTarget(section.pillar.name) },
+                        isDeliverableExpanded = { k -> expandedDeliverables.contains(section.pillar.id + "::" + k) },
+                        onToggleDeliverable = { k -> toggleDeliverable(section.pillar.id + "::" + k) },
+                        onAddDeliverable = { project ->
+                            createDeliverableFor = DeliverableTarget(project, section.pillar.name, "")
+                        },
+                        onAddEntryToDeliverable = { project, d -> captureIntoDeliverable(project, d) },
+                        onRenameDeliverable = { project, d ->
+                            renameDeliverable = DeliverableTarget(project, section.pillar.name, d)
+                        },
+                        onSetDeliverableDone = { project, d, done ->
+                            viewModel.setDeliverableDoneByName(d, project, section.pillar.name, done)
+                        },
+                        onDeleteDeliverable = { project, d ->
+                            deleteDeliverable = DeliverableTarget(project, section.pillar.name, d)
+                        },
                     )
                 }
 
@@ -327,14 +365,64 @@ fun HomeScreen(
         )
     }
 
+    createDeliverableFor?.let { target ->
+        NameDeliverableDialog(
+            title = "New ${DELIVERABLE_LABEL.lowercase()} in ${target.project}",
+            initial = "",
+            palette = palette,
+            onConfirm = {
+                viewModel.createDeliverable(it, target.project, target.goalArea)
+                createDeliverableFor = null
+            },
+            onDismiss = { createDeliverableFor = null },
+        )
+    }
+    renameDeliverable?.let { target ->
+        NameDeliverableDialog(
+            title = "Rename ${DELIVERABLE_LABEL.lowercase()}",
+            initial = target.name,
+            palette = palette,
+            onConfirm = {
+                viewModel.renameDeliverableByName(target.name, target.project, target.goalArea, it)
+                renameDeliverable = null
+            },
+            onDismiss = { renameDeliverable = null },
+        )
+    }
+    deleteDeliverable?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteDeliverable = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteDeliverableByName(target.name, target.project, target.goalArea)
+                    deleteDeliverable = null
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleteDeliverable = null }) { Text("Cancel") } },
+            title = { Text("Delete “${target.name}”?", color = palette.text1) },
+            // States plainly what survives. Deleting a *grouping* next to a list of wins reads like it
+            // takes them with it; it doesn't, and the record is the one thing the user can't lose.
+            text = {
+                Text(
+                    "Your entries stay — they'll just list under ${target.project} instead. " +
+                        "Only the grouping goes.",
+                    color = palette.text3,
+                )
+            },
+            containerColor = palette.surface,
+        )
+    }
+
     detailEntry?.let { target ->
         EntryDetailSheet(
             entry = target,
             folders = folders,
             framework = framework,
+            deliverables = deliverables,
             onSaveEdit = { newText -> viewModel.editText(target.id, newText); detailEntry = null },
-            onRecategorize = { goalArea, project, demonstrates ->
-                viewModel.recategorize(target, goalArea, project, demonstrates); detailEntry = null
+            onRecategorize = { goalArea, project, deliverable, demonstrates, createNew ->
+                viewModel.recategorize(target, goalArea, project, deliverable, demonstrates, createNew)
+                detailEntry = null
             },
             onToggleExtra = { v -> viewModel.setExtra(target.id, v); detailEntry = target.copy(isExtra = v) },
             onTogglePin = { v -> viewModel.setPinned(target.id, v); detailEntry = target.copy(isPinned = v) },
@@ -362,6 +450,9 @@ fun HomeScreen(
 
 private data class CreateFolderTarget(val goalArea: String?)
 
+/** A deliverable the UI is acting on, by its full identity. [name] is "" for a pending create. */
+private data class DeliverableTarget(val project: String, val goalArea: String, val name: String)
+
 /** Cap on entries shown inline under a folder on Home; more are reached via "See more" → folder screen. */
 private const val MAX_INLINE_ENTRIES = 10
 
@@ -382,6 +473,15 @@ private fun GoalSectionView(
     onRedo: (EntryEntity) -> Unit,
     onDelete: (EntryEntity) -> Unit,
     onAddProject: () -> Unit,
+    // Deliverable callbacks carry the OWNING PROJECT alongside the deliverable name: a deliverable is
+    // identified by (name, project, goalArea), so a name alone can't say which one is meant.
+    isDeliverableExpanded: (String) -> Boolean,
+    onToggleDeliverable: (String) -> Unit,
+    onAddDeliverable: (project: String) -> Unit,
+    onAddEntryToDeliverable: (project: String, deliverable: String) -> Unit,
+    onRenameDeliverable: (project: String, deliverable: String) -> Unit,
+    onSetDeliverableDone: (project: String, deliverable: String, done: Boolean) -> Unit,
+    onDeleteDeliverable: (project: String, deliverable: String) -> Unit,
 ) {
     val hue = pillarColor(section.colorIndex)
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
@@ -413,6 +513,15 @@ private fun GoalSectionView(
                         onEdit = onEdit,
                         onRedo = onRedo,
                         onDelete = onDelete,
+                        // Scope the expand key by project too — two projects under one category may each
+                        // own a same-named deliverable, and a bare name would expand both at once.
+                        isDeliverableExpanded = { d -> isDeliverableExpanded("${project.name}::$d") },
+                        onToggleDeliverable = { d -> onToggleDeliverable("${project.name}::$d") },
+                        onAddDeliverable = { onAddDeliverable(project.name) },
+                        onAddEntryTo = { d -> onAddEntryToDeliverable(project.name, d) },
+                        onRenameDeliverable = { d -> onRenameDeliverable(project.name, d) },
+                        onSetDeliverableDone = { d, done -> onSetDeliverableDone(project.name, d, done) },
+                        onDeleteDeliverable = { d -> onDeleteDeliverable(project.name, d) },
                     )
                 }
                 AddRow(text = "Add project", palette = palette, onClick = onAddProject)
@@ -439,6 +548,14 @@ private fun FolderCard(
     onEdit: (EntryEntity) -> Unit,
     onRedo: (EntryEntity) -> Unit,
     onDelete: (EntryEntity) -> Unit,
+    // ---- deliverables (v0.33.0). All keyed by NAME, matching how the whole app references them. ----
+    isDeliverableExpanded: (String) -> Boolean,
+    onToggleDeliverable: (String) -> Unit,
+    onAddDeliverable: () -> Unit,
+    onAddEntryTo: (String) -> Unit,
+    onRenameDeliverable: (String) -> Unit,
+    onSetDeliverableDone: (String, Boolean) -> Unit,
+    onDeleteDeliverable: (String) -> Unit,
 ) {
     val subtitle = when {
         project.entryCount == 0 -> "No entries yet"
@@ -491,14 +608,52 @@ private fun FolderCard(
             )
         }
         AnimatedVisibility(visible = expanded) {
+            val view = remember(project) { project.inlineView(MAX_INLINE_ENTRIES) }
             Column(
                 Modifier.padding(start = Spacing.card, end = Spacing.card, bottom = Spacing.card),
                 verticalArrangement = Arrangement.spacedBy(Spacing.s2),
             ) {
-                if (project.entries.isEmpty()) {
+                if (project.entries.isEmpty() && project.deliverables.isEmpty()) {
                     Text("No entries yet", style = MaterialTheme.typography.bodySmall, color = palette.text3)
                 } else {
-                    project.entries.take(MAX_INLINE_ENTRIES).forEach { entry ->
+                    // Active deliverables: a heading with its wins already under it — no extra tap
+                    // (owner's call). Then the loose wins with no heading at all, because "not in a
+                    // deliverable" is the ordinary case and labelling it would be noise on every project.
+                    view.groups.forEach { g ->
+                        DeliverableHeader(
+                            group = g,
+                            hue = hue,
+                            palette = palette,
+                            expanded = true,
+                            collapsible = false,
+                            onToggle = {},
+                            onAddEntry = { onAddEntryTo(g.name) },
+                            onRename = { onRenameDeliverable(g.name) },
+                            onToggleDone = { onSetDeliverableDone(g.name, true) },
+                            onDelete = { onDeleteDeliverable(g.name) },
+                        )
+                        g.entries.forEach { entry ->
+                            EntryBulletRow(
+                                entry = entry,
+                                hue = hue,
+                                showFromProject = false,
+                                indent = true,
+                                onEdit = { onEdit(entry) },
+                                onRedo = { onRedo(entry) },
+                                onDelete = { onDelete(entry) },
+                                onTap = { onOpenDetail(entry) },
+                            )
+                        }
+                        if (g.entries.isEmpty()) {
+                            Text(
+                                "Nothing logged here yet",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = palette.text3,
+                                modifier = Modifier.padding(start = 22.dp),
+                            )
+                        }
+                    }
+                    view.loose.forEach { entry ->
                         EntryBulletRow(
                             entry = entry,
                             hue = hue,
@@ -509,12 +664,42 @@ private fun FolderCard(
                             onTap = { onOpenDetail(entry) },
                         )
                     }
-                    if (project.entryCount > MAX_INLINE_ENTRIES) {
-                        SeeMoreRow(project.entryCount, palette, onSeeMore)
+                    // Done ones sit at the bottom, collapsed — they never hide their entries, they just
+                    // stop competing for attention with live work.
+                    view.doneGroups.forEach { g ->
+                        val open = isDeliverableExpanded(g.name)
+                        DeliverableHeader(
+                            group = g,
+                            hue = hue,
+                            palette = palette,
+                            expanded = open,
+                            collapsible = true,
+                            onToggle = { onToggleDeliverable(g.name) },
+                            onAddEntry = { onAddEntryTo(g.name) },
+                            onRename = { onRenameDeliverable(g.name) },
+                            onToggleDone = { onSetDeliverableDone(g.name, false) },
+                            onDelete = { onDeleteDeliverable(g.name) },
+                        )
+                        if (open) {
+                            g.entries.forEach { entry ->
+                                EntryBulletRow(
+                                    entry = entry,
+                                    hue = hue,
+                                    showFromProject = false,
+                                    indent = true,
+                                    onEdit = { onEdit(entry) },
+                                    onRedo = { onRedo(entry) },
+                                    onDelete = { onDelete(entry) },
+                                    onTap = { onOpenDetail(entry) },
+                                )
+                            }
+                        }
                     }
+                    if (view.truncated) SeeMoreRow(project.entryCount, palette, onSeeMore)
                 }
                 if (!project.isOutside) {
                     AddRow(text = "Add entry to ${project.name}", palette = palette, onClick = onAddEntry)
+                    AddRow(text = "Add ${DELIVERABLE_LABEL.lowercase()}", palette = palette, onClick = onAddDeliverable)
                 }
             }
         }
@@ -1083,6 +1268,40 @@ private fun CreateFolderDialog(palette: BragPalette, onConfirm: (String) -> Unit
                 onValueChange = { name = it },
                 singleLine = true,
                 placeholder = { Text("e.g. Raven Migration", color = palette.text3) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        containerColor = palette.surface,
+    )
+}
+
+/** Create / rename a deliverable — one dialog for both, since they ask the same single question.
+ *  Mirrors [CreateFolderDialog], the sibling level's dialog, so the two levels read the same. */
+@Composable
+private fun NameDeliverableDialog(
+    title: String,
+    initial: String,
+    palette: BragPalette,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(name) },
+                enabled = name.isNotBlank() && !name.trim().equals(initial.trim(), ignoreCase = true),
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text(title, color = palette.text1) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                placeholder = { Text("e.g. Merchant onboarding", color = palette.text3) },
                 modifier = Modifier.fillMaxWidth(),
             )
         },

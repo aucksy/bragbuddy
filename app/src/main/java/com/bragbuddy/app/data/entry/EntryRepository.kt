@@ -183,15 +183,20 @@ class EntryRepository @Inject constructor(
 
     /** Recategorize a filed entry: set its placement category, project **and deliverable** AND its
      *  behaviour evidence, no AI re-call (Phase 2 · fix-a-wrong-category; third axis added v0.33.0).
-     *  Supersedes the old reassign/"Move". [deliverable] null = "not part of one". */
+     *  Supersedes the old reassign/"Move". [deliverable] null = "not part of one"; set
+     *  [createDeliverable] to move the win into a brand-new deliverable named in the sheet (created in
+     *  the processor, under its lock — race-free and un-orphanable). */
     fun recategorize(
         id: Long,
         goalArea: String,
         project: String,
         deliverable: String?,
         demonstrates: List<String>,
+        createDeliverable: Boolean = false,
     ) {
-        appScope.launch { processor.recategorize(id, goalArea, project, deliverable, demonstrates) }
+        appScope.launch {
+            processor.recategorize(id, goalArea, project, deliverable, demonstrates, createDeliverable)
+        }
     }
 
     /**
@@ -208,8 +213,9 @@ class EntryRepository @Inject constructor(
         project: String,
         deliverable: String?,
         demonstrates: List<String>,
+        createDeliverable: Boolean = false,
     ) {
-        processor.recategorize(id, goalArea, project, deliverable, demonstrates)
+        processor.recategorize(id, goalArea, project, deliverable, demonstrates, createDeliverable)
     }
 
     // ---------------- deliverables · the third axis (v0.33.0) ----------------

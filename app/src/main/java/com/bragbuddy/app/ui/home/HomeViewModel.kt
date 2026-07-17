@@ -11,6 +11,8 @@ import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.impact.ImpactCandidates
+import com.bragbuddy.app.data.deliverable.DeliverableRepository
+import com.bragbuddy.app.data.local.DeliverableEntity
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.INBOX_PLACEMENT
@@ -50,6 +52,7 @@ class HomeViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val repository: EntryRepository,
     private val projects: ProjectRepository,
+    private val deliverablesRepo: DeliverableRepository,
     private val frameworkStore: FrameworkStore,
     private val settings: SettingsStore,
     private val summaryStore: SummaryStore,
@@ -66,8 +69,9 @@ class HomeViewModel @Inject constructor(
         repository.observeAll(),
         frameworkStore.framework,
         projects.observeActive(),
-    ) { entries, framework, folders ->
-        buildHomeDoc(entries, framework, folders)
+        deliverablesRepo.observeAll(),
+    ) { entries, framework, folders, dels ->
+        buildHomeDoc(entries, framework, folders, dels)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -217,6 +221,56 @@ class HomeViewModel @Inject constructor(
     val framework: StateFlow<Framework> = frameworkStore.framework
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Framework.DEFAULT)
 
+    /** Every deliverable — feeds the move sheet's third picker level. Unfiltered on purpose: a move is
+     *  a correction, so it must be able to reach any deliverable, including a Done one (that's where a
+     *  win from months ago genuinely belongs). The picker scopes by the chosen (category, project). */
+    val deliverables: StateFlow<List<DeliverableEntity>> = deliverablesRepo.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // ---------------- Deliverable CRUD (v0.33.0) ----------------
+    //
+    // Addressed by (name, project, goalArea) rather than row id, because that triple IS a deliverable's
+    // identity — it's what the entries reference and what the rendered document holds. Making the UI
+    // carry ids would mean two competing notions of "which deliverable", and the screens would have to
+    // thread an id purely to hand it back.
+
+    fun createDeliverable(name: String, project: String, goalArea: String) = viewModelScope.launch {
+        runCatching { deliverablesRepo.create(name, project, goalArea) }
+    }
+
+    /** Rename, then re-tag every record that referenced the old name — both halves, or the entries are
+     *  orphaned from the deliverable they belong to. */
+    fun renameDeliverableByName(
+        oldName: String,
+        project: String,
+        goalArea: String,
+        newName: String,
+    ) = viewModelScope.launch {
+        val n = newName.trim()
+        if (n.isEmpty() || n.equals(oldName.trim(), ignoreCase = true)) return@launch
+        val d = runCatching { deliverablesRepo.byIdentity(oldName, project, goalArea) }.getOrNull() ?: return@launch
+        val before = runCatching { deliverablesRepo.rename(d.id, n, d.description) }.getOrNull() ?: return@launch
+        repository.renameDeliverableEntries(before.name, before.project, before.goalArea, n)
+    }
+
+    fun setDeliverableDoneByName(
+        name: String,
+        project: String,
+        goalArea: String,
+        done: Boolean,
+    ) = viewModelScope.launch {
+        val d = runCatching { deliverablesRepo.byIdentity(name, project, goalArea) }.getOrNull() ?: return@launch
+        runCatching { deliverablesRepo.setDone(d.id, done) }
+    }
+
+    /** Delete the grouping — never its entries. They fall back to listing plainly under the project, so
+     *  nothing logged is ever lost to a structural change (the "never lose an entry" invariant). */
+    fun deleteDeliverableByName(name: String, project: String, goalArea: String) = viewModelScope.launch {
+        val d = runCatching { deliverablesRepo.byIdentity(name, project, goalArea) }.getOrNull() ?: return@launch
+        runCatching { deliverablesRepo.delete(d.id) }
+        repository.clearDeliverable(d.name, d.project, d.goalArea)
+    }
+
     // ---------------- Phase 4 · "Add impact" list ----------------
 
     /** UI state while fetching (or falling back for) the project-aware coaching question. */
@@ -316,8 +370,14 @@ class HomeViewModel @Inject constructor(
 
     /** Recategorize a filed entry: set its placement category + project AND its behaviour evidence,
      *  no AI re-call (Phase 2 · fix-a-wrong-category). Supersedes the old reassign/"Move". */
-    fun recategorize(entry: EntryEntity, goalArea: String, project: String, demonstrates: List<String>) =
-        repository.recategorize(entry.id, goalArea, project, demonstrates)
+    fun recategorize(
+        entry: EntryEntity,
+        goalArea: String,
+        project: String,
+        deliverable: String?,
+        demonstrates: List<String>,
+        createDeliverable: Boolean = false,
+    ) = repository.recategorize(entry.id, goalArea, project, deliverable, demonstrates, createDeliverable)
 
     /** Create a folder under [goalArea] (or the framework's first goal category when null). */
     fun createFolder(name: String, goalArea: String? = null) = viewModelScope.launch {

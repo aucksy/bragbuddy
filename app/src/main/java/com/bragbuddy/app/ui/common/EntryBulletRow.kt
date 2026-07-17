@@ -57,6 +57,9 @@ import com.bragbuddy.app.ui.theme.Spacing
  *
  * [onTap] opens the entry-detail sheet; the ⋮ "See original" item routes to it too, so a caller that
  * renders the menu must pass it (v0.32.0 — see [BulletMenu]).
+ *
+ * [indent] steps the row in under a deliverable heading (v0.33.0), which is what makes the third level
+ * legible as grouping rather than a flat list with a stray label in it.
  */
 @Composable
 fun EntryBulletRow(
@@ -69,6 +72,7 @@ fun EntryBulletRow(
     modifier: Modifier = Modifier,
     selectionMode: Boolean = false,
     isSelected: Boolean = false,
+    indent: Boolean = false,
     onToggleSelect: () -> Unit = {},
     onLongPress: () -> Unit = {},
     onTap: () -> Unit = {},
@@ -80,6 +84,7 @@ fun EntryBulletRow(
     Row(
         modifier
             .fillMaxWidth()
+            .padding(start = if (indent) 14.dp else 0.dp)
             .clip(RoundedCornerShape(Radii.lg))
             .background(if (isSelected) palette.primarySoft else palette.surface)
             .border(1.dp, if (isSelected) palette.primary.copy(alpha = 0.5f) else palette.border, RoundedCornerShape(Radii.lg))

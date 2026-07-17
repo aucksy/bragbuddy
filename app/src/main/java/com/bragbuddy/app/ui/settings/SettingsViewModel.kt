@@ -120,7 +120,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun deleteProject(id: Long) = viewModelScope.launch { projectRepository.delete(id) }
+    /** Delete a folder. Its deliverables cascade away inside [projectRepository]; its entries' dangling
+     *  deliverable tags are cleared here (read the row FIRST — the delete takes its name with it). */
+    fun deleteProject(id: Long) = viewModelScope.launch {
+        val p = projectRepository.getById(id)
+        projectRepository.delete(id)
+        if (p != null) entryRepository.clearProjectDeliverables(p.name, p.goalArea)
+    }
 
     // ---------------- Project rename-remap (deterministic, no AI · 3-option) ----------------
 

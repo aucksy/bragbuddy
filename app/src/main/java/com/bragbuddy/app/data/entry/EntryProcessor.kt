@@ -9,6 +9,7 @@ import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.local.BragBuddyDatabase
 import com.bragbuddy.app.data.local.DeliverableDao
+import com.bragbuddy.app.data.local.DeliverableEntity
 import com.bragbuddy.app.data.local.EntryDao
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
@@ -281,6 +282,13 @@ class EntryProcessor @Inject constructor(
      * trusted**: a deliverable only exists inside a specific (project, goalArea), so one that isn't
      * really there is dropped rather than written as a tag pointing at nothing. This is the owner's
      * "move a win to any level, anywhere" path — every surface that can move an entry routes here.
+     *
+     * [createDeliverable] moves a win into a **brand-new** deliverable, named right in the move sheet
+     * (the owner's "existing or new"). The create happens HERE, under the [mutex], for the same two
+     * reasons [remapProjectEverywhere]'s `createTargetFolder` does: it can't be orphaned by the sheet
+     * dismissing, and — the real point — it removes the race. Creating from the UI and then filing would
+     * be two hops, and an Apply that beat the insert would hit the validation above and **silently drop
+     * the tag**, leaving the user looking at a win that ignored the deliverable they just made.
      */
     suspend fun recategorize(
         id: Long,
@@ -288,6 +296,7 @@ class EntryProcessor @Inject constructor(
         project: String,
         deliverable: String?,
         demonstrates: List<String>,
+        createDeliverable: Boolean = false,
     ) {
         mutex.withLock {
             val e = entryDao.getById(id) ?: return@withLock
@@ -297,12 +306,23 @@ class EntryProcessor @Inject constructor(
             val isOutside = clean.isBlank() || clean.equals(OUTSIDE_PROJECT, ignoreCase = true)
             val area = goalArea.trim().ifBlank { e.goalCategory?.takeIf { it.isNotBlank() } ?: INBOX_LABEL }
             val cleanDemos = demonstrates.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+            // Create the destination deliverable first when the user named a new one. IGNORE-on-conflict
+            // means racing/duplicate names simply reuse the existing row and the win joins it.
+            val wanted = deliverable?.trim()?.takeIf { it.isNotBlank() }
+            if (createDeliverable && wanted != null && !isOutside && area.isNotBlank()) {
+                runCatching {
+                    deliverableDao.insert(
+                        DeliverableEntity(
+                            name = wanted, project = clean, goalArea = area,
+                            createdAt = System.currentTimeMillis(),
+                        ),
+                    )
+                }
+            }
             // Validated against the destination, not trusted: a deliverable exists only inside one
             // (project, goalArea), so "no project" can't have one, and a stale pick (its deliverable
             // deleted, or belonging to the project the user just moved AWAY from) resolves to none.
-            val cleanDeliverable = deliverable?.trim()?.takeIf {
-                it.isNotBlank() && !isOutside && deliverableExists(it, clean, area)
-            }
+            val cleanDeliverable = wanted?.takeIf { !isOutside && deliverableExists(it, clean, area) }
             val updated = e.copy(
                 status = EntryStatus.PROCESSED,
                 // A bullet-less row (recategorized straight from FAILED) falls back to its transcript so

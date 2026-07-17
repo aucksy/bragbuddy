@@ -3,10 +3,12 @@ package com.bragbuddy.app.ui.pillar
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bragbuddy.app.data.deliverable.DeliverableRepository
 import com.bragbuddy.app.data.entry.EntryRepository
 import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.PillarKind
+import com.bragbuddy.app.data.local.DeliverableEntity
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.ProjectEntity
@@ -63,6 +65,7 @@ class PillarDetailViewModel @Inject constructor(
     private val repository: EntryRepository,
     private val frameworkStore: FrameworkStore,
     private val projects: ProjectRepository,
+    private val deliverablesRepo: DeliverableRepository,
 ) : ViewModel() {
 
     private val pillarId: String = savedStateHandle.get<String>(ARG_PILLAR_ID).orEmpty()
@@ -72,7 +75,8 @@ class PillarDetailViewModel @Inject constructor(
         repository.observeAll(),
         frameworkStore.framework,
         projects.observeActive(),
-    ) { entries, framework, folders ->
+        deliverablesRepo.observeAll(),
+    ) { entries, framework, folders, dels ->
         val processed = entries.filter { it.status == EntryStatus.PROCESSED }
         val folderName = folderArg.trim()
         if (pillarId == UNCATEGORIZED_ID) {
@@ -100,7 +104,7 @@ class PillarDetailViewModel @Inject constructor(
                 evidence = behaviourEvidence(processed, pillar),
             )
         } else {
-            val allGroups = goalProjectGroups(processed, folders, pillar)
+            val allGroups = goalProjectGroups(processed, folders, pillar, dels)
             if (folderName.isNotBlank()) {
                 // "See more" from Home → scope to just that one folder's entries.
                 val isOutside = folderName.equals(OUTSIDE_PROJECT_LABEL, ignoreCase = true)
@@ -142,6 +146,49 @@ class PillarDetailViewModel @Inject constructor(
     val framework: StateFlow<Framework> = frameworkStore.framework
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Framework.DEFAULT)
 
+    /** Every deliverable — feeds the move sheet's third picker level (see [HomeViewModel.deliverables]
+     *  for why it's deliberately unfiltered). */
+    val deliverables: StateFlow<List<DeliverableEntity>> = deliverablesRepo.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // ---------------- Deliverable CRUD (v0.33.0) — mirrors HomeViewModel; identity is the name triple.
+    // This screen always knows its own category, so callers pass the project and it supplies the area.
+
+    /** This screen's category — the goal area every deliverable action here is scoped to. Blank in the
+     *  single-folder view, where `blurb` carries the pillar name instead of the pillar's own blurb. */
+    private fun currentArea(): String {
+        val d = detail.value
+        return if (d.singleFolder) d.blurb.trim() else d.name.trim()
+    }
+
+    fun createDeliverable(name: String, project: String) = viewModelScope.launch {
+        val area = currentArea().ifBlank { return@launch }
+        runCatching { deliverablesRepo.create(name, project, area) }
+    }
+
+    fun renameDeliverableByName(oldName: String, project: String, newName: String) = viewModelScope.launch {
+        val area = currentArea().ifBlank { return@launch }
+        val n = newName.trim()
+        if (n.isEmpty() || n.equals(oldName.trim(), ignoreCase = true)) return@launch
+        val d = runCatching { deliverablesRepo.byIdentity(oldName, project, area) }.getOrNull() ?: return@launch
+        val before = runCatching { deliverablesRepo.rename(d.id, n, d.description) }.getOrNull() ?: return@launch
+        repository.renameDeliverableEntries(before.name, before.project, before.goalArea, n)
+    }
+
+    fun setDeliverableDoneByName(name: String, project: String, done: Boolean) = viewModelScope.launch {
+        val area = currentArea().ifBlank { return@launch }
+        val d = runCatching { deliverablesRepo.byIdentity(name, project, area) }.getOrNull() ?: return@launch
+        runCatching { deliverablesRepo.setDone(d.id, done) }
+    }
+
+    /** Delete the grouping — never its entries (see [HomeViewModel.deleteDeliverableByName]). */
+    fun deleteDeliverableByName(name: String, project: String) = viewModelScope.launch {
+        val area = currentArea().ifBlank { return@launch }
+        val d = runCatching { deliverablesRepo.byIdentity(name, project, area) }.getOrNull() ?: return@launch
+        runCatching { deliverablesRepo.delete(d.id) }
+        repository.clearDeliverable(d.name, d.project, d.goalArea)
+    }
+
     fun editText(id: Long, text: String) = repository.replaceText(id, text)
 
     fun delete(id: Long) = repository.delete(id)
@@ -154,8 +201,14 @@ class PillarDetailViewModel @Inject constructor(
 
     /** Recategorize a filed entry: set its placement category + project AND its behaviour evidence,
      *  no AI re-call (Phase 2 · fix-a-wrong-category). Supersedes the old reassign/"Move". */
-    fun recategorize(entry: EntryEntity, goalArea: String, project: String, demonstrates: List<String>) =
-        repository.recategorize(entry.id, goalArea, project, demonstrates)
+    fun recategorize(
+        entry: EntryEntity,
+        goalArea: String,
+        project: String,
+        deliverable: String?,
+        demonstrates: List<String>,
+        createDeliverable: Boolean = false,
+    ) = repository.recategorize(entry.id, goalArea, project, deliverable, demonstrates, createDeliverable)
 
     /** Add a project folder under this pillar's goal area (goal / growth pillars only). */
     fun createFolder(name: String) {

@@ -9,6 +9,8 @@ import com.bragbuddy.app.data.entry.EntryRepository
 import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.PillarKind
+import com.bragbuddy.app.data.deliverable.DeliverableRepository
+import com.bragbuddy.app.data.local.DeliverableEntity
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.data.local.OUTSIDE_PROJECT
@@ -62,6 +64,7 @@ class SummaryViewModel @Inject constructor(
     private val settingsStore: SettingsStore,
     private val entryRepository: EntryRepository,
     private val projectRepository: ProjectRepository,
+    private val deliverableRepository: DeliverableRepository,
     private val aiProvider: AiProvider,
     private val usageMeter: UsageMeter,
     private val connectivity: ConnectivityMonitor,
@@ -136,6 +139,20 @@ class SummaryViewModel @Inject constructor(
     ) { rollup, fw, settings, pinned, folders ->
         Inputs(rollup.items, fw, settings.groqApiKey, settings.jobRole, settings.reviewYearStartMonth, pinned, folders)
     }
+
+    /**
+     * Every deliverable — the retag picker's third level (v0.33.0), unfiltered for the same reason
+     * [ScreenState.allFolders] is: a correction must reach anywhere.
+     *
+     * Kept as its own flow rather than folded into [inputs] / [ScreenState] for two reasons: `inputs` is
+     * already at `combine`'s 5-argument typed limit (a 6th would drop to the untyped vararg form and
+     * lose compile-time safety over a hot path), and the picker's options genuinely aren't summary
+     * state — nothing computed from the rollup depends on them. The summary's own cards carry NO
+     * deliverable yet: the model isn't told they exist this phase, so the sheet can SET one but has none
+     * to preselect. The rollup and PART B learn about them in v0.34.0, eval-gated.
+     */
+    val allDeliverables: StateFlow<List<DeliverableEntity>> = deliverableRepository.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private data class Inputs(
         val items: List<com.bragbuddy.app.data.rollup.RollupItem>,
@@ -459,8 +476,17 @@ class SummaryViewModel @Inject constructor(
      * [message], because "fixed everywhere" and "fixed on this page" are materially different promises.
      *
      * [toProject] null = no specific project. A merged card (`count > 1`) re-files EVERY entry behind it.
+     * [toDeliverable] null = not part of one (v0.33.0); [createDeliverable] means it was named in the
+     * sheet and must be created before the win is filed into it.
      */
-    fun retagAchievement(areaName: String, bullet: String, toCategory: String, toProject: String?) {
+    fun retagAchievement(
+        areaName: String,
+        bullet: String,
+        toCategory: String,
+        toProject: String?,
+        toDeliverable: String? = null,
+        createDeliverable: Boolean = false,
+    ) {
         val s = state.value ?: return
         if (bullet.isBlank() || toCategory.isBlank()) return
         viewModelScope.launch {
@@ -473,6 +499,11 @@ class SummaryViewModel @Inject constructor(
 
             var wroteBack = 0
             if (match != null) {
+                // A merged card re-files several entries. Only the FIRST asks to create the deliverable;
+                // the rest just file into it. The insert IGNOREs duplicates so passing the flag every
+                // time would still be correct — but this states the intent, and keeps the write count
+                // honest if the conflict strategy ever changes.
+                var createOnce = createDeliverable
                 for (id in match.entryIds) {
                     val e = entryRepository.getById(id) ?: continue
                     // Behaviour evidence is the AI's call and is preserved verbatim — this action is
@@ -482,9 +513,11 @@ class SummaryViewModel @Inject constructor(
                             id = id,
                             goalArea = toCategory,
                             project = toProject?.takeIf { it.isNotBlank() } ?: OUTSIDE_PROJECT,
+                            deliverable = toDeliverable?.takeIf { it.isNotBlank() },
                             demonstrates = e.demonstrates,
+                            createDeliverable = createOnce,
                         )
-                    }.onSuccess { wroteBack++ }
+                    }.onSuccess { wroteBack++; createOnce = false }
                 }
             }
 

@@ -59,8 +59,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bragbuddy.app.data.local.DELIVERABLE_LABEL
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.ui.capture.CaptureLauncher
+import com.bragbuddy.app.ui.common.DeliverableHeader
 import com.bragbuddy.app.ui.common.EntryBulletRow
 import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.ui.entry.EntryDetailSheet
@@ -94,6 +96,7 @@ fun PillarDetailScreen(
     val detail by viewModel.detail.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val framework by viewModel.framework.collectAsStateWithLifecycle()
+    val deliverables by viewModel.deliverables.collectAsStateWithLifecycle()
     val hue = pillarColor(detail.colorIndex)
 
     var editTarget by remember { mutableStateOf<EntryEntity?>(null) }
@@ -144,8 +147,21 @@ fun PillarDetailScreen(
         if (selected.isEmpty()) selectionMode = false
     }
 
+    // Deliverable state (v0.33.0) — only DONE ones collapse; keys are scoped "<project>::<deliverable>"
+    // because a deliverable is unique by (name, project, goalArea), never by name alone.
+    val expandedDeliverables = remember { mutableStateListOf<String>() }
+    fun toggleDeliverable(key: String) {
+        if (expandedDeliverables.contains(key)) expandedDeliverables.remove(key) else expandedDeliverables.add(key)
+    }
+    var createDeliverableFor by remember { mutableStateOf<DeliverableTarget?>(null) }
+    var renameDeliverable by remember { mutableStateOf<DeliverableTarget?>(null) }
+    var deleteDeliverable by remember { mutableStateOf<DeliverableTarget?>(null) }
+
     // In-context "+" (Add a note / Add entry to a project) → the 3-choice chooser, anchored if named.
     fun capture(project: String?) = CaptureLauncher.openChooser(context, project)
+    /** Tap-in filing: pins the project AND the deliverable, so the AI guesses neither (v0.33.0). */
+    fun captureInto(project: String, deliverable: String) =
+        CaptureLauncher.openChooser(context, project, deliverable)
     fun redo(entry: EntryEntity) = CaptureLauncher.redo(context, entry.id)
 
     Column(
@@ -325,7 +341,40 @@ fun PillarDetailScreen(
                                     Modifier.padding(top = Spacing.s2),
                                     verticalArrangement = Arrangement.spacedBy(Spacing.s3),
                                 ) {
-                                    project.entries.forEach { entry ->
+                                    // The deliverable level, rendered exactly as on Home — same order
+                                    // (active groups → loose wins → done, collapsed), same shared header.
+                                    // Uncapped here: this IS the deep view, so nothing is held back.
+                                    project.deliverables.filterNot { it.done }.forEach { g ->
+                                        DeliverableHeader(
+                                            group = g,
+                                            hue = hue.solid,
+                                            palette = palette,
+                                            expanded = true,
+                                            collapsible = false,
+                                            onToggle = {},
+                                            onAddEntry = { captureInto(project.name, g.name) },
+                                            onRename = { renameDeliverable = DeliverableTarget(project.name, g.name) },
+                                            onToggleDone = { viewModel.setDeliverableDoneByName(g.name, project.name, true) },
+                                            onDelete = { deleteDeliverable = DeliverableTarget(project.name, g.name) },
+                                        )
+                                        g.entries.forEach { entry ->
+                                            EntryBulletRow(
+                                                entry = entry,
+                                                hue = hue.solid,
+                                                showFromProject = false,
+                                                selectionMode = selectionMode,
+                                                isSelected = selected.contains(entry.id),
+                                                indent = true,
+                                                onToggleSelect = { toggle(entry.id) },
+                                                onLongPress = { enterSelection(entry.id) },
+                                                onEdit = { editTarget = entry },
+                                                onRedo = { redo(entry) },
+                                                onDelete = { deleteTarget = entry },
+                                                onTap = { detailEntry = entry },
+                                            )
+                                        }
+                                    }
+                                    project.loose.forEach { entry ->
                                         EntryBulletRow(
                                             entry = entry,
                                             hue = hue.solid,
@@ -340,8 +389,46 @@ fun PillarDetailScreen(
                                             onTap = { detailEntry = entry },
                                         )
                                     }
+                                    project.deliverables.filter { it.done }.forEach { g ->
+                                        // Selection mode force-opens everything, same as the project
+                                        // level above — a hidden win can't be bulk-selected.
+                                        val open = selectionMode || expandedDeliverables.contains("${project.name}::${g.name}")
+                                        DeliverableHeader(
+                                            group = g,
+                                            hue = hue.solid,
+                                            palette = palette,
+                                            expanded = open,
+                                            collapsible = true,
+                                            onToggle = { toggleDeliverable("${project.name}::${g.name}") },
+                                            onAddEntry = { captureInto(project.name, g.name) },
+                                            onRename = { renameDeliverable = DeliverableTarget(project.name, g.name) },
+                                            onToggleDone = { viewModel.setDeliverableDoneByName(g.name, project.name, false) },
+                                            onDelete = { deleteDeliverable = DeliverableTarget(project.name, g.name) },
+                                        )
+                                        if (open) {
+                                            g.entries.forEach { entry ->
+                                                EntryBulletRow(
+                                                    entry = entry,
+                                                    hue = hue.solid,
+                                                    showFromProject = false,
+                                                    selectionMode = selectionMode,
+                                                    isSelected = selected.contains(entry.id),
+                                                    indent = true,
+                                                    onToggleSelect = { toggle(entry.id) },
+                                                    onLongPress = { enterSelection(entry.id) },
+                                                    onEdit = { editTarget = entry },
+                                                    onRedo = { redo(entry) },
+                                                    onDelete = { deleteTarget = entry },
+                                                    onTap = { detailEntry = entry },
+                                                )
+                                            }
+                                        }
+                                    }
                                     if (!project.isOutside) {
                                         AddRow("Add entry to ${project.name}", palette) { capture(project.name) }
+                                        AddRow("Add ${DELIVERABLE_LABEL.lowercase()}", palette) {
+                                            createDeliverableFor = DeliverableTarget(project.name, "")
+                                        }
                                     }
                                 }
                             }
@@ -385,14 +472,62 @@ fun PillarDetailScreen(
             onDismiss = { showAddProject = false },
         )
     }
+    createDeliverableFor?.let { target ->
+        AddProjectDialog(
+            palette = palette,
+            title = "New ${DELIVERABLE_LABEL.lowercase()} in ${target.project}",
+            placeholder = "e.g. Merchant onboarding",
+            onConfirm = { viewModel.createDeliverable(it, target.project); createDeliverableFor = null },
+            onDismiss = { createDeliverableFor = null },
+        )
+    }
+    renameDeliverable?.let { target ->
+        AddProjectDialog(
+            palette = palette,
+            title = "Rename ${DELIVERABLE_LABEL.lowercase()}",
+            placeholder = "e.g. Merchant onboarding",
+            initial = target.name,
+            confirmLabel = "Save",
+            onConfirm = {
+                viewModel.renameDeliverableByName(target.name, target.project, it)
+                renameDeliverable = null
+            },
+            onDismiss = { renameDeliverable = null },
+        )
+    }
+    deleteDeliverable?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteDeliverable = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteDeliverableByName(target.name, target.project)
+                    deleteDeliverable = null
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleteDeliverable = null }) { Text("Cancel") } },
+            title = { Text("Delete “${target.name}”?", color = palette.text1) },
+            // Says plainly what survives — deleting a grouping next to a list of wins reads like it
+            // takes them with it, and the record is the one thing the user can't afford to lose.
+            text = {
+                Text(
+                    "Your entries stay — they'll just list under ${target.project} instead. " +
+                        "Only the grouping goes.",
+                    color = palette.text3,
+                )
+            },
+            containerColor = palette.surface,
+        )
+    }
     detailEntry?.let { target ->
         EntryDetailSheet(
             entry = target,
             folders = folders,
             framework = framework,
+            deliverables = deliverables,
             onSaveEdit = { newText -> viewModel.editText(target.id, newText); detailEntry = null },
-            onRecategorize = { goalArea, project, demonstrates ->
-                viewModel.recategorize(target, goalArea, project, demonstrates); detailEntry = null
+            onRecategorize = { goalArea, project, deliverable, demonstrates, createNew ->
+                viewModel.recategorize(target, goalArea, project, deliverable, demonstrates, createNew)
+                detailEntry = null
             },
             onToggleExtra = { v -> viewModel.setExtra(target.id, v); detailEntry = target.copy(isExtra = v) },
             onTogglePin = { v -> viewModel.setPinned(target.id, v); detailEntry = target.copy(isPinned = v) },
@@ -517,22 +652,43 @@ private fun EditEntryDialog(initial: String, palette: BragPalette, onSave: (Stri
 }
 
 @Composable
-private fun AddProjectDialog(palette: BragPalette, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf("") }
+private fun AddProjectDialog(
+    palette: BragPalette,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+    // Defaulted so the original "New project folder" call site is unchanged; the deliverable
+    // create/rename dialogs reuse it, since all three ask the same single question (v0.33.0).
+    title: String = "New project folder",
+    placeholder: String = "e.g. Raven Migration",
+    initial: String = "",
+    confirmLabel: String = "Create",
+) {
+    var name by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) { Text("Create") } },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(name) },
+                // A rename to the same name is a no-op the VM would drop anyway — disabling it here
+                // means the button never looks like it did something it didn't.
+                enabled = name.isNotBlank() && !name.trim().equals(initial.trim(), ignoreCase = true),
+            ) { Text(confirmLabel) }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("New project folder", color = palette.text1) },
+        title = { Text(title, color = palette.text1) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
                 singleLine = true,
-                placeholder = { Text("e.g. Raven Migration", color = palette.text3) },
+                placeholder = { Text(placeholder, color = palette.text3) },
                 modifier = Modifier.fillMaxWidth(),
             )
         },
         containerColor = palette.surface,
     )
 }
+
+/** A deliverable this screen is acting on. The goal area comes from the screen itself (its pillar), so
+ *  only the project + name need carrying. [name] is "" for a pending create. */
+private data class DeliverableTarget(val project: String, val name: String)

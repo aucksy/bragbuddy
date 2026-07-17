@@ -85,6 +85,12 @@ import com.bragbuddy.app.data.ai.SummaryCompetency
 import com.bragbuddy.app.data.ai.SummaryGoalArea
 import com.bragbuddy.app.data.entry.Recategorize
 import com.bragbuddy.app.data.framework.Framework
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.unit.sp
+import com.bragbuddy.app.data.local.DELIVERABLE_LABEL
+import com.bragbuddy.app.data.local.DeliverableEntity
 import com.bragbuddy.app.data.local.NO_PROJECT_LABEL
 import com.bragbuddy.app.ui.common.LocalBottomBarInset
 import com.bragbuddy.app.ui.common.LocalSnackbarController
@@ -120,6 +126,7 @@ fun SummaryScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val generating by viewModel.generating.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val allDeliverables by viewModel.allDeliverables.collectAsStateWithLifecycle()
 
     var showGenerate by remember { mutableStateOf(false) }
     // Long-press edit/delete (feature #1) + restore-from-set-aside (feature #5) overlays. Hoisted here
@@ -250,10 +257,16 @@ fun SummaryScreen(
                     line = target.bullet,
                     currentArea = target.area,
                     currentProject = target.project,
+                    // Always null this phase: a summary card has no deliverable to carry, because the
+                    // model isn't told deliverables exist until v0.34.0. The picker still SETS one.
+                    currentDeliverable = null,
                     framework = s.framework,
                     folders = s.allFolders,
-                    onApply = { category, project ->
-                        viewModel.retagAchievement(target.area, target.bullet, category, project)
+                    deliverables = allDeliverables,
+                    onApply = { category, project, deliverable, createNew ->
+                        viewModel.retagAchievement(
+                            target.area, target.bullet, category, project, deliverable, createNew,
+                        )
                         retagLine = null
                     },
                     onDismiss = { retagLine = null },
@@ -1307,9 +1320,14 @@ private fun RetagSheet(
     /** The line's CURRENT project (null = none). Preselected, so opening the sheet to change only the
      *  CATEGORY can't silently un-file the entry from a project the user never touched. */
     currentProject: String?,
+    /** The line's CURRENT deliverable (null = none), preselected for the same reason as the project. */
+    currentDeliverable: String?,
     framework: Framework,
     folders: List<SummaryViewModel.FolderRef>,
-    onApply: (String, String?) -> Unit,
+    deliverables: List<DeliverableEntity>,
+    /** (category, project, deliverable, createDeliverable) — `createDeliverable` means the name was
+     *  typed here and must be created before the win is filed into it. */
+    onApply: (String, String?, String?, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val noRipple = remember { MutableInteractionSource() }
@@ -1328,6 +1346,24 @@ private fun RetagSheet(
             },
         )
     }
+    // The deliverable axis (v0.33.0), scoped by BOTH parents for the same reason the folder is scoped
+    // by category: a deliverable is unique by (name, project, goalArea), never by name alone.
+    var selectedDeliverable by rememberSaveable(line) {
+        mutableStateOf(
+            currentDeliverable?.takeIf { d ->
+                deliverables.any {
+                    it.name.equals(d, ignoreCase = true) &&
+                        it.project.equals(currentProject.orEmpty(), ignoreCase = true) &&
+                        it.goalArea.equals(currentArea, ignoreCase = true)
+                }
+            },
+        )
+    }
+    // A deliverable named right here, staged rather than created — Apply creates and files in one
+    // locked step, so a fast tap can't beat the insert and have its tag silently dropped.
+    var newDeliverable by rememberSaveable(line) { mutableStateOf<String?>(null) }
+    var namingDeliverable by rememberSaveable(line) { mutableStateOf(false) }
+    var newDeliverableText by rememberSaveable(line) { mutableStateOf("") }
 
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -1355,15 +1391,25 @@ private fun RetagSheet(
             } else {
                 categories.forEach { cat ->
                     val isSel = selectedCategory?.equals(cat.name, ignoreCase = true) == true
+                    // Changing the category invalidates both narrower axes — they belong to the old one.
+                    val pickCategory = {
+                        if (!isSel) {
+                            selectedCategory = cat.name
+                            selectedFolder = null
+                            selectedDeliverable = null
+                            newDeliverable = null
+                            namingDeliverable = false
+                        }
+                    }
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(Radii.md))
-                            .clickable { if (!isSel) { selectedCategory = cat.name; selectedFolder = null } }
+                            .clickable(onClick = pickCategory)
                             .padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         RadioButton(
                             selected = isSel,
-                            onClick = { if (!isSel) { selectedCategory = cat.name; selectedFolder = null } },
+                            onClick = pickCategory,
                             colors = RadioButtonDefaults.colors(selectedColor = palette.primary, unselectedColor = palette.text3),
                         )
                         Text(cat.name, style = MaterialTheme.typography.titleSmall, color = palette.text1, fontWeight = FontWeight.SemiBold)
@@ -1375,13 +1421,105 @@ private fun RetagSheet(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            SelectChip(NO_PROJECT_LABEL, selected = selectedFolder == null, palette = palette) { selectedFolder = null }
+                            SelectChip(NO_PROJECT_LABEL, selected = selectedFolder == null, palette = palette) {
+                                selectedFolder = null
+                                selectedDeliverable = null
+                                newDeliverable = null
+                                namingDeliverable = false
+                            }
                             catFolders.forEach { f ->
                                 SelectChip(
                                     f.name,
                                     selected = selectedFolder?.equals(f.name, ignoreCase = true) == true,
                                     palette = palette,
-                                ) { selectedFolder = f.name }
+                                ) {
+                                    if (selectedFolder?.equals(f.name, ignoreCase = true) != true) {
+                                        selectedFolder = f.name
+                                        selectedDeliverable = null
+                                        newDeliverable = null
+                                        namingDeliverable = false
+                                    }
+                                }
+                            }
+                        }
+                        // The deliverable level — only under a real project, the only place one exists.
+                        if (selectedFolder != null) {
+                            val catDeliverables = Recategorize.deliverablesFor(cat.name, selectedFolder, deliverables)
+                            Text(
+                                DELIVERABLE_LABEL.uppercase(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = palette.text3,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 30.dp),
+                            )
+                            Spacer(Modifier.height(Spacing.s2))
+                            FlowRow(
+                                Modifier.fillMaxWidth().padding(start = 30.dp, bottom = Spacing.s2),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                SelectChip(
+                                    "None",
+                                    selected = selectedDeliverable == null && newDeliverable == null,
+                                    palette = palette,
+                                ) { selectedDeliverable = null; newDeliverable = null; namingDeliverable = false }
+                                catDeliverables.forEach { d ->
+                                    SelectChip(
+                                        if (d.done) "${d.name} · Done" else d.name,
+                                        selected = selectedDeliverable?.equals(d.name, ignoreCase = true) == true,
+                                        palette = palette,
+                                    ) { selectedDeliverable = d.name; newDeliverable = null; namingDeliverable = false }
+                                }
+                                newDeliverable?.let { pending ->
+                                    SelectChip("$pending · new", selected = true, palette = palette) {}
+                                }
+                                if (newDeliverable == null && !namingDeliverable) {
+                                    SelectChip("+ New", selected = false, palette = palette) {
+                                        namingDeliverable = true; newDeliverableText = ""
+                                    }
+                                }
+                            }
+                            if (namingDeliverable) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(start = 30.dp, bottom = Spacing.s2),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(
+                                        Modifier.weight(1f).clip(RoundedCornerShape(Radii.md))
+                                            .background(palette.surface2).padding(horizontal = 12.dp, vertical = 10.dp),
+                                    ) {
+                                        if (newDeliverableText.isEmpty()) {
+                                            Text(
+                                                "Name this ${DELIVERABLE_LABEL.lowercase()}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = palette.text3,
+                                            )
+                                        }
+                                        BasicTextField(
+                                            value = newDeliverableText,
+                                            onValueChange = { newDeliverableText = it },
+                                            singleLine = true,
+                                            textStyle = LocalTextStyle.current.copy(
+                                                color = palette.text1, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                            ),
+                                            cursorBrush = SolidColor(palette.primary),
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    SelectChip("Add", selected = newDeliverableText.isNotBlank(), palette = palette) {
+                                        val n = newDeliverableText.trim()
+                                        if (n.isNotEmpty()) {
+                                            newDeliverable = n
+                                            selectedDeliverable = null
+                                            namingDeliverable = false
+                                        }
+                                    }
+                                    Spacer(Modifier.width(6.dp))
+                                    SelectChip("Cancel", selected = false, palette = palette) {
+                                        namingDeliverable = false; newDeliverableText = ""
+                                    }
+                                }
                             }
                         }
                     }
@@ -1397,7 +1535,9 @@ private fun RetagSheet(
                 )
                 Spacer(Modifier.height(Spacing.s3))
                 PrimaryButton("Apply", palette, enabled = selectedCategory != null) {
-                    selectedCategory?.let { onApply(it, selectedFolder) }
+                    selectedCategory?.let {
+                        onApply(it, selectedFolder, newDeliverable ?: selectedDeliverable, newDeliverable != null)
+                    }
                 }
             }
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()

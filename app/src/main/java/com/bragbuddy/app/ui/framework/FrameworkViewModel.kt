@@ -88,11 +88,16 @@ class FrameworkViewModel @Inject constructor(
         val p = framework.value.pillars.firstOrNull { it.id == id }
         persist(framework.value.pillars.filterNot { it.id == id })
         if (p != null) viewModelScope.launch {
-            // Removing a category also removes its folders (entries already filed stay in the record).
+            // Removing a category also removes its folders AND their deliverables (entries already filed
+            // stay in the record).
             runCatching { projects.deleteByCategory(p.name) }
             // ...and clears any manual category anchor pinned to it, so a later edit doesn't re-file an
             // entry into a category that no longer exists (v0.31.0).
             runCatching { entries.clearCategoryAnchor(p.name) }
+            // ...and the deliverable tags of its entries, which would otherwise render a group header
+            // for a deliverable that was just deleted (v0.33.0). Unlike the category label — which the
+            // "Uncategorized" catch-all still surfaces — a dangling deliverable has nothing to fall into.
+            runCatching { entries.clearCategoryDeliverables(p.name) }
         }
     }
 
@@ -151,7 +156,13 @@ class FrameworkViewModel @Inject constructor(
         }
     }
 
-    fun deleteProject(id: Long) = viewModelScope.launch { runCatching { projects.delete(id) } }
+    /** Delete a project. Its deliverables cascade away inside [projects]; its entries' now-dangling
+     *  deliverable tags are cleared here (read the row FIRST — after the delete its name is gone). */
+    fun deleteProject(id: Long) = viewModelScope.launch {
+        val p = runCatching { projects.getById(id) }.getOrNull()
+        runCatching { projects.delete(id) }
+        if (p != null) runCatching { entries.clearProjectDeliverables(p.name, p.goalArea) }
+    }
 
     private fun persist(pillars: List<Pillar>) = viewModelScope.launch { frameworkStore.save(pillars) }
 

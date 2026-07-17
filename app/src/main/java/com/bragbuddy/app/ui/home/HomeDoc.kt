@@ -200,6 +200,50 @@ private fun deliverableGroups(
         .sortedWith(compareBy({ it.done }, { -it.lastUpdated }, { it.name.lowercase() }))
 }
 
+/**
+ * What one project card shows **inline**, with the deliverable level folded in — a pure rule so the
+ * card stays a renderer and the cap is unit-tested.
+ *
+ * [truncated] drives the existing "See all N" row. The cap is spent across the active groups and the
+ * loose entries **together**, not per group: it has always meant "at most N bullets under this project
+ * on Home", and applying it per group would quietly turn one project with five deliverables into fifty
+ * inline bullets — the wall of text the depth check exists to prevent.
+ *
+ * [doneGroups] are excluded from the budget because they render collapsed: they cost one row each, and
+ * their entries aren't drawn until the user asks. A done deliverable never *hides* its entries (the
+ * owner's rule) — it just doesn't shout them.
+ */
+data class InlineProjectView(
+    val groups: List<DeliverableGroup>,
+    val loose: List<EntryEntity>,
+    val doneGroups: List<DeliverableGroup>,
+    val truncated: Boolean,
+)
+
+fun ProjectBullets.inlineView(cap: Int): InlineProjectView {
+    val done = doneDeliverables
+    if (deliverables.isEmpty()) {
+        return InlineProjectView(emptyList(), entries.take(cap), emptyList(), entries.size > cap)
+    }
+    var budget = cap
+    val shown = mutableListOf<DeliverableGroup>()
+    var dropped = false
+    for (g in activeDeliverables) {
+        // An EMPTY deliverable still renders — a just-created one must appear immediately, exactly as an
+        // empty folder does — and costs no budget, since it has no bullets to draw.
+        if (g.entries.isEmpty()) { shown += g; continue }
+        if (budget <= 0) { dropped = true; continue }
+        val take = g.entries.take(budget)
+        if (take.size < g.entries.size) dropped = true
+        budget -= take.size
+        shown += g.copy(entries = take)
+    }
+    val looseAll = loose
+    val looseShown = looseAll.take(budget.coerceAtLeast(0))
+    if (looseShown.size < looseAll.size) dropped = true
+    return InlineProjectView(shown, looseShown, done, dropped)
+}
+
 /** Processed entries that demonstrate [pillar], newest first (the behaviour "evidence" view). */
 fun behaviourEvidence(processed: List<EntryEntity>, pillar: Pillar): List<EntryEntity> =
     processed.filter { e -> e.demonstrates.any { it.matches(pillar.name) } }
