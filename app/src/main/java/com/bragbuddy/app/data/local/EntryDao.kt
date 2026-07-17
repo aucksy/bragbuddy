@@ -122,21 +122,47 @@ interface EntryDao {
     )
     suspend fun countDeliverableReferences(name: String, project: String, area: String): Int
 
-    /** Re-tag every record of a renamed deliverable. Rewrites the filed label AND the anchor in ONE
-     *  statement — unlike the project remap, which needs two ordered queries because the anchor's WHERE
-     *  reads `goalCategory` (the column the other rewrites). Here neither `project` nor `goalCategory`
-     *  changes, so there is no ordering hazard to get wrong.
-     *
-     *  `anchorDeliverable` follows only where it was ALREADY set: a null means the user never pinned
-     *  this entry to the deliverable (v0.34.0's AI could file one without a pin), and a rename must not
-     *  invent a pin they never asked for — the same rule [remapAnchorScoped] follows. */
+    /**
+     * Re-tag the **filed label** of every record of a renamed deliverable. Scoped by the filed columns,
+     * which is exactly right for a filed row — and exactly wrong for the anchor, which is why the anchor
+     * has its own query below. Run both, in one transaction.
+     */
     @Query(
-        "UPDATE entries SET deliverable = :newName, " +
-            "anchorDeliverable = CASE WHEN anchorDeliverable IS NOT NULL THEN :newName ELSE NULL END " +
+        "UPDATE entries SET deliverable = :newName " +
             "WHERE LOWER(deliverable) = LOWER(:old) AND LOWER(project) = LOWER(:project) " +
             "AND LOWER(goalCategory) = LOWER(:area)",
     )
     suspend fun remapDeliverableScoped(old: String, project: String, area: String, newName: String)
+
+    /**
+     * Follow the rename into the **anchor** — the user's tap-in pin — scoped by the **anchor** columns,
+     * never the filed ones.
+     *
+     * ⚠️ This is a separate query for a reason that cost a HIGH to learn (v0.33.1 assessment). The two
+     * live at different times: `anchorDeliverable` is written at CAPTURE ([EntryRepository.capture],
+     * `queueVoiceNote`, `queueImageNote`), while `deliverable`/`project`/`goalCategory` are only written
+     * once the categorizer files the row. So every not-yet-filed entry — a RAW row, a FAILED one waiting
+     * in the Inbox after a Groq outage, a PENDING_AUDIO/PENDING_IMAGE one queued offline for days — has
+     * the pin set and all three filed columns **NULL**. Scoping the anchor rewrite by those columns
+     * matched none of them, so the pin kept the OLD name; then `prepare()`'s re-validation found no
+     * deliverable by that name and dropped it. The user tapped into a deliverable to log the win, and it
+     * filed into the project's loose list instead, with no signal — a rename behaved as a delete for
+     * exactly the entries that hadn't landed yet.
+     *
+     * `anchorGoalArea` is deliberately allowed to be NULL: a tap-in capture pins the project and the
+     * deliverable but NOT the category (`prepare()` derives it from the anchored folder), so requiring a
+     * match there would miss the very rows this exists for. Only a manual correction sets it, and then it
+     * must agree.
+     *
+     * Matching on `anchorDeliverable = :old` inherently means "only where a pin already exists" — a
+     * rename must never invent one ([remapAnchorScoped] follows the same rule).
+     */
+    @Query(
+        "UPDATE entries SET anchorDeliverable = :newName " +
+            "WHERE LOWER(anchorDeliverable) = LOWER(:old) AND LOWER(anchorProject) = LOWER(:project) " +
+            "AND (anchorGoalArea IS NULL OR LOWER(anchorGoalArea) = LOWER(:area))",
+    )
+    suspend fun remapDeliverableAnchor(old: String, project: String, area: String, newName: String)
 
     /** A DELETED deliverable can't stay tagged or pinned: clear both columns so its entries fall back to
      *  listing plainly under their project (they are NOT deleted — the entries are the record, the

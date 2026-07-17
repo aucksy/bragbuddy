@@ -654,9 +654,15 @@ class EntryProcessor @Inject constructor(
                 )
                 val after = deliverableDao.getById(id)
                 if (after != null && !after.name.equals(existing.name, ignoreCase = true)) {
-                    // One statement rewrites the filed label AND the anchor. Unlike the project remap
-                    // there's no ordering hazard: neither `project` nor `goalCategory` moves here.
+                    // TWO statements, because the filed label and the pin are scoped by different
+                    // columns and — critically — exist at different times. A not-yet-filed row (RAW /
+                    // FAILED after an AI outage / PENDING_* queued offline) has the pin set and every
+                    // filed column NULL, so a filed-scoped rewrite misses it entirely and `prepare()`
+                    // later drops the pin as stale: the rename silently behaved as a delete for exactly
+                    // the entries still in flight. See [EntryDao.remapDeliverableAnchor].
+                    // No ordering hazard between them: neither rewrites a column the other reads.
                     entryDao.remapDeliverableScoped(existing.name, existing.project, existing.goalArea, after.name)
+                    entryDao.remapDeliverableAnchor(existing.name, existing.project, existing.goalArea, after.name)
                     renamed = true
                 }
             }

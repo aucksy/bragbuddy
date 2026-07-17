@@ -286,6 +286,39 @@ class DeliverableGroupingTest {
         assertThat(Recategorize.defaultDeliverable(stale, "Learning & Growth", "Payments", all)).isNull()
     }
 
+    // ---------------- the anchor-vs-filed distinction ----------------
+
+    @Test
+    fun `a tap-in pin exists before any filed column does`() {
+        // The shape behind a HIGH: `anchorDeliverable` is written at CAPTURE, while `deliverable` /
+        // `project` / `goalCategory` are only written once the categorizer files the row. So a RAW row —
+        // or a FAILED one waiting in the Inbox after an AI outage, or a PENDING_* one queued offline for
+        // days — carries the user's pin with every filed column still NULL.
+        //
+        // Any query that follows a rename into the ANCHOR must therefore scope by the ANCHOR columns.
+        // Scoping by the filed ones (which read as NULL here) matched none of these rows, left the pin on
+        // the old name, and `prepare()` then dropped it as stale — so a rename silently behaved as a
+        // delete for exactly the entries still in flight. This test states the precondition that makes
+        // that possible, so the invariant is written down rather than only living in a SQL WHERE clause.
+        val pinned = EntryEntity(
+            id = 1,
+            createdAt = 1000,
+            source = EntrySource.VOICE,
+            status = EntryStatus.RAW,
+            rawTranscript = "shipped the onboarding step",
+            anchorProject = "Payments",
+            anchorDeliverable = "Onboarding",
+        )
+
+        assertThat(pinned.anchorDeliverable).isEqualTo("Onboarding")
+        assertThat(pinned.deliverable).isNull()
+        assertThat(pinned.project).isNull()
+        assertThat(pinned.goalCategory).isNull()
+        // And the category is NOT pinned by a tap-in — prepare() derives it from the anchored folder — so
+        // an anchor-scoped query must tolerate a NULL anchorGoalArea or it misses these rows too.
+        assertThat(pinned.anchorGoalArea).isNull()
+    }
+
     // ---------------- export ----------------
 
     @Test

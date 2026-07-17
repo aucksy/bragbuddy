@@ -1403,6 +1403,12 @@ private fun RetagSheet(
         }
     }
     var selectedFolder by rememberSaveable(line) { mutableStateOf(initialFolder) }
+    // "Known" must ALSO mean resolvable. A project name that no longer matches a live folder (renamed or
+    // deleted since the summary was generated) cannot be preselected — so claiming to know it asserts
+    // "no project" for a win that has one, and Apply writes that in. Treat it as unknown: offer "Leave as
+    // is" and let the host keep the entry's own project. `currentProject == null` with `known` is the
+    // genuine "Outside" answer and stays resolved.
+    val projectResolved = currentProjectKnown && (currentProject == null || initialFolder != null)
     // EXPLICIT answers only. The real question — "has the project been decided?" — is DERIVED below;
     // storing it in this flag is what let a category change strand it.
     var projectTouched by rememberSaveable(line) { mutableStateOf(false) }
@@ -1449,9 +1455,9 @@ private fun RetagSheet(
     // lives nowhere, durably anchored, invisible to every editor (they all scope by (name, goalArea)) and
     // beyond the reach of any later rename. The code even asserted "a known project can't survive a
     // category change" while this very branch let it do exactly that.
-    val projectSettled = currentProjectKnown || projectTouched || categoryChanged
+    val projectSettled = projectResolved || projectTouched || categoryChanged
     val projectChanged =
-        if (!currentProjectKnown) projectSettled
+        if (!projectResolved) projectSettled
         else !selectedFolder.orEmpty().equals(currentProject.orEmpty(), ignoreCase = true)
     val placementChanged = categoryChanged || projectChanged
     val effectiveTouched = deliverableTouched || placementChanged
@@ -1524,7 +1530,7 @@ private fun RetagSheet(
                             // Offered only when the line's project is genuinely UNKNOWN (a DEVELOPMENT
                             // line). Without it the sheet showed "No specific project" as though it were
                             // the answer, and Apply un-filed a win from a project the user never touched.
-                            if (!currentProjectKnown && !categoryChanged) {
+                            if (!projectResolved && !categoryChanged) {
                                 SelectChip("Leave as is", selected = !projectSettled, palette = palette) {
                                     projectTouched = false
                                     selectedFolder = null

@@ -427,7 +427,12 @@ fun CategoryEditSheet(
 
 private fun doSaveProject(viewModel: FrameworkViewModel, row: ProjRowState, category: String, showMessage: (String) -> Unit) {
     val creating = row.id == null
-    viewModel.saveProject(row.id, row.name, row.summary, category) { newId, storedName ->
+    // Snapshot what was REQUESTED. The callback lands after a DB round-trip, and `row.name` is live
+    // state the user can keep typing into — comparing the stored name against whatever the field holds
+    // by then reports a perfectly good save as rejected.
+    val requested = row.name.trim()
+    val requestedSummary = row.summary
+    viewModel.saveProject(row.id, requested, requestedSummary, category) { newId, storedName ->
         // A create that hit the (name, goalArea) unique index returns a non-positive id — nothing was
         // saved, so keep the row dirty and say so rather than falsely showing it as saved.
         //
@@ -438,13 +443,13 @@ private fun doSaveProject(viewModel: FrameworkViewModel, row: ProjRowState, cate
         // depends on `baseName` for its remap gate either — it reads both names from the DB — but a UI
         // that lies about a save is its own bug.)
         val rejected = if (creating) newId <= 0L else storedName == null ||
-            !storedName.equals(row.name.trim(), ignoreCase = true)
+            !storedName.equals(requested, ignoreCase = true)
         if (rejected) {
             showMessage("Couldn't save — a project with that name already exists here.")
         } else {
             if (creating) row.id = newId
-            row.baseName = storedName ?: row.name
-            row.baseSummary = row.summary
+            row.baseName = storedName ?: requested
+            row.baseSummary = requestedSummary
             showMessage("Project saved")
         }
     }
