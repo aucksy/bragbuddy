@@ -296,10 +296,29 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   `data/entry/OriginalTranscript.next()`, never overwritten, carried in `BackupCodec`; a **redo resets**
   it (owner's call — the fresh take becomes the original) and a **pure append snapshots nothing** (a
   review catch: snapshotting there HID the number the user had just typed). Detail in `## Status: v0.32.0`.
-  **Exact next step: v0.33.0 Deliverables**
-  (Category → Project → **Deliverable** → entries; tap-in pins with no AI guess, AI guesses only from "+";
-  Active/Done; manual only, no eval gate) → **v0.34.0** AI files into deliverables + per-deliverable summary
-  (EVAL-GATED). Full spec + the owner's locked decisions: `PROGRESS.md` "▶ ROADMAP RESHAPE". **v0.31.0 (fix batch):** a **⋮ retag on summary cards** that
+  **`v0.33.0 — Deliverables · structure + manual filing` is SHIPPED** (signed; `versionCode 39`; **Room v8**;
+  compile+unit-test gate green pre-tag; two independent adversarial reviews; NO eval gate): the record is now
+  **Category → Project → Deliverable → entries**, with the AI kept entirely out (it is never told deliverables
+  exist — that's v0.34.0). New `deliverables` table (**identity `(name, project, goalArea)`**, deliberately NOT
+  a parent column on `ProjectEntity`: that needed a destructive index rebuild AND a `parent IS NULL` filter at
+  every existing reader of `projects`, where missing one silently leaks deliverables into the AI's project
+  list) + `EntryEntity.deliverable`/`anchorDeliverable` (`MIGRATION_7_8`). **Filing is tap-in only** — tapping
+  a deliverable pins both axes, no guess; the anchor survives the offline queue and is re-validated on every
+  re-file. Owner's UI calls: a deliverable is a **group header inside the expanded project** (no third tap —
+  Home already costs two to reach a bullet), done ones collapsed at the bottom, untagged wins listed plainly
+  with no heading. The owner's answer **grew the phase**: *"moving wins across categories/projects/
+  deliverables should be a system-wide capability"* → the 3rd picker level + inline **"+ New"** landed in BOTH
+  correction surfaces (entry-detail Recategorize + the Summary ⋮ retag), with the create done inside the
+  processor's mutex so it can't race the file. **Cascades hang off `ProjectRepository`'s choke points, not the
+  remap flow** (a rename with no filed records shows no remap sheet), and the remap's deliverable rule **tests
+  reality, not intent** (all 3 options arrive as identical args). Review caught a **HIGH self-inflicted
+  corruption**: `@Update(onConflict=IGNORE)` silently no-ops, and both `DeliverableRepository.rename` and
+  `ProjectRepository.update` cascaded on the *requested* name — a colliding rename left the row untouched
+  on screen while its entries were durably remapped into an unrelated deliverable. Both now act on the
+  **effect** (re-read the row). Detail in `## Status: v0.33.0`.
+  **Exact next step: `v0.34.0` — AI files into deliverables + per-deliverable summary (⚠️ EVAL-GATED — the
+  FIRST prompt change since v0.31.0; mirror every prompt-shape change in `eval/run.mjs`, budget ≥2 gate
+  rounds).** Full spec + the owner's locked decisions: `PROGRESS.md` "▶ ROADMAP RESHAPE". **v0.31.0 (fix batch):** a **⋮ retag on summary cards** that
   corrects the RECORD via a client-side resolver (`AggHighlight.ids` + `SummaryResolver`, no prompt change);
   **derived Set-aside** (real dropped wins, Restore all); **EVAL-GATED** length-prompt fix (rule 1 was
   hardcoding "at most 5" so Detailed was inert); and the **"Outside project under Learning & Growth"**

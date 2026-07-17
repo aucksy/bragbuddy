@@ -159,13 +159,17 @@ current code — that is the context, not chat history.
 - **Sequence: v0.32.0 transcript access → v0.33.0 deliverables (structure, manual) → v0.34.0 AI filing +
   per-deliverable summary → … → M3 last.**
 
-> **▶ WHERE WE ARE: `v0.32.0` is SHIPPED (Room v7, versionCode 38) — full detail in `## Status: v0.32.0`.
-> The EXACT NEXT STEP is `v0.33.0 — Deliverables · structure + manual filing`, specced immediately below.**
-> Carry these two forward into that phase:
-> - **Room is now v7** — the deliverables column lands as **v7→v8** (the spec below still says v7→v8 ✓).
-> - **`originalTranscript` exists now.** Anything that mutates an entry's text must go through
+> **▶ WHERE WE ARE: `v0.33.0` is SHIPPED (Room v8, versionCode 39) — full detail in `## Status: v0.33.0`.
+> The EXACT NEXT STEP is `v0.34.0 — AI files into deliverables + per-deliverable summary` (EVAL-GATED),
+> specced below.** Carry these forward into that phase:
+> - **Room is now v8**; `deliverables` table + `entries.deliverable` / `entries.anchorDeliverable` exist.
+> - **The AI has never been told deliverables exist.** v0.34.0 is the FIRST prompt change — mirror every
+>   prompt-shape change in `eval/run.mjs` (v0.31.0's F4 drifted that mirror and shipped the fix unmeasured).
+> - **`applyCategorized` assigns `deliverable = anchorDeliverable` outright.** v0.34.0 turns that into the
+>   same `anchor ?: guess` shape the other two axes already use.
+> - **`originalTranscript` exists.** Anything that mutates an entry's text must go through
 >   `OriginalTranscript.next()`, and any NEW column must ride `BackupCodec` (the v0.31.0 lesson, re-proven
->   here) **and** be added to `EntryEntity` with **named** args at every construction site.
+>   in v0.32.0 AND v0.33.0) **and** be added to `EntryEntity` with **named** args at every construction site.
 
 ---
 
@@ -205,7 +209,7 @@ current code — that is the context, not chat history.
 
 ---
 
-### ▶ v0.33.0 — Deliverables · structure + manual filing (no prompt change → **NO eval gate**)
+### ▶ v0.33.0 — Deliverables · structure + manual filing ✅ **SHIPPED** (see `## Status: v0.33.0` below — this block is the SPEC it was built from, kept for provenance)
 
 The container exists and the user drives it; the AI stays out. Ships fast, immediately testable, low risk.
 - **Data:** a deliverable belongs to a project. Either a new `DeliverableEntity(name, project, goalArea,
@@ -242,6 +246,114 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
   produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
   ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
   went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
+
+---
+
+## Status: v0.33.0 — Deliverables · structure + manual filing ✅ SHIPPED (signed · tag-driven CI; compile + unit tests GREEN on the free debug gate before the tag, twice; two independent adversarial reviews, every finding refute-verified; **NOT a prompt phase → no eval gate**)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.33.0/BragBuddy-v0.33.0.apk` (signed by tag-driven CI; `.aab` alongside). `versionCode 39`. **Room v8.**
+
+> The record is now **Category → Project → Deliverable → entries**. The container exists and the user
+> drives it; the AI stays out entirely (it is never told deliverables exist — that is v0.34.0, prompt-first
+> and eval-gated).
+
+### Owner decisions (AskUserQuestion 2026-07-17 — do not re-litigate)
+- **A deliverable is a GROUP HEADER inside the expanded project, not a fourth collapse step.** Home already
+  costs two taps to reach a bullet; a third would bury the record. Done ones sit at the bottom, collapsed.
+- **Wins with no deliverable list plainly under the project, with NO heading.** (The owner didn't pick either
+  offered option — they answered *"I should get option to move any recorded wins to existing or new
+  deliverable… this option to move wins across categories, projects, deliverables should be a **system wide
+  capability**"*. The no-heading rendering is what the layout they DID pick showed, so it was taken as chosen;
+  their actual answer **grew the phase** — see "move a win anywhere" below.)
+
+### v0.33.0 — what was built
+- **Data: a separate `deliverables` table, NOT a parent column on `ProjectEntity`** (the spec asked for this
+  to be decided by reading the `(name, goalArea)` unique index + the v0.19.0 rename-remap first). Both point
+  the same way: sharing the table means **widening a composite unique index on live user data** (a destructive
+  recreate vs. an additive `CREATE TABLE`), and **every existing reader of `projects` assumes each row IS a
+  project** (`EntryProcessor.prepare`'s placement universe, `FrameworkPrompt`, the framework editor, Home's
+  cards, the pickers) — each would need a `parent IS NULL` filter, and *missing one is silent*: deliverables
+  would leak into the categorizer's project list and the AI would file into them, the exact thing this phase
+  is specified not to do. Also `done` is meaningless for a project. Identity = `(name, project, goalArea)`,
+  scoped by BOTH parents because a project is itself only unique by `(name, goalArea)`.
+  `EntryEntity` gains `deliverable` + `anchorDeliverable` (**Room v7→v8**, `MIGRATION_7_8`, additive).
+  **`done` is a Boolean, not an enum**: `Converters` uses `valueOf`, which THROWS on an unknown name, so an
+  enum that ever gained a value would make a newer backup crash an older build's restore.
+- **`DELIVERABLE_LABEL` is ONE constant** (spec'd, like `NO_PROJECT_LABEL`) — every user-visible string derives
+  from it, so the owner's flagged risk ("Deliverable" may not fit softer threads like stakeholder management)
+  stays a one-line display rename, never a migration.
+- **Filing = tap-in first, AI never.** Tapping a deliverable → `CaptureLauncher.openChooser(project, deliverable)`
+  → `anchorDeliverable` → `applyCategorized` binds it deterministically. The anchor survives the **offline
+  queue** (voice + image) and the edit/redo reset, and is **re-validated against its parents on every re-file**
+  (an edit can land months after the capture). `prepare()` deliberately does NOT add it to `CategorizeRequest`.
+- **⭐ The cascades hang off `ProjectRepository`'s choke points, NOT the rename-remap flow.** A rename with **no
+  filed records shows no remap sheet**, so a cascade hung there would silently strand the deliverables of any
+  project renamed before anything was logged into it — and the framework editor and Settings dialog are two
+  call sites that must not drift.
+- **⭐ The remap's deliverable rule tests REALITY, not intent.** All three options (carry / reassign / create-new)
+  reach `remapProjectEverywhere` as the *same four arguments*, and it is never told the renamed folder's new
+  name — so it cannot distinguish "following its own folder" from "moving to someone else's".
+  `clearDeliverablesNotUnder` asks the deliverables table whether the tag exists **at the destination**
+  (`NOT EXISTS`), whatever route got there. It must run BEFORE `remapProjectScoped` (which rewrites the columns
+  its WHERE reads) — the v0.31.0 ordering lesson, now hit twice in one function.
+- **Move a win anywhere (the owner's ask), system-wide.** The 3rd picker level + an inline **"+ New"** landed in
+  BOTH correction surfaces: the entry-detail Recategorize sheet (Home, pillar view, folder screen) and the
+  Summary ⋮ RetagSheet. `EntryProcessor.recategorize` gained `deliverable` + `createDeliverable` and anchors all
+  three axes. **The create happens in the processor under the mutex** (mirroring `remapProjectEverywhere`'s
+  `createTargetFolder`): creating from the UI would race the insert against a fast Apply, and the loser is the
+  user's tag, silently dropped by the destination validation. The deliverable is **validated, not trusted** at
+  every write (`deliverableExists(name, project, area)`).
+- **`resolve` (Inbox) has no deliverable picker**, so it checks rather than asks: an anchored capture still goes
+  FAILED if the AI was unreachable, and FAILED rows are resolvable. It keeps the tag only where it genuinely
+  exists under the chosen project, and **never invents an anchor** the user didn't ask for.
+- **UI:** `DeliverableHeader` lives in `ui/common` next to `EntryBulletRow` (Home and the pillar view both render
+  this level; two copies would drift). `ProjectBullets.entries` deliberately stays **every** entry — it is what
+  `entryCount`/`lastUpdated`/exports/"See all N" have always meant — with `loose` + `deliverables` layered as
+  derived views. The **single-folder ("See all") screen renders the grouping too**: that screen exists *because*
+  the project outgrew the cap, so it's the likeliest place to have deliverables at all. `DocExport` mirrors the
+  order. Deletes name what survives (**"Delete (keeps entries)"**) — deleting a grouping next to a list of wins
+  reads like it takes them with it.
+- **`BackupCodec` carries the table + both columns** + `changeSignal` gained the deliverables flow (so creating
+  one triggers an auto-backup rather than waiting for an unrelated entry change to flush it). The v0.31.0
+  lesson, re-proven: an un-serialised column is silently destroyed by a Drive restore.
+- **Tests:** new `DeliverableGroupingTest` (grouping / ghost-tag falls loose / same-name-different-project /
+  the shared inline cap / done-group capping / the picker's pure rules / export order), `BackupCodecTest`
+  extended (round-trip, a pre-v0.33 backup with no key, a parentless deliverable dropped).
+
+### REVIEW — two independent adversarial passes (Room-SQL/durability; compile/logic). Both reached the same two findings; all fixed pre-tag.
+- **HIGH — `@Update(onConflict=IGNORE)` silently no-ops, and both callers cascaded on the REQUESTED name.**
+  `DeliverableRepository.rename` returned the pre-rename identity based on the name *asked for*, so renaming
+  "Phase 1" → "Phase 2" where Phase 2 exists left Phase 1 untouched on screen while the remap rewrote its
+  entries' `deliverable` **and `anchorDeliverable`** to "Phase 2" — every one silently moved into an unrelated
+  deliverable, **durably** (the anchor survives a re-file) and with no undo: the user's own placement decision
+  overwritten by one they never made. **MED** — the same shape in `ProjectRepository.update`, re-parenting a
+  project's deliverables under a folder the user never touched (harmless before this phase; it only
+  desynchronises now that a second table hangs off the name). Both now **re-read the row and act on the
+  effect**; the name dialogs block a duplicate up front and say so, making the DAO's "the UI validates
+  uniqueness" comment true rather than aspirational.
+- **The gate earned its keep:** the first red run was a *test* bug — a `.replace("\"project\":\"Atlas\",\"goalArea\"")`
+  fixture assumed org.json key ORDER (the JVM impl is HashMap-backed; `project` is followed by `description`),
+  so the replace no-op'd and the test asserted nothing. It also would have hit the wrong object: `project` is a
+  key on both an entry and a deliverable. Now mutated via `JSONObject`.
+- **LOW fixed:** an expanded done group bypassed the inline cap entirely (200 entries → 200 bullets on Home);
+  it now has its own cap while still not spending the shared budget. Two KDoc links pointed at a method that
+  never existed (`EntryDao.clearDeliverableAnchor`); KDoc isn't resolved by kotlinc so nothing caught it.
+- **Verified clean:** `MIGRATION_7_8`'s hand-written DDL matches Room's generated schema exactly (reviewed
+  column-by-column incl. the `index_<table>_<cols>` naming — `exportSchema` is off, so there is no JSON to diff
+  and a mismatch bricks every existing install); the correlated `NOT EXISTS ... entries.deliverable` subquery is
+  valid SQLite; no Room param is a Java reserved word; **no path deletes or hides a logged entry** (every cascade
+  is `SET deliverable = NULL`, and a ghost tag falls into `loose` rather than vanishing); restore is
+  transactional across entries + projects + deliverables; `combine` stayed within its 5-flow typed limit
+  everywhere (`SummaryViewModel.allDeliverables` is its own flow for exactly this reason).
+
+### Known gaps (deliberate, not bugs)
+- **Summary cards carry no deliverable yet** — the model isn't told they exist this phase, so the retag sheet
+  can SET one but has none to preselect. v0.34.0 adds it to the rollup + PART B.
+- **Case-sensitivity seam:** the unique index is case-sensitive while every lookup uses `LOWER()`, so "Phase 1"
+  and "phase 1" could coexist. Inherited from `ProjectEntity` (same pattern); fixing needs `COLLATE NOCASE` and
+  a table rebuild.
+- `createDeliverable` discards `create()`'s `<= 0` "not created" return; near-unreachable now the dialogs block
+  duplicates, but it's a dangling contract.
 
 ---
 
