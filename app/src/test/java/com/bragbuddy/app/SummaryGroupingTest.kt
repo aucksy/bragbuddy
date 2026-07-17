@@ -95,7 +95,8 @@ class SummaryGroupingTest {
     fun `grouping is case-insensitive and keeps the first-seen display name`() {
         val groups = groupFolderByDeliverable(idx(del("a", "Market rollout"), del("b", "market  rollout"), del("c", null)))!!
         assertThat(groups.map { it.name }).containsExactly("Market rollout", null).inOrder()
-        assertThat(groups[0].items).hasSize(1)
+        // Both spellings are the same thread, so they land in ONE group under the first-seen casing.
+        assertThat(groups[0].items.map { it.flatIndex }).containsExactly(0, 1).inOrder()
     }
 
     @Test

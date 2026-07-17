@@ -777,11 +777,17 @@ function scoreCoachCase(c, record) {
 // Scoring — summary (structural checks)
 // ---------------------------------------------------------------------------
 
-/** Phrases that say "still running". Used ONLY to catch a DONE deliverable written as in-progress —
- *  never the reverse: "delivered" has too many honest synonyms to enumerate, so asserting an active
- *  thread ISN'T finished would fail good output. Word-bounded, so "ongoing support" doesn't match
- *  inside another word. */
-const IN_PROGRESS_WORDS = /\b(in progress|ongoing|underway|on track|continuing|currently|is being|are being|remains?|still)\b/i;
+/**
+ * Phrases that unambiguously say "this is STILL RUNNING". Used only to catch a DONE deliverable
+ * written as in-progress — never the reverse: "delivered" has too many honest synonyms to enumerate,
+ * so asserting an active thread ISN'T finished would fail good output.
+ *
+ * Deliberately narrow. Bare adverbs ("still", "currently", "remains") were tried and dropped: they sit
+ * happily inside a correct completed story ("delivered ahead of schedule while still holding quality"),
+ * so gating on them builds a flaky check — and this suite is a 100% AND-gate against a SEED-FIXED
+ * model, where a false fail doesn't flake, it wedges permanently.
+ */
+const IN_PROGRESS_WORDS = /\b(in progress|ongoing|underway|on track|is continuing|are continuing|is being|are being|yet to be|not yet)\b/i;
 
 function jaccard(a, b) {
   const A = contentWords(a);
