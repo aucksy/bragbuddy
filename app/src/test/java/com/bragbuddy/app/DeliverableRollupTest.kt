@@ -138,8 +138,12 @@ class DeliverableRollupTest {
         assertThat(text).contains("Deliverables (the user's own grouping")
         assertThat(text).contains("\"Market rollout\" (project: Raven Migration) — 1 entry, DONE")
         assertThat(text).contains("(deliverable: Market rollout)")
-        // Loose work carries no tag at all — that is what tells the model rule 1 governs it.
-        assertThat(text).contains("Loose work (project: Raven Migration)\n")
+        // Loose work carries no tag at all — that absence is what tells the model rule 1 governs it.
+        // Asserted on the LINE, not on the whole blob with a trailing "\n": serialize() ends in
+        // .trim(), so the final line has no newline to match and the assertion would test the
+        // serializer's padding rather than the thing it means to.
+        val looseLine = text.lines().single { it.contains("Loose work") }
+        assertThat(looseLine).doesNotContain("(deliverable:")
     }
 
     @Test
