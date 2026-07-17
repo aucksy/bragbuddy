@@ -284,11 +284,19 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   **M2 (v0.29.0 first-session & polish)** → v0.29.1 hardening patch → **Summary phase (items 4+5)
   v0.30.0** → v0.30.1 bottom-bar fix → **v0.31.0 Summary-correction fix batch (F1–F4)** all SHIPPED.**
   **▶ ROADMAP RESHAPED 2026-07-17 (owner): M3 (Play Store + Billing + metering) is DEFERRED TO THE VERY END**
-  — the owner wants to finish thorough on-device testing first. **Exact next step: v0.32.0 —
-  original-transcript access** (small; NO eval gate; **NO privacy-policy VERSION bump** — the transcript is
-  ALREADY stored permanently as `EntryEntity.rawTranscript` and ALREADY shown as "WHAT YOU SAID" in
-  `EntryDetailSheet`, so the work is ⋮-menu discoverability **plus the real gap: an edit overwrites the
-  original transcript** → new `originalTranscript` column, Room v6→v7). Then **v0.33.0 Deliverables**
+  — the owner wants to finish thorough on-device testing first. **`v0.32.0 — original-transcript access` is
+  SHIPPED** (signed; `versionCode 38`; **Room v7**; compile+unit-test gate green pre-tag; two adversarial
+  review rounds; NO eval gate; `PrivacyPolicy.VERSION` deliberately left at **3** — no material policy
+  change, so no forced re-accept): **"See original"** on the card ⋮ → the existing `EntryDetailSheet`
+  (pure discoverability — the transcript was always there, behind an undiscovered tap), **plus the real
+  gap fixed**: an edit is seeded from the AI's *bullet* and `replace()` wrote it into `rawTranscript`, so
+  **editing permanently destroyed the user's own words** (the "never lose an entry" invariant had only
+  ever been enforced against AI *failure*, never the user's own edits). New `EntryEntity.original
+  Transcript` (**Room v6→v7**, `MIGRATION_6_7`), captured once on a genuine replacement via the pure
+  `data/entry/OriginalTranscript.next()`, never overwritten, carried in `BackupCodec`; a **redo resets**
+  it (owner's call — the fresh take becomes the original) and a **pure append snapshots nothing** (a
+  review catch: snapshotting there HID the number the user had just typed). Detail in `## Status: v0.32.0`.
+  **Exact next step: v0.33.0 Deliverables**
   (Category → Project → **Deliverable** → entries; tap-in pins with no AI guess, AI guesses only from "+";
   Active/Done; manual only, no eval gate) → **v0.34.0** AI files into deliverables + per-deliverable summary
   (EVAL-GATED). Full spec + the owner's locked decisions: `PROGRESS.md` "▶ ROADMAP RESHAPE". **v0.31.0 (fix batch):** a **⋮ retag on summary cards** that

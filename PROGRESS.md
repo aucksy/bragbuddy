@@ -159,9 +159,17 @@ current code — that is the context, not chat history.
 - **Sequence: v0.32.0 transcript access → v0.33.0 deliverables (structure, manual) → v0.34.0 AI filing +
   per-deliverable summary → … → M3 last.**
 
+> **▶ WHERE WE ARE: `v0.32.0` is SHIPPED (Room v7, versionCode 38) — full detail in `## Status: v0.32.0`.
+> The EXACT NEXT STEP is `v0.33.0 — Deliverables · structure + manual filing`, specced immediately below.**
+> Carry these two forward into that phase:
+> - **Room is now v7** — the deliverables column lands as **v7→v8** (the spec below still says v7→v8 ✓).
+> - **`originalTranscript` exists now.** Anything that mutates an entry's text must go through
+>   `OriginalTranscript.next()`, and any NEW column must ride `BackupCodec` (the v0.31.0 lesson, re-proven
+>   here) **and** be added to `EntryEntity` with **named** args at every construction site.
+
 ---
 
-### ▶ v0.32.0 — Original-transcript access (SMALL; no prompt change → **NO eval gate**)
+### ▶ v0.32.0 — Original-transcript access ✅ **SHIPPED** (see `## Status: v0.32.0` below — this block is the SPEC it was built from, kept for provenance)
 
 > **⭐ FINDING (verified in code 2026-07-17 — this shrank the phase from "major upgrade" to a small fix).**
 > The owner asked to "retain the transcriptions on device… so this will update our privacy policy". **All
@@ -234,6 +242,81 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
   produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
   ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
   went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
+
+---
+
+## Status: v0.32.0 — Original-transcript access ✅ SHIPPED (signed · tag-driven CI; compile + unit tests GREEN on the free debug gate before the tag; two adversarial review rounds, each finding independently verified; **NOT a prompt phase → no eval gate**)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.32.0/BragBuddy-v0.32.0.apk` (signed by tag-driven CI; `.aab` alongside). `versionCode 38`. **Room v7.**
+
+> The spec's ⭐finding held up exactly: the owner's ask ("retain the transcriptions… so this will update
+> our privacy policy") was already satisfied on all three premises — the transcript was already stored
+> permanently, already rendered under "WHAT YOU SAID", and needed **no policy change**. So the phase was
+> a small discoverability fix **plus one real data-loss bug**, and `PrivacyPolicy.VERSION` stayed at **3**
+> (re-verified: the policy's claims are about what is SENT to Groq/the relay, not local storage — a bump
+> would force every user to re-accept for nothing).
+
+### v0.32.0 — what was built
+- **Discoverability (the owner's literal ask).** **"See original"** added to the card ⋮ menu
+  (`ui/common/EntryBulletRow.kt::BulletMenu`) → opens the existing `EntryDetailSheet`. Deliberately the
+  SAME action as tapping the card — the transcript was always there, only behind a tap the owner never
+  found. All four `EntryBulletRow` call sites already passed `onTap` (Home + the 3 pillar/folder lists),
+  so it wires through everywhere; the KDoc now records that a caller rendering the menu MUST pass `onTap`.
+  Icon = `Icons.Outlined.Description` — **deliberately a proven-in-repo icon** (`Notes` was unverified;
+  builds are cloud-only, so an unproven icon risks burning a CI round-trip on a typo).
+- **⭐ THE REAL GAP — an edit DESTROYED the original transcript.** `EntryDetailSheet.editBaseline` seeds
+  the editor from the **BULLET** (`entry.bullet ?: entry.rawTranscript`) and `EntryProcessor.replace()`
+  wrote that edited text straight into `rawTranscript` — so editing the AI's polished bullet
+  **permanently replaced the user's own words with the AI's**, and no backup held a copy either. This
+  quietly contradicted the **"never lose an entry"** invariant (`CONTEXT.md` §2), which had only ever
+  been enforced against **AI failure**, never against the user's own edits.
+  **Fix:** `EntryEntity.originalTranscript: String?` (**Room v6→v7**, additive nullable `MIGRATION_6_7`
+  mirroring `MIGRATION_5_6`; registered in `DatabaseModule`). NULL back-fills as "never edited" — the
+  truthful reading of existing rows (a row edited BEFORE v0.32.0 already lost its original; there is
+  nothing to recover and claiming otherwise would be a lie about what the user said).
+- **The capture-once rule is a PURE helper** — new `data/entry/OriginalTranscript.next()` + a dedicated
+  `OriginalTranscriptTest`. Extracted deliberately: it is the subtlest logic in the phase, and
+  `EntryProcessor` can't be unit-tested without heavy fakes (matches the repo's pure-helper idiom —
+  `ImpactCheck` / `RetentionPolicy` / `Recategorize`). The rule, in order:
+  1. **redo → null.** A redo is *starting over*, so the fresh recording becomes the original and the
+     scrapped take is let go (**owner's call via AskUserQuestion 2026-07-17**, recommended option).
+     Resetting is also what keeps the NEW words viewable at all — readers show the snapshot, so a kept
+     one would hide the take just spoken.
+  2. **already set → never overwrite.** The second edit must still show what was FIRST said.
+  3. **incoming CONTAINS current (`startsWith`) → null.** Covers a pure append + a no-op edit.
+  4. **else → snapshot `current`.** Text is being REPLACED; this is the original worth keeping.
+- **`isRedo` is threaded to EXACTLY one call site** — `CaptureViewModel.save()`'s `replace != null`
+  branch. Verified: `replaceId` is set only from `EXTRA_REPLACE_ID`, put only by `CaptureLauncher.redo`.
+  `confirmNumber()` (the number-append), `HomeViewModel.editText` and `PillarDetailViewModel.editText`
+  all take the `isRedo = false` default.
+- **`BackupCodec` carries the column** + a round-trip test and a legacy-backup test (no key → null →
+  "never edited"). The v0.31.0 `anchorGoalArea` lesson: an un-serialised column is silently dropped by a
+  Drive restore — here that would have meant **the restore itself destroys exactly what the column
+  exists to protect**.
+- **UI:** the sheet shows `originalTranscript ?: rawTranscript` under "WHAT YOU SAID" + a quiet
+  "Edited since — this is what you originally said." hint, gated on a **real difference** (not merely on
+  the column being set), so a no-op round-trip never claims an edit that never happened.
+- **REVIEW — two adversarial rounds (logic / data-durability / Room-SQL / compile / UI lenses; every
+  finding refute-verified).** Round 1 (1 confirmed **MED**, self-inflicted): `addImpact` builds
+  `combined = rawTranscript + " " + number` — a **strict append**, so nothing is ever lost — yet it still
+  snapshotted the pre-append text. Since readers render the snapshot, "WHAT YOU SAID" would have shown a
+  **truncated** entry, hiding the number the user had *just typed*, under a misleading "this is what you
+  originally said". That is the same trap the redo reset exists to avoid, applied inconsistently — **the
+  spec's own instruction ("addImpact… APPENDS — not a loss, but it still changes the text") was what led
+  there; following it literally was wrong.** Fixed by rule 3 above, which covers both append call sites
+  in one clause and leaves real edits untouched (the editor is seeded from the *bullet*, which doesn't
+  begin with the transcript). Round 2 on the fix diff = fix confirmed correct + 1 **LOW**: the new
+  boundary test was **named the opposite of what it asserts** — JUnit reports the name, so a reader
+  trusting it as spec could "fix" `next()` to skip the snapshot for genuine rewrites, the exact
+  regression the class prevents. Renamed. Round 2 also confirmed clean: no other `rawTranscript` mutation
+  path (every `OfflineRecovery` write is a **first** write onto a `PENDING_*` placeholder row, CAS-guarded
+  on status), no capture-once violation, correct migration SQL/version/registration, and all 12
+  `EntryEntity(...)` sites use **named** args (the new column was inserted directly before `anchorProject`
+  — both `String?`, so a positional site would have silently mis-assigned instead of failing to compile).
+
+### Known gap (deliberate, not a bug)
+Rows edited **before** v0.32.0 have already lost their originals — unrecoverable, and the NULL back-fill
+correctly declines to invent one. Protection begins at this version.
 
 ---
 
