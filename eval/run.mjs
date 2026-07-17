@@ -782,12 +782,13 @@ function scoreCoachCase(c, record) {
  * written as in-progress — never the reverse: "delivered" has too many honest synonyms to enumerate,
  * so asserting an active thread ISN'T finished would fail good output.
  *
- * Deliberately narrow. Bare adverbs ("still", "currently", "remains") were tried and dropped: they sit
- * happily inside a correct completed story ("delivered ahead of schedule while still holding quality"),
- * so gating on them builds a flaky check — and this suite is a 100% AND-gate against a SEED-FIXED
- * model, where a false fail doesn't flake, it wedges permanently.
+ * Deliberately narrow, and narrowed twice. Bare adverbs ("still", "currently", "remains") sit happily
+ * inside a correct completed story ("delivered ahead of schedule while still holding quality"); so do
+ * "on track" ("delivered all 14 markets on track and to plan") and "is/are being" ("the platform is
+ * being used by all 14 markets"). Gating on any of them builds a flaky check — and this suite is a 100%
+ * AND-gate against a SEED-FIXED model, so a false fail doesn't flake, it wedges permanently.
  */
-const IN_PROGRESS_WORDS = /\b(in progress|ongoing|underway|on track|is continuing|are continuing|is being|are being|yet to be|not yet)\b/i;
+const IN_PROGRESS_WORDS = /\b(in progress|ongoing|underway|is continuing|are continuing|yet to be|not yet)\b/i;
 
 function jaccard(a, b) {
   const A = contentWords(a);
@@ -853,7 +854,7 @@ function scoreSummaryCase(c, record) {
   // Pinned included exactly once (matched by each pinned item's distinctive key). The real
   // invariant is "appears once ANYWHERE in the summary body" — not "in achievements specifically":
   // a development-flavoured pinned item (e.g. a "recertification audit") is legitimately filed under
-  // development[] by rule 5, which the old achievements-only count wrongly scored as missing. Count
+  // development[] by rule 6, which the old achievements-only count wrongly scored as missing. Count
   // across achievements + development[] + behaviour evidence so the check measures the stated
   // invariant, and a duplicate anywhere (hits > 1) still fails.
   if (Array.isArray(expect.pinnedKeys)) {
@@ -953,8 +954,10 @@ function scoreSummaryCase(c, record) {
         problems.push(`"${want.name}" claimed by ${claimed.length} achievements (want exactly 1)`);
         continue;
       }
-      // An in-progress thread must not be written as finished, and a shipped one must not read as
-      // still running — the whole reason a Done deliverable is worth telling the model about.
+      // A shipped thread must not read as still running — the whole reason a Done deliverable is worth
+      // telling the model about. Only this direction is checked: asserting that an ACTIVE one is NOT
+      // written as finished would need to enumerate every honest synonym of "delivered", which is the
+      // open-ended side. So `done: false` in a golden asserts only the grouping, and says so.
       if (want.done === true && IN_PROGRESS_WORDS.test(claimed[0].bullet || '')) {
         problems.push(`"${want.name}" is DONE but reads as in progress: "${claimed[0].bullet}"`);
       }

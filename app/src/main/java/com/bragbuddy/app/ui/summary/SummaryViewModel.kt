@@ -261,6 +261,27 @@ class SummaryViewModel @Inject constructor(
             else -> Phase.NOT_GENERATED
         }
         val isStale = cached != null && cached.inputSignature != c.signature
+        // v0.34.0 · snap each card's echoed deliverable onto one the rollup really named, for DISPLAY +
+        // EXPORT. Applied here, at the single point the cached document becomes screen state, so the
+        // rendered sub-headers and the copied `[Project ▸ Deliverable]` tags can't disagree. The stored
+        // blob is left untouched — this is a lens over the model's answer, not an edit to it.
+        val shown = cached?.let { cd ->
+            cd.copy(
+                result = cd.result.copy(
+                    summary = cd.result.summary.copy(
+                        goalAreas = cd.result.summary.goalAreas.map { ga ->
+                            ga.copy(
+                                achievements = resolveAchievementDeliverables(
+                                    ga.achievements,
+                                    c.agg.goalAreas.firstOrNull { it.name.equals(ga.name, ignoreCase = true) }
+                                        ?.deliverables.orEmpty(),
+                                ),
+                            )
+                        },
+                    ),
+                ),
+            )
+        }
         return ScreenState(
             phase = phase,
             period = period,
@@ -269,7 +290,7 @@ class SummaryViewModel @Inject constructor(
             entryCount = c.agg.entryCount,
             framework = inp.framework,
             pinnedBullets = c.pinnedBullets,
-            cached = cached,
+            cached = shown,
             isStale = isStale,
             hasContent = hasContent,
             gen = gen,
@@ -576,7 +597,9 @@ class SummaryViewModel @Inject constructor(
                 val fresh = compute(inputs.first(), s.period, s.length)
                 editMutex.withLock {
                     val current = summaryStore.cache.first()[s.gen.key] ?: return@withLock
-                    val moved = movedLocally(current.result, bullet, toCategory, toProject)
+                    val moved = movedLocally(
+                        current.result, bullet, toCategory, toProject, toDeliverable, deliverableTouched,
+                    )
                     summaryStore.put(
                         s.gen.key,
                         current.copy(
@@ -613,21 +636,55 @@ class SummaryViewModel @Inject constructor(
         }
     }
 
-    /** Apply the retag to the cached document immediately (the write-back path needs no override —
-     *  a Regenerate re-derives the right placement from the corrected record). */
+    /**
+     * Apply the retag to the cached document immediately (the write-back path needs no override —
+     * a Regenerate re-derives the right placement from the corrected record).
+     *
+     * The DELIVERABLE axis has to be mirrored here by hand (v0.34.0). [applyOverrides] knows only about
+     * area + project: on a deliverable-only retag it hits its own idempotency guard (`here.project ==
+     * mv.project`) and returns the card untouched, and on a category/project retag its `inject` rebuilds
+     * the card from the bullet text alone and drops the deliverable. Either way the write-back then
+     * re-stamps `inputSignature`, so the page reads **Up to date** while the sub-header and the exported
+     * `[Project ▸ Deliverable]` tag still show the OLD deliverable — with no stale banner to prompt a
+     * Regenerate. That is exactly the v0.31.0 F1 bug (the record corrected, the page silently not),
+     * repeated on the axis this phase adds; the card carried no deliverable before, so it couldn't bite.
+     */
     private fun movedLocally(
         result: com.bragbuddy.app.data.ai.SummaryResult,
         bullet: String,
         toCategory: String,
         toProject: String?,
-    ): com.bragbuddy.app.data.ai.SummaryResult =
-        applyOverrides(
+        toDeliverable: String?,
+        deliverableTouched: Boolean,
+    ): com.bragbuddy.app.data.ai.SummaryResult {
+        val target = summaryKey(bullet)
+        // Untouched ("Leave as is") → the card keeps its own, mirroring what the record just did per
+        // entry. Safe for the same reason the write-back loop above is: the sheet FORCES
+        // deliverableTouched whenever the project changes, so untouched means the parents didn't move.
+        val keep = result.summary.goalAreas
+            .flatMap { it.achievements }
+            .firstOrNull { summaryKey(it.bullet) == target }
+            ?.deliverable
+        val next = if (deliverableTouched) toDeliverable?.takeIf { it.isNotBlank() } else keep
+        val moved = applyOverrides(
             result,
             SummaryOverrides(
-                moved = listOf(PlacementOverride(summaryKey(bullet), toCategory, toProject?.takeIf { it.isNotBlank() })),
+                moved = listOf(PlacementOverride(target, toCategory, toProject?.takeIf { it.isNotBlank() })),
             ),
             currentDevAreas(),
         )
+        return moved.copy(
+            summary = moved.summary.copy(
+                goalAreas = moved.summary.goalAreas.map { area ->
+                    area.copy(
+                        achievements = area.achievements.map {
+                            if (summaryKey(it.bullet) == target) it.copy(deliverable = next) else it
+                        },
+                    )
+                },
+            ),
+        )
+    }
 
     /**
      * Shared local-edit helper. Serializes edits (so rapid taps can't clobber each other) and always

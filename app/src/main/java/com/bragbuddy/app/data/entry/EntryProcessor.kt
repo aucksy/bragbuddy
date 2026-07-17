@@ -933,13 +933,25 @@ class EntryProcessor @Inject constructor(
      * the whole point of the v0.31.0 column, since a manual category chosen alongside "no specific
      * project" has no folder to derive a category from.
      *
-     * [anchorDeliverable] is now the same `anchor ?: guess` shape as the two axes above (v0.34.0): the
-     * user's pin wins outright, and only an unpinned row falls back to the model's [CategorizedEntry.
-     * deliverable] guess. The guess is **resolved, never trusted** — [DeliverableGuess.resolve] keeps it
-     * only if it names a real deliverable of the parents this row is actually being FILED under, which is
-     * why it is resolved HERE and not in [CategorizedNormalizer]: `anchor ?: c.project` is decided on this
-     * very line, and the normalizer (which runs earlier, knowing only the model's own project guess) would
-     * have validated it against the wrong parent. Anything unresolvable → null, the normal, safe answer.
+     * [anchorDeliverable] is the user's pin and wins outright (v0.34.0). Only a capture the user placed
+     * NOWHERE falls back to the model's [CategorizedEntry.deliverable] guess — the owner's locked rule is
+     * "the AI only picks a deliverable when the user captures from the generic +", filing being tap-in
+     * first and AI second because a third level makes the guess harder.
+     *
+     * ⭐ Why the guard is "no anchor AT ALL" and not just `anchorDeliverable == null`: **a null anchor is
+     * not an answer, it is the absence of one**, and this axis has no `Outside-project`-style sentinel to
+     * say "none, and I mean it" (see [EntryEntity.anchorDeliverable]). A user who opens Recategorize and
+     * taps the "None" chip stores `anchorDeliverable = null` — identical to never having been asked. With
+     * a bare `?:` the model re-guessed the tag they had just removed on their very next edit, durably and
+     * un-stickably. Their project/category pins are what tell us they DID decide, so any manual placement
+     * means hands off this axis. (v0.33.1 wrote the comment in `recategorize` promising exactly this; it
+     * was a promise about code that didn't exist yet, and a bare `?:` broke it.)
+     *
+     * The guess itself is **resolved, never trusted** — [DeliverableGuess.resolve] keeps it only if it
+     * names a real deliverable of the parents this row is actually being FILED under, which is why it
+     * resolves HERE and not in [CategorizedNormalizer]: `anchor ?: c.project` is decided on this very
+     * line, and the normalizer (running earlier, knowing only the model's own project guess) would have
+     * validated it against the wrong parent. Anything unresolvable → null, the normal, safe answer.
      */
     private fun EntryEntity.applyCategorized(
         c: CategorizedEntry,
@@ -947,14 +959,17 @@ class EntryProcessor @Inject constructor(
         anchorGoalArea: String?,
         anchorDeliverable: String?,
         deliverableUniverse: List<DeliverableRef>,
-    ): EntryEntity = copy(
+    ): EntryEntity {
+        val placedByUser = anchor != null || anchorGoalArea != null || anchorDeliverable != null
+        return copy(
         status = statusFor(c, anchored = anchor != null || anchorGoalArea != null),
         occurredAt = c.dateMentioned.toEpochMillisOrNull() ?: occurredAt,
         bullet = c.bullet.ifBlank { null },
         project = anchor ?: c.project,
         goalCategory = anchorGoalArea ?: c.goalCategory,
-        deliverable = anchorDeliverable
-            ?: DeliverableGuess.resolve(c.deliverable, anchor ?: c.project, anchorGoalArea ?: c.goalCategory, deliverableUniverse),
+        deliverable = anchorDeliverable ?: if (placedByUser) null else {
+            DeliverableGuess.resolve(c.deliverable, anchor ?: c.project, anchorGoalArea ?: c.goalCategory, deliverableUniverse)
+        },
         demonstrates = c.demonstrates,
         isExtra = c.isExtra,
         impact = c.impact,
@@ -963,7 +978,8 @@ class EntryProcessor @Inject constructor(
         metric = c.metric?.takeIf { it.isNotBlank() },
         confidence = c.confidence,
         suggestedProjects = c.suggestedProjects,
-    )
+        )
+    }
 
     private companion object {
         const val INBOX_LABEL = "Inbox"

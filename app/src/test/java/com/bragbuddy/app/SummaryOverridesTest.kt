@@ -252,7 +252,7 @@ class SummaryOverridesTest {
     }
 
     /** An area emptied of achievements but still holding routine tallies must SURVIVE — those lines are
-     *  never dropped for length (prompt rule 2) and must not vanish because a win moved away. */
+     *  never dropped for length (prompt rule 3) and must not vanish because a win moved away. */
     @Test
     fun `an area keeping routine tallies survives losing its last achievement`() {
         val r = SummaryResult(

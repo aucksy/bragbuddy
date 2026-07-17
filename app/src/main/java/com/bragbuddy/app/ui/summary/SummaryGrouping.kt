@@ -3,6 +3,7 @@ package com.bragbuddy.app.ui.summary
 import com.bragbuddy.app.data.ai.SummaryAchievement
 import com.bragbuddy.app.data.local.NO_PROJECT_LABEL
 import com.bragbuddy.app.data.local.isNamedProject
+import com.bragbuddy.app.data.rollup.AggDeliverable
 
 /**
  * Groups a goal area's summary achievements into **project folders** (Summary phase · item 5),
@@ -63,6 +64,40 @@ fun groupFolderByDeliverable(items: List<IndexedAchievement>): List<SummaryDeliv
 private const val LOOSE_KEY = ""
 
 private val WS = Regex("\\s+")
+
+private fun norm(s: String?): String = (s ?: "").trim().lowercase().replace(WS, " ")
+
+/**
+ * Snap each achievement's echoed `deliverable` onto a deliverable the rollup actually named, dropping
+ * anything else (v0.34.0).
+ *
+ * ⭐ Every other deliverable name in the app is resolved against a real identity —
+ * [com.bragbuddy.app.data.entry.DeliverableGuess] does it for the categorizer's guess — and PART B's
+ * echo was the one that wasn't. The prompt says "never invent a deliverable the rollup didn't name",
+ * but a model paraphrasing "Market rollout" into "Market rollout phase" is ordinary LLM behaviour, not
+ * a fault, and the consequence isn't cosmetic: an unresolved name mints a sub-header for a deliverable
+ * that doesn't exist and prints `[Payments ▸ Market rollout phase]` into the document the user hands
+ * their manager. The authoritative set is already in hand — it is what [aggDeliverables] was built
+ * from — so trusting a name here would be a choice, not a necessity.
+ *
+ * Matched on the FULL identity within this area: name + the achievement's own project. A name alone is
+ * not an identity, and two projects can each own a "Phase 1".
+ */
+fun resolveAchievementDeliverables(
+    achievements: List<SummaryAchievement>,
+    aggDeliverables: List<AggDeliverable>,
+): List<SummaryAchievement> {
+    if (achievements.none { !it.deliverable.isNullOrBlank() }) return achievements
+    return achievements.map { a ->
+        val guess = a.deliverable?.trim()?.takeIf { it.isNotBlank() } ?: return@map a
+        val hit = aggDeliverables.firstOrNull {
+            norm(it.name) == norm(guess) && norm(it.project) == norm(a.project)
+        }
+        // Adopt the STORED casing on a hit; drop the tag entirely on a miss — a wrong tag in the
+        // exported document is worse than no tag, and the win itself is never touched either way.
+        if (hit != null) a.copy(deliverable = hit.name) else a.copy(deliverable = null)
+    }
+}
 
 /**
  * Group [achievements] into project folders. Named-project achievements cluster by project

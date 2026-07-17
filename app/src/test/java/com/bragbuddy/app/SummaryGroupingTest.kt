@@ -1,10 +1,12 @@
 package com.bragbuddy.app
 
 import com.bragbuddy.app.data.ai.SummaryAchievement
+import com.bragbuddy.app.data.rollup.AggDeliverable
 import com.bragbuddy.app.ui.summary.IndexedAchievement
 import com.bragbuddy.app.ui.summary.SUMMARY_OUTSIDE_LABEL
 import com.bragbuddy.app.ui.summary.groupAchievementsByProject
 import com.bragbuddy.app.ui.summary.groupFolderByDeliverable
+import com.bragbuddy.app.ui.summary.resolveAchievementDeliverables
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -113,5 +115,48 @@ class SummaryGroupingTest {
     fun `a blank deliverable counts as loose, never as its own heading`() {
         val groups = groupFolderByDeliverable(idx(del("a", "  "), del("b", "Market rollout")))!!
         assertThat(groups.map { it.name }).containsExactly("Market rollout", null).inOrder()
+    }
+
+    // ---- v0.34.0 · resolving PART B's echoed deliverable against the rollup ----
+
+    private fun aggDel(name: String, project: String) =
+        AggDeliverable(name = name, project = project, done = false, entryCount = 1, firstMillis = 0, lastMillis = 0)
+
+    private val agg = listOf(aggDel("Market rollout", "Raven Migration"), aggDel("Phase 1", "Payments"))
+
+    @Test
+    fun `an echoed deliverable the rollup named survives, in the STORED casing`() {
+        val out = resolveAchievementDeliverables(
+            listOf(SummaryAchievement(bullet = "a", project = "Raven Migration", deliverable = "market  rollout")),
+            agg,
+        )
+        assertThat(out.single().deliverable).isEqualTo("Market rollout")
+    }
+
+    @Test
+    fun `a paraphrased or invented deliverable is dropped, not rendered`() {
+        // Ordinary LLM behaviour, not a fault — but an unresolved name would mint a sub-header for a
+        // deliverable that doesn't exist and print it into the doc the user hands their manager.
+        val out = resolveAchievementDeliverables(
+            listOf(SummaryAchievement(bullet = "a", project = "Raven Migration", deliverable = "Market rollout phase")),
+            agg,
+        )
+        assertThat(out.single().deliverable).isNull()
+    }
+
+    @Test
+    fun `a real deliverable of ANOTHER project is dropped — a name is not an identity`() {
+        val out = resolveAchievementDeliverables(
+            listOf(SummaryAchievement(bullet = "a", project = "Raven Migration", deliverable = "Phase 1")),
+            agg,
+        )
+        assertThat(out.single().deliverable).isNull()
+    }
+
+    @Test
+    fun `achievements with no deliverable pass through untouched`() {
+        val input = listOf(SummaryAchievement(bullet = "a", project = "Raven Migration"))
+        assertThat(resolveAchievementDeliverables(input, agg)).isEqualTo(input)
+        assertThat(resolveAchievementDeliverables(input, emptyList())).isEqualTo(input)
     }
 }

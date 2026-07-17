@@ -1,6 +1,6 @@
 {
   "id": "development-heavy",
-  "note": "Development-heavy record. Since AI-2 the serializer renders DEVELOPMENT-kind pillars under a 'DEVELOPMENT AREA:' header (this rollup mirrors RollupAggregator.serialize post-AI-2) and summary rule 5 routes those items into summary.development[] — the developmentPlacement check is GATED from AI-2 on (it was advisory in the AI-0/AI-1 baselines).",
+  "note": "Development-heavy record. Since AI-2 the serializer renders DEVELOPMENT-kind pillars under a 'DEVELOPMENT AREA:' header (this rollup mirrors RollupAggregator.serialize post-AI-2) and summary rule 6 routes those items into summary.development[] — the developmentPlacement check is GATED from AI-2 on (it was advisory in the AI-0/AI-1 baselines).",
   "period": "full-year review",
   "lengthCap": "about one page — at most 5 achievements per goal area",
   "role": "Software Engineer",

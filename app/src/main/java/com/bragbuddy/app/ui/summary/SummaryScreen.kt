@@ -62,6 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -446,7 +447,7 @@ private fun ReadyBlock(
                 )
                 Spacer(Modifier.height(Spacing.s4))
             }
-            // Gated on REAL dropped items, not on the model's notes: rule 7 asks for a setAside note on
+            // Gated on REAL dropped items, not on the model's notes: rule 8 asks for a setAside note on
             // every run, so a Detailed summary that dropped nothing would otherwise render a panel
             // announcing "0 items set aside".
             if (state.setAsideItems.isNotEmpty()) {
@@ -559,26 +560,14 @@ private fun GoalAreaSection(
                     Spacer(Modifier.height(Spacing.s2))
                 }
             } else {
-                val many = area.achievements.size > 1
-                area.achievements.forEachIndexed { i, ach ->
-                    AchievementRow(
-                        text = achievementDisplay(ach.bullet, ach.metric, ach.project),
-                        hue = hue,
-                        palette = palette,
-                        pinned = isPinned(state.pinnedBullets, ach.bullet),
-                        count = ach.count,
-                        showControls = many,
-                        canUp = i > 0,
-                        canDown = i < area.achievements.lastIndex,
-                        onUp = { onSwap(area.name, i, i - 1) },
-                        onDown = { onSwap(area.name, i, i + 1) },
-                        onLongPress = { onLongPress(ach.bullet) },
-                        onEdit = { onEdit(ach.bullet) },
-                        onDelete = { onDelete(ach.bullet) },
-                        onRetag = { onRetag(retagTargetFor(ach, area.name)) },
-                    )
-                    Spacer(Modifier.height(Spacing.s2))
-                }
+                // No project structure worth drawing — but the DELIVERABLE level still applies here
+                // (v0.34.0), and this is the branch a one-project-per-area user always lands in.
+                // The project rides inline on each row, as it did before, since no folder header shows it.
+                DeliverableGroups(
+                    area.achievements.mapIndexed { i, a -> IndexedAchievement(i, a) },
+                    area.name, hue, state, palette, onSwap, onLongPress, onEdit, onDelete, onRetag,
+                    showProjectInline = true,
+                )
             }
             area.rolledUp.forEach { r ->
                 val raw = r.bullet.ifBlank { r.routineType }
@@ -640,37 +629,21 @@ private fun ProjectFolder(
         ) {
             Column(Modifier.padding(start = Spacing.s3)) {
                 Spacer(Modifier.height(Spacing.s2))
-                // v0.34.0 · the third level: sub-group this folder's wins by deliverable. Null = no
-                // structure worth drawing (all one deliverable / all loose) → render exactly as before.
-                val groups = groupFolderByDeliverable(folder.items)
-                if (groups != null) {
-                    groups.forEach { g ->
-                        g.name?.let { DeliverableSubHeader(it, hue, palette) }
-                        AchievementRows(
-                            g.items, areaName, hue, state, palette,
-                            onSwap, onLongPress, onEdit, onDelete, onRetag,
-                        )
-                    }
-                } else {
-                    AchievementRows(
-                        folder.items, areaName, hue, state, palette,
-                        onSwap, onLongPress, onEdit, onDelete, onRetag,
-                    )
-                }
+                DeliverableGroups(folder.items, areaName, hue, state, palette, onSwap, onLongPress, onEdit, onDelete, onRetag)
             }
         }
     }
 }
 
 /**
- * The achievement rows of ONE list — a whole project folder, or one deliverable group inside it.
- *
- * Reorder is scoped to whatever list it is handed: the arrows swap real slots in the area's flat
- * `achievements`, but only ever with a neighbour from this same list, so a win can't be shuffled out of
- * its deliverable by an arrow tap. Same mechanism the folder level has always used, one level deeper.
+ * v0.34.0 · the third level — [items] sub-grouped by deliverable, or rendered flat when there is no
+ * structure worth drawing (all one deliverable / all loose). Used at BOTH render sites, because the
+ * export tags every line `[Project ▸ Deliverable]` unconditionally: when only the folder branch grouped,
+ * a user with one project per goal area (a very common shape — the area then renders flat) saw no
+ * deliverable headings at all, yet copying the doc produced structure the screen never showed.
  */
 @Composable
-private fun AchievementRows(
+private fun DeliverableGroups(
     items: List<IndexedAchievement>,
     areaName: String,
     hue: PillarColor,
@@ -681,14 +654,78 @@ private fun AchievementRows(
     onEdit: (String) -> Unit,
     onDelete: (String) -> Unit,
     onRetag: (RetagTarget) -> Unit,
+    /** True only in the flat (no project folders) branch, where no header names the project. */
+    showProjectInline: Boolean = false,
 ) {
-    val many = items.size > 1
-    items.forEachIndexed { localIndex, ia ->
+    val rows = @Composable { list: List<IndexedAchievement> ->
+        AchievementRows(
+            list, items, areaName, hue, state, palette,
+            onSwap, onLongPress, onEdit, onDelete, onRetag, showProjectInline,
+        )
+    }
+    val groups = groupFolderByDeliverable(items)
+    if (groups == null) {
+        rows(items)
+        return
+    }
+    groups.forEach { g ->
+        // Keyed on the group, mirroring HomeScreen's identical loop: a slot handed a DIFFERENT group
+        // after an async regenerate/reorder must not keep a row's popup state pointing at the old one.
+        key(g.name) {
+            // The named groups get a heading; the trailing loose group is INDENTED instead (Home's
+            // `indent = true` does the same). Without either it rendered at the same offset and gap as
+            // the rows above it, so loose work read as more of the last deliverable's thread — the exact
+            // mis-attribution this level exists to prevent, and the screen then disagreed with the
+            // export, which tags every line individually and got it right.
+            if (g.name != null) {
+                DeliverableSubHeader(g.name, hue, palette)
+                rows(g.items)
+            } else {
+                Spacer(Modifier.height(Spacing.s2))
+                Column(Modifier.padding(start = Spacing.s3)) { rows(g.items) }
+            }
+        }
+    }
+}
+
+/**
+ * The achievement rows of ONE list — [items] — reordered within [scope].
+ *
+ * ⭐ The two are separate on purpose. Rendering is grouped by deliverable, but reorder stays scoped to
+ * the whole PROJECT FOLDER, exactly as it was before v0.34.0. Scoping the arrows to the deliverable
+ * group instead looked tidier and quietly destroyed the feature: PART B rule 2 gives each deliverable
+ * exactly ONE achievement, so every group has one item, `size > 1` is false in all of them, and the
+ * reorder controls vanish from the whole folder — on precisely the records the third level is meant to
+ * improve. Folder-scoped swaps stay coherent because a swap is positional: exchanging two slots leaves
+ * every other slot alone, and the groups simply re-cluster in the new first-appearance order, which is
+ * what "promote this story" means here.
+ */
+@Composable
+private fun AchievementRows(
+    items: List<IndexedAchievement>,
+    scope: List<IndexedAchievement>,
+    areaName: String,
+    hue: PillarColor,
+    state: SummaryViewModel.ScreenState,
+    palette: BragPalette,
+    onSwap: (String, Int, Int) -> Unit,
+    onLongPress: (String) -> Unit,
+    onEdit: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    onRetag: (RetagTarget) -> Unit,
+    /** The flat branch has no folder header naming the project, so it rides on the row (as before). */
+    showProjectInline: Boolean = false,
+) {
+    val many = scope.size > 1
+    items.forEach { ia ->
         val ach = ia.achievement
-        val prevFlat = items.getOrNull(localIndex - 1)?.flatIndex
-        val nextFlat = items.getOrNull(localIndex + 1)?.flatIndex
+        // `items` is always a subset of `scope`, so `at` is found — but index arithmetic on a -1 would
+        // silently offer the FIRST row as this row's "next", so it is guarded rather than assumed.
+        val at = scope.indexOfFirst { it.flatIndex == ia.flatIndex }
+        val prevFlat = if (at > 0) scope[at - 1].flatIndex else null
+        val nextFlat = if (at >= 0 && at < scope.lastIndex) scope[at + 1].flatIndex else null
         AchievementRow(
-            text = achievementDisplay(ach.bullet, ach.metric, null),
+            text = achievementDisplay(ach.bullet, ach.metric, if (showProjectInline) ach.project else null),
             hue = hue,
             palette = palette,
             pinned = isPinned(state.pinnedBullets, ach.bullet),

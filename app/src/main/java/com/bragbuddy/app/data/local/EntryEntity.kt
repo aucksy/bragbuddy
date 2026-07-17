@@ -145,9 +145,15 @@ data class EntryEntity(
      *
      * Why this is the PRIMARY path, not a fallback (owner's call, 2026-07-17): mis-classification is the
      * #1 complaint, and a third level makes the AI's guess strictly *harder* — so the deterministic
-     * tap-in must be the main way an entry reaches a deliverable. In v0.33.0 it is the ONLY way: nothing
-     * writes [deliverable] except this anchor (and a manual move). The AI is only taught to guess one in
-     * v0.34.0, prompt-first and eval-gated.
+     * tap-in must be the main way an entry reaches a deliverable. Since v0.34.0 the AI can also fill
+     * [deliverable], but only for a capture the user placed NOWHERE: this pin, and even a bare
+     * project/category pin, means hands off (`EntryProcessor.applyCategorized`).
+     *
+     * ⚠️ **A null here is not an answer — it is the absence of one.** There is no
+     * `Outside-project`-style sentinel on this axis (see [deliverable]), so "the user tapped None in
+     * Recategorize" and "nobody ever asked" are the same stored value. That is precisely why the guess
+     * is gated on the OTHER anchors rather than on this one being null: without that, the model
+     * re-guessed a tag the user had just deliberately removed, on their very next edit.
      *
      * Meaningful only alongside a real project — a deliverable lives inside one. Cleared when its
      * deliverable is deleted ([EntryDao.clearDeliverable]), and followed on rename
@@ -181,11 +187,14 @@ data class EntryEntity(
      * The **deliverable** within [project] this entry belongs to, or null for "not part of one" — which
      * is the normal, unremarkable case, not an absence to be flagged. There is deliberately **no
      * `Outside-deliverable` sentinel**: [OUTSIDE_PROJECT] exists because the categorizer must always
-     * return *some* project, so "none" needed a value it could name. Nothing guesses a deliverable in
-     * v0.33.0, so null means exactly what it says and untagged entries simply list under their project.
+     * return *some* project, so "none" needed a value it could name. This axis is optional in the
+     * prompt, so null means exactly what it says and untagged entries simply list under their project.
      *
-     * Sits in the AI-derived block because v0.34.0 will let the categorizer fill it. **In v0.33.0 it is
-     * written only from [anchorDeliverable]** (a tap-in capture or a manual move). (Room v8 column.)
+     * Written from [anchorDeliverable] (a tap-in capture or a manual move) and — since **v0.34.0** —
+     * from the categorizer, but ONLY for a capture the user placed nowhere, and only after the guess
+     * survives `DeliverableGuess.resolve` against the parents the row is actually filed under. So a
+     * non-null value here still does NOT imply a user decision: check [anchorDeliverable] for that.
+     * (Room v8 column.)
      */
     val deliverable: String? = null,
     /** Behaviours/competencies this genuinely evidences (JSON list of names). */

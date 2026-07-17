@@ -107,7 +107,7 @@ Baseline runs never fail the job (they are the measurement); gate runs fail on a
 Reported but not gated: entry-count accuracy, demonstrates (required tags present), metric field
 preservation, dateMentioned accuracy, routine false-positive rate. The development-placement check
 is **gated since AI-2** (the serializer heads development pillars "DEVELOPMENT AREA:" and summary
-rule 5 routes them into `development[]`); it was advisory in the AI-0/AI-1 baselines.
+rule 6 routes them into `development[]`); it was advisory in the AI-0/AI-1 baselines.
 "Parked in Inbox" is judged **after the scorer's snapping**: a phantom project name snaps to Inbox
 first (the AI-1 validator's planned rule — the shipping app does not snap yet), then the app's own
 `statusFor` logic applies: `project/goalCategory == "Inbox"` or `confidence < 0.6`, never for

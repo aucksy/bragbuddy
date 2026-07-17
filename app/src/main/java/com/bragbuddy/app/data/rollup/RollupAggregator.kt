@@ -63,6 +63,15 @@ object RollupAggregator {
     const val METRIC_CAP = 12
 
     /**
+     * Deliverables listed per goal area (v0.34.0). Like every other cap here, this exists because the
+     * rollup's whole contract is to stay BOUNDED however big the record grows — deliverables are
+     * user-created and scale with the record, so an uncapped index would put ~80 lines of
+     * `- "name" … — N entries` into every metered summary call and crowd out the highlights the model is
+     * meant to write from. Ranked by size first, so what's dropped is the smallest threads.
+     */
+    const val DELIVERABLE_CAP = 12
+
+    /**
      * Aggregate the rollup for a period window `[startMillis, endMillisExclusive)`. Goal areas are
      * ordered by the framework first (so the summary reads in the user's structure), then any extra
      * goal-area names present in the data (never drop a filed contribution). Behaviours follow the
@@ -140,6 +149,7 @@ object RollupAggregator {
                     )
                 }
                 .sortedWith(compareByDescending<AggDeliverable> { it.entryCount }.thenBy { it.name })
+                .take(DELIVERABLE_CAP)
             val routine = group.filter { it.routine }
                 .groupBy { (it.routineType ?: "Other").trim().ifBlank { "Other" } }
                 .map { (type, rows) ->
