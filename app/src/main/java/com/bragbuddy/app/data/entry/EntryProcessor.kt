@@ -961,23 +961,25 @@ class EntryProcessor @Inject constructor(
         deliverableUniverse: List<DeliverableRef>,
     ): EntryEntity {
         val placedByUser = anchor != null || anchorGoalArea != null || anchorDeliverable != null
+        val filedProject = anchor ?: c.project
+        val filedArea = anchorGoalArea ?: c.goalCategory
         return copy(
-        status = statusFor(c, anchored = anchor != null || anchorGoalArea != null),
-        occurredAt = c.dateMentioned.toEpochMillisOrNull() ?: occurredAt,
-        bullet = c.bullet.ifBlank { null },
-        project = anchor ?: c.project,
-        goalCategory = anchorGoalArea ?: c.goalCategory,
-        deliverable = anchorDeliverable ?: if (placedByUser) null else {
-            DeliverableGuess.resolve(c.deliverable, anchor ?: c.project, anchorGoalArea ?: c.goalCategory, deliverableUniverse)
-        },
-        demonstrates = c.demonstrates,
-        isExtra = c.isExtra,
-        impact = c.impact,
-        routine = c.routine,
-        routineType = c.routineType?.takeIf { it.isNotBlank() },
-        metric = c.metric?.takeIf { it.isNotBlank() },
-        confidence = c.confidence,
-        suggestedProjects = c.suggestedProjects,
+            status = statusFor(c, anchored = anchor != null || anchorGoalArea != null),
+            occurredAt = c.dateMentioned.toEpochMillisOrNull() ?: occurredAt,
+            bullet = c.bullet.ifBlank { null },
+            project = filedProject,
+            goalCategory = filedArea,
+            deliverable = anchorDeliverable
+                ?: if (placedByUser) null
+                else DeliverableGuess.resolve(c.deliverable, filedProject, filedArea, deliverableUniverse),
+            demonstrates = c.demonstrates,
+            isExtra = c.isExtra,
+            impact = c.impact,
+            routine = c.routine,
+            routineType = c.routineType?.takeIf { it.isNotBlank() },
+            metric = c.metric?.takeIf { it.isNotBlank() },
+            confidence = c.confidence,
+            suggestedProjects = c.suggestedProjects,
         )
     }
 
