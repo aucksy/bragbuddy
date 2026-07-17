@@ -159,12 +159,13 @@ current code — that is the context, not chat history.
 - **Sequence: v0.32.0 transcript access → v0.33.0 deliverables (structure, manual) → v0.34.0 AI filing +
   per-deliverable summary → … → M3 last.**
 
-> **▶ WHERE WE ARE (2026-07-17): `v0.33.0` is tagged but has a DATA BUG; `v0.33.1` is written and green
-> on `main` (`873df22`) but UNVERIFIED and UNTAGGED.**
-> **⛔ THE EXACT NEXT STEP IS `## ⛔ v0.33.1 — Deliverables hardening · UNFINISHED` below — read it
-> first. Do NOT start v0.34.0 until v0.33.1 is verified and tagged.**
+> **▶ WHERE WE ARE (2026-07-17): `v0.33.1` is SHIPPED, signed and green (`versionCode 40`) — it
+> supersedes the `v0.33.0` tag, which has a live data bug. The deliverables hardening is CLOSED.**
+> **▶ THE EXACT NEXT STEP IS `### ▶ v0.34.0 — AI files into deliverables + per-deliverable summary`
+> below.** Read `## Status: v0.33.1` first for what shipped, what is deliberately still open, and the
+> **"already refuted — do NOT re-fix"** list (feed that list to any reviewer, or it re-raises them).
 >
-> After that, the next phase is `v0.34.0 — AI files into deliverables + per-deliverable summary`
+> The next phase is `v0.34.0 — AI files into deliverables + per-deliverable summary`
 > (EVAL-GATED), specced below. Carry these forward into that phase:
 > - **Room is now v8**; `deliverables` table + `entries.deliverable` / `entries.anchorDeliverable` exist.
 > - **The AI has never been told deliverables exist.** v0.34.0 is the FIRST prompt change — mirror every
