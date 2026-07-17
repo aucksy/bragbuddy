@@ -316,9 +316,22 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   `ProjectRepository.update` cascaded on the *requested* name — a colliding rename left the row untouched
   on screen while its entries were durably remapped into an unrelated deliverable. Both now act on the
   **effect** (re-read the row). Detail in `## Status: v0.33.0`.
-  **Exact next step: `v0.34.0` — AI files into deliverables + per-deliverable summary (⚠️ EVAL-GATED — the
-  FIRST prompt change since v0.31.0; mirror every prompt-shape change in `eval/run.mjs`, budget ≥2 gate
-  rounds).** Full spec + the owner's locked decisions: `PROGRESS.md` "▶ ROADMAP RESHAPE". **v0.31.0 (fix batch):** a **⋮ retag on summary cards** that
+  **⛔ EXACT NEXT STEP = FINISH `v0.33.1` (Deliverables hardening) — see `PROGRESS.md` → `## ⛔ v0.33.1 …
+  UNFINISHED`.** State (2026-07-17): the **`v0.33.0` tag has a live data bug** (the Summary ⋮ retag
+  silently wipes a win's deliverable + anchor — don't recommend that APK); `main` @ `873df22` has every
+  confirmed fix, compiles green with tests, but is **UNTAGGED and UNVERIFIED** — the adversarial
+  verification was stopped after 6 rounds (`8/1 → 6/1 → 4/4 → 3/3 → 5/3 → 6/2` confirmed/refuted, never
+  clean; **3 of 6 rounds found bugs introduced by the previous round's fixes**). Round 7 was cancelled
+  mid-flight, so its findings are unknown — **re-run the verification before tagging**. The root cause of
+  most of it, now fixed at source: **an anchor is made of NAMES, and a name is not an identity** — a
+  tap-in didn't pin its category, so the app had to guess which same-named project was meant; and **an
+  anchor must be scoped by ANCHOR columns**, because a pin exists at capture while the filed columns
+  don't exist until the categorizer runs. Full findings, the open list, and the "already refuted — don't
+  re-fix" list are in that PROGRESS.md block.
+  **Only after v0.33.1 ships:** `v0.34.0` — AI files into deliverables + per-deliverable summary
+  (⚠️ EVAL-GATED — the FIRST prompt change since v0.31.0; mirror every prompt-shape change in
+  `eval/run.mjs`, budget ≥2 gate rounds). Full spec + the owner's locked decisions: `PROGRESS.md`
+  "▶ ROADMAP RESHAPE". **v0.31.0 (fix batch):** a **⋮ retag on summary cards** that
   corrects the RECORD via a client-side resolver (`AggHighlight.ids` + `SummaryResolver`, no prompt change);
   **derived Set-aside** (real dropped wins, Restore all); **EVAL-GATED** length-prompt fix (rule 1 was
   hardcoding "at most 5" so Detailed was inert); and the **"Outside project under Learning & Growth"**

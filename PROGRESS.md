@@ -159,9 +159,13 @@ current code — that is the context, not chat history.
 - **Sequence: v0.32.0 transcript access → v0.33.0 deliverables (structure, manual) → v0.34.0 AI filing +
   per-deliverable summary → … → M3 last.**
 
-> **▶ WHERE WE ARE: `v0.33.0` is SHIPPED (Room v8, versionCode 39) — full detail in `## Status: v0.33.0`.
-> The EXACT NEXT STEP is `v0.34.0 — AI files into deliverables + per-deliverable summary` (EVAL-GATED),
-> specced below.** Carry these forward into that phase:
+> **▶ WHERE WE ARE (2026-07-17): `v0.33.0` is tagged but has a DATA BUG; `v0.33.1` is written and green
+> on `main` (`873df22`) but UNVERIFIED and UNTAGGED.**
+> **⛔ THE EXACT NEXT STEP IS `## ⛔ v0.33.1 — Deliverables hardening · UNFINISHED` below — read it
+> first. Do NOT start v0.34.0 until v0.33.1 is verified and tagged.**
+>
+> After that, the next phase is `v0.34.0 — AI files into deliverables + per-deliverable summary`
+> (EVAL-GATED), specced below. Carry these forward into that phase:
 > - **Room is now v8**; `deliverables` table + `entries.deliverable` / `entries.anchorDeliverable` exist.
 > - **The AI has never been told deliverables exist.** v0.34.0 is the FIRST prompt change — mirror every
 >   prompt-shape change in `eval/run.mjs` (v0.31.0's F4 drifted that mirror and shipped the fix unmeasured).
@@ -246,6 +250,107 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
   produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
   ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
   went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
+
+---
+
+## ⛔ v0.33.1 — Deliverables hardening · **UNFINISHED, HANDED OFF 2026-07-17**
+
+> **READ THIS BEFORE TOUCHING THE DELIVERABLES CODE.** `main` is green (compile + unit tests) at
+> `873df22` and is **strictly better than the `v0.33.0` tag**, but **v0.33.1 was never tagged** and the
+> verification never came back clean. The owner stopped the loop; finish it in a fresh chat.
+
+### Where it stands
+- **`v0.33.0` (tag, `versionCode 39`) is SHIPPED but has a data bug** — see F1 below. Don't recommend it.
+- **`main` @ `873df22`** has every confirmed finding through review round 6 fixed; compile + unit tests
+  GREEN. **Not tagged, not built as an APK.**
+- **Round 7 of the verification was cancelled mid-flight.** Its findings are UNKNOWN. The previous six
+  rounds each found something real, so **assume round 7 would too** — re-run it before tagging.
+
+### How to re-run the verification (this is the tool that found everything)
+A 5-lens adversarial workflow, each finding independently refuted by two skeptics before it counts:
+`C:\Users\Aakash Pahuja\.claude\projects\D--Apps-BragBuddy-Codebase\<session>\workflows\scripts\verify-deliverables-fixbatch-*.js`
+It diffs `3c85a28..HEAD`. It needs **ultracode / an explicit Workflow opt-in**. If that's off, run the
+same five lenses as ordinary `Agent` subagents — the lens prompts are in the script. **Do not skip this
+and tag anyway**: every round of "surely it's clean now" was wrong.
+
+### Round-by-round score (confirmed / refuted)
+`8/1 → 6/1 → 4/4 → 3/3 → 5/3 → 6/2`. It never converged. **Three of the six rounds found bugs introduced
+by the previous round's fixes.** That is the headline risk for whoever picks this up.
+
+### ⭐ The one root cause behind most of it
+**An anchor is made of NAMES, and a name is not an identity.** A project is unique by `(name, goalArea)`;
+a deliverable by `(name, project, goalArea)`. A tap-in capture used to pin the project + deliverable but
+NOT the category, so `"Payments"/"Onboarding"` couldn't say *which* — and the app guessed (first match by
+sort order). Every downstream query then had to be too narrow (missing rows) or too broad (hitting another
+category's twin), and fixes kept oscillating between the two.
+**Fixed at the source in round 5:** a tap-in now pins `anchorGoalArea` too
+(`CaptureActivity.EXTRA_GOAL_AREA` → `CaptureViewModel.setAnchorProject` → `EntryRepository.capture`).
+**The rule, now also a unit test:** *an anchor must be scoped by ANCHOR columns, never by filed ones.*
+`anchorDeliverable` is written at CAPTURE; `deliverable`/`project`/`goalCategory` only once the
+categorizer files the row — so RAW / FAILED-after-an-outage / PENDING_* rows carry the pin with every
+filed column NULL. Every filed-scoped WHERE is blind to exactly those rows.
+
+### What was FIXED (all on `main`, all with the reasoning in the code comments)
+**Data-loss class (HIGH):**
+- **F1 · Summary ⋮ retag wiped the deliverable.** It hardcoded "no deliverable" as the selection, so
+  opening the sheet to fix a *category* silently un-filed the win from the deliverable it was tap-in
+  filed into — anchored, no undo, under a "Re-filed in your record" snackbar. **This is live in the
+  `v0.33.0` tag.** Fixed: the axis is opt-in ("Leave as is" default), untouched → each entry keeps its own.
+- **F2 · A failed project rename could merge two projects.** `UPDATE OR IGNORE` no-ops silently; three
+  layers acted on the *requested* name and cascaded anyway → "Carry" merged the untouched folder's
+  records in and wiped their deliverable tags. Fixed at all three (repo, both VMs) by acting on the
+  **stored** row.
+- **F3 · "the model didn't say" ≠ "there is no project".** `SummaryAchievement.project` is nullable and a
+  restored set-aside line is built with it ALWAYS null → deterministic repro: *Set aside → Restore → ⋮
+  Move → Apply* wiped the real project + deliverable. Fixed via `retagTargetFor` (silence = unknown).
+- **F4 · A rename behaved as a DELETE for in-flight wins.** The anchor rewrite was filed-scoped.
+- **F5 · Project reassign walked a stale pin into a stranger's deliverable** (F4's fix composing with the
+  round-5 widening). Fixed with an anchor-scoped clear (`clearDeliverableAnchorsOfProject`).
+- **F6 · (pre-existing since v0.19.0) `remapAnchorScoped` never followed the project pin of an unfiled
+  capture** → it re-filed into a folder that no longer existed. Fixable only once the category was pinned.
+
+**Correctness (MED):** category-only re-home offered no remap (records stranded, folder rendered under
+both) · `ProjectDao` category cascades were case-sensitive while `DeliverableDao`'s weren't (deliverables
+could move to a category with no parent project) · the remap guessed carry-vs-reassign from *names*
+(now `isCarry`, passed by the callers who know) · "+ New" bypassed the duplicate guard (case-twins) ·
+`createOnce` cleared the create flag on a SKIPPED row · rename ran on `viewModelScope` behind the AI
+mutex (navigating away discarded it) · a done group's count showed the *truncated* number ("Done · 10"
+for 120) · Inbox resolve read the filed column on rows that have none · `defaultDeliverable`'s
+category guard wiped stale-category entries · `categoryChanged` measured against the raw area.
+
+**UI (LOW):** name truncated to half the row · 26dp ⋮ target holding Delete · expanded empty group was a
+dead control · menu state not keyed (async reorder → wrong-row Delete) · uncommitted "+ New" text binned
+by Apply.
+
+### ⚠️ OPEN — not fixed, deliberately
+1. **Round 7's findings are unknown.** Re-run first. ← *the actual next step*
+2. **Case-sensitivity seam.** The unique indices are case-SENSITIVE; every lookup uses `LOWER()`. So
+   "Phase 1" and "phase 1" can coexist and `getByIdentity` picks arbitrarily. Inherited from
+   `ProjectEntity`; fixing needs `COLLATE NOCASE` + a table-rebuild migration.
+3. **Rename flicker (LOW).** The rename is atomic in ONE transaction now, but the `deliverables` and
+   `entries` Flows still re-emit independently, so a sub-millisecond intermediate frame is possible.
+   Was seconds (behind a live Groq call); now invisible in practice.
+4. **`createDeliverable` discards `create()`'s `<= 0` "not created" return**, and `renameDeliverable`'s
+   Boolean is dropped by both callers — a refused rename closes the dialog with no feedback. Both are
+   near-unreachable now the name dialogs block duplicates up front. Dangling contracts, not live bugs.
+5. **`wroteBack` counts rows `recategorize` deliberately SKIPPED**, so "Re-filed N…" *could* overstate.
+   **Refuted twice as unreachable** (rollup ids are PROCESSED-only, and the transitions share the mutex).
+6. **Pre-existing perf ceilings, untouched:** the single-folder "See all" screen renders the whole project
+   in ONE non-virtualized LazyColumn item (a 500-entry project composes 500 rows in a frame), and
+   `buildHomeDoc` runs on the main thread (v0.33 adds ~1-2ms to a pre-existing ~5-8ms).
+7. **Expansion state is `remember`, not `rememberSaveable`** — lost on rotation. Matches the existing
+   house style for the pillar/folder levels.
+8. **Summary cards carry no deliverable** — by design; the model isn't told they exist until v0.34.0.
+
+### 🚫 Refuted repeatedly — do NOT re-fix these
+- **`renamed` survives a rolled-back transaction** → raised 3×, refuted 3×. It's set *inside*
+  `db.withTransaction`, which rethrows; the assignment never lands on a rollback.
+- **`wroteBack` overstating** → raised 2×, refuted 2× (see 5 above).
+- **A case-only deliverable rename is silently discarded** → the dialogs and the repo both use
+  `ignoreCase` consistently; a case-only rename is a deliberate no-op.
+- **`doSaveProject`'s `rejected` check uses ignoreCase vs a case-sensitive index** → refuted.
+- **`defaultDeliverable`'s stale-category preselect is unreachable from the sheet** → true, and the test
+  pins the contract anyway.
 
 ---
 
