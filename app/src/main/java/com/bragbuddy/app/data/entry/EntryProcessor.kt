@@ -574,24 +574,29 @@ class EntryProcessor @Inject constructor(
             if (createTargetFolder && ta.isNotEmpty()) {
                 projectDao.insert(ProjectEntity(name = t, goalArea = ta, createdAt = System.currentTimeMillis()))
             }
+            // The deliverable tags survive ONLY a carry. `ProjectRepository.update` moves this folder's
+            // deliverables along with it, so on a carry the records arrive to find them already there.
+            // On a reassign / create-new the records go to somebody ELSE's folder and the deliverables
+            // stayed behind with the renamed one — so the tags must go.
+            //
+            // [isCarry] is passed rather than inferred. This previously asked the deliverables table
+            // whether a same-named deliverable existed at the destination — but a deliverable's name is
+            // not its identity, and names like "Phase 1" repeat across projects, so reassigning into a
+            // folder that happened to own its own "Phase 1" silently adopted those records into an
+            // unrelated deliverable AND anchored them there. The callers know exactly which of the three
+            // options the user chose; the table can only guess.
+            //
+            // OUTSIDE the name-change guard below, deliberately: "the names happen to match" is not the
+            // same question as "did the deliverables come along". Renaming Alpha→Beta then creating a
+            // NEW folder called "Alpha" and moving the records there needs no row rewrite (the labels
+            // already read "Alpha") — but Alpha's deliverables left with Beta, so every tag left behind
+            // points at nothing (found in the v0.33.1 assessment).
+            if (!isCarry) entryDao.clearDeliverablesOfProject(o, oa)
             // Skip the row rewrite only when nothing actually changes (same name AND same goal area).
             if (!(o.equals(t, ignoreCase = true) && oa.equals(ta, ignoreCase = true))) {
-                // ORDER MATTERS — TWICE. Both queries below read `project`/`goalCategory`, which
+                // ORDER MATTERS. Both queries below read `project`/`goalCategory`, which
                 // remapProjectScoped rewrites; running either after it means its WHERE never matches.
                 // That exact mistake cost a round in v0.31.0, so it is spelled out at each query too.
-                //
-                // The deliverable tags survive ONLY a carry. `ProjectRepository.update` moves this
-                // folder's deliverables along with it, so on a carry the records arrive to find them
-                // already there. On a reassign / create-new the records go to somebody ELSE's folder,
-                // and the deliverables stayed behind — so the tags must go.
-                //
-                // [isCarry] is passed rather than inferred. This previously asked the deliverables table
-                // whether a same-named deliverable existed at the destination — but a deliverable's name
-                // is not its identity, and names like "Phase 1" repeat across projects, so reassigning
-                // into a folder that happened to own its own "Phase 1" silently adopted those records
-                // into an unrelated deliverable AND anchored them there. The callers know exactly which
-                // of the three options the user chose; the table can only guess.
-                if (!isCarry) entryDao.clearDeliverablesOfProject(o, oa)
                 entryDao.remapAnchorScoped(o, oa, t, ta)
                 entryDao.remapProjectScoped(o, oa, t, ta)
             }

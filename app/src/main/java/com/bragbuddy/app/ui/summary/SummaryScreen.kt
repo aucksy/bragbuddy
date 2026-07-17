@@ -89,9 +89,11 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.sp
+import com.bragbuddy.app.data.ai.SummaryAchievement
 import com.bragbuddy.app.data.local.DELIVERABLE_LABEL
 import com.bragbuddy.app.data.local.DeliverableEntity
 import com.bragbuddy.app.data.local.NO_PROJECT_LABEL
+import com.bragbuddy.app.data.local.isNamedProject
 import com.bragbuddy.app.ui.common.LocalBottomBarInset
 import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.data.framework.PillarKind
@@ -487,6 +489,33 @@ private data class RetagTarget(
     val projectKnown: Boolean = true,
 )
 
+/**
+ * Build a retag target from a rendered achievement, distinguishing the model **not saying** a project
+ * from it saying there **isn't** one. Both arrive as a null-ish `project`, and conflating them is a
+ * durable data loss:
+ *  - `SummaryAchievement.project` is `String? = null` and the PART B schema literally offers
+ *    `"project": "string or null"` — the model is never told it must echo the rollup's project, and for
+ *    a **pinned** item it provably cannot (`pinnedForPrompt` carries only bullet + area);
+ *  - a **restored set-aside** line is built by app code as `SummaryAchievement(bullet = text)`, so its
+ *    project is ALWAYS null by construction — a deterministic repro, no model involved.
+ * Treating those as "no project" made the sheet show "No specific project" as the chosen answer and
+ * Apply wrote `OUTSIDE_PROJECT` — un-filing the win from a real project it was never shown, wiping the
+ * deliverable with it, and anchoring both so nothing could restore them (v0.33.1 assessment).
+ *
+ * A genuinely project-less entry does NOT arrive this way: it carries the `Outside-project` sentinel
+ * through the rollup, which [isNamedProject] recognises — so "said Outside" stays *known*, and only
+ * silence is unknown.
+ */
+private fun retagTargetFor(ach: SummaryAchievement, areaName: String): RetagTarget {
+    val said = ach.project?.trim().orEmpty()
+    return RetagTarget(
+        bullet = ach.bullet,
+        area = areaName,
+        project = said.takeIf { it.isNamedProject() },
+        projectKnown = said.isNotEmpty(),
+    )
+}
+
 private fun goalHue(framework: Framework, name: String): PillarColor {
     val idx = framework.pillars.indexOfFirst { it.name.equals(name, ignoreCase = true) }
     return pillarColor(if (idx >= 0) idx else framework.pillars.size)
@@ -546,7 +575,7 @@ private fun GoalAreaSection(
                         onLongPress = { onLongPress(ach.bullet) },
                         onEdit = { onEdit(ach.bullet) },
                         onDelete = { onDelete(ach.bullet) },
-                        onRetag = { onRetag(RetagTarget(ach.bullet, area.name, ach.project)) },
+                        onRetag = { onRetag(retagTargetFor(ach, area.name)) },
                     )
                     Spacer(Modifier.height(Spacing.s2))
                 }
@@ -630,7 +659,7 @@ private fun ProjectFolder(
                         onLongPress = { onLongPress(ach.bullet) },
                         onEdit = { onEdit(ach.bullet) },
                         onDelete = { onDelete(ach.bullet) },
-                        onRetag = { onRetag(RetagTarget(ach.bullet, areaName, folder.name.takeIf { !folder.isOutside })) },
+                        onRetag = { onRetag(retagTargetFor(ach, areaName)) },
                     )
                     Spacer(Modifier.height(Spacing.s2))
                 }
