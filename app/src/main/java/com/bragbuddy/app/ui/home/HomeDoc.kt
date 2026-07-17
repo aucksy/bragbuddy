@@ -43,8 +43,18 @@ data class DeliverableGroup(
     val name: String,
     val done: Boolean,
     val entries: List<EntryEntity>,
+    /**
+     * The TRUE number of entries in this deliverable — which is NOT always `entries.size`, because
+     * [inlineView] truncates [entries] to Home's inline cap. Defaulted at construction and carried
+     * through `copy`, so a truncated group still states its real size.
+     *
+     * Without it a done deliverable holding 120 wins rendered "Done · 10" — its entries are collapsed
+     * behind that number, so the count IS the only evidence they exist, and understating it says the
+     * work is gone.
+     */
+    val totalCount: Int = entries.size,
 ) {
-    val entryCount: Int get() = entries.size
+    val entryCount: Int get() = totalCount
     val lastUpdated: Long get() = entries.maxOfOrNull { it.effectiveTime() } ?: 0L
 }
 

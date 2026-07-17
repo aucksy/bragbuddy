@@ -495,6 +495,7 @@ class SummaryViewModel @Inject constructor(
         toDeliverable: String? = null,
         createDeliverable: Boolean = false,
         deliverableTouched: Boolean = true,
+        projectTouched: Boolean = true,
     ) {
         val s = state.value ?: return
         if (bullet.isBlank() || toCategory.isBlank()) return
@@ -524,7 +525,12 @@ class SummaryViewModel @Inject constructor(
                         entryRepository.recategorizeNow(
                             id = id,
                             goalArea = toCategory,
-                            project = toProject?.takeIf { it.isNotBlank() } ?: OUTSIDE_PROJECT,
+                            // Untouched → this entry's OWN project. Only a DEVELOPMENT line can get here
+                            // untouched: its project isn't in the model's output, so the sheet has none
+                            // to preselect and must not answer for the user. Treating that as "none"
+                            // wrote OUTSIDE_PROJECT over a real project nobody chose to leave.
+                            project = if (projectTouched) toProject?.takeIf { it.isNotBlank() } ?: OUTSIDE_PROJECT
+                            else e.project?.takeIf { it.isNotBlank() } ?: OUTSIDE_PROJECT,
                             // Untouched → this entry's OWN deliverable, not a blanket null.
                             //
                             // Safe ONLY because the sheet forces `deliverableTouched` whenever the

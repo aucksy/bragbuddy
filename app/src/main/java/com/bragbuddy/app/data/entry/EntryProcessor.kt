@@ -561,6 +561,7 @@ class EntryProcessor @Inject constructor(
         target: String,
         targetArea: String,
         createTargetFolder: Boolean = false,
+        isCarry: Boolean = false,
     ) = mutex.withLock {
         val o = old.trim()
         val oa = oldArea.trim()
@@ -579,14 +580,18 @@ class EntryProcessor @Inject constructor(
                 // remapProjectScoped rewrites; running either after it means its WHERE never matches.
                 // That exact mistake cost a round in v0.31.0, so it is spelled out at each query too.
                 //
-                // Drop the deliverable tag of any record whose deliverable doesn't exist at the
-                // destination. This is the ONE place the 3-option flow's options are indistinguishable —
-                // carry / reassign / create-new all arrive here as the same four arguments, and the
-                // renamed folder's new name is never passed — so the query asks the deliverables table
-                // what is actually there rather than trying to infer which option the user picked.
-                // A carry keeps its tags (the deliverables followed the folder, in ProjectRepository);
-                // a reassign to somebody else's folder drops them (they stayed behind).
-                entryDao.clearDeliverablesNotUnder(o, oa, t, ta)
+                // The deliverable tags survive ONLY a carry. `ProjectRepository.update` moves this
+                // folder's deliverables along with it, so on a carry the records arrive to find them
+                // already there. On a reassign / create-new the records go to somebody ELSE's folder,
+                // and the deliverables stayed behind — so the tags must go.
+                //
+                // [isCarry] is passed rather than inferred. This previously asked the deliverables table
+                // whether a same-named deliverable existed at the destination — but a deliverable's name
+                // is not its identity, and names like "Phase 1" repeat across projects, so reassigning
+                // into a folder that happened to own its own "Phase 1" silently adopted those records
+                // into an unrelated deliverable AND anchored them there. The callers know exactly which
+                // of the three options the user chose; the table can only guess.
+                if (!isCarry) entryDao.clearDeliverablesOfProject(o, oa)
                 entryDao.remapAnchorScoped(o, oa, t, ta)
                 entryDao.remapProjectScoped(o, oa, t, ta)
             }

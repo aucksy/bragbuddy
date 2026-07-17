@@ -110,9 +110,8 @@ class SettingsViewModel @Inject constructor(
         // `stored` is the row AS SAVED — NOT what was asked for. See the remap gate below.
         val stored = projectRepository.update(id, name, goalArea, description = existing?.description)
         // ⚠️ ORDER IS LOAD-BEARING (v0.33.0): the update above is AWAITED, and it is what moves this
-        // folder's deliverables to their new parent. The remap offered below resolves each entry's
-        // deliverable tag by asking whether it EXISTS at the destination — so a remap that ran before
-        // the move would find nothing and wipe every tag. See EntryDao.clearDeliverablesNotUnder.
+        // folder's deliverables to their new parent — so by the time the user picks "Carry" below, the
+        // records arrive to find their deliverables already there and the tags stay valid.
         //
         // ⚠️ And the offer is gated on the STORED name/area, never the requested ones. `ProjectDao.update`
         // is `UPDATE OR IGNORE`, so renaming onto an existing sibling folder is silently skipped and
@@ -152,7 +151,7 @@ class SettingsViewModel @Inject constructor(
      *  the folder even if its category changed in the same edit). */
     fun applyProjectCarry() {
         val r = _pendingProjectRemap.value ?: return
-        entryRepository.remapProjectEntries(r.oldName, r.oldArea, r.newName, r.newArea)
+        entryRepository.remapProjectEntries(r.oldName, r.oldArea, r.newName, r.newArea, isCarry = true)
         _pendingProjectRemap.value = null
     }
 

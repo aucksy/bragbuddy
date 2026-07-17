@@ -167,8 +167,11 @@ class EntryRepository @Inject constructor(
         target: String,
         targetArea: String,
         createTargetFolder: Boolean = false,
+        isCarry: Boolean = false,
     ) {
-        appScope.launch { processor.remapProjectEverywhere(old, oldArea, target, targetArea, createTargetFolder) }
+        appScope.launch {
+            processor.remapProjectEverywhere(old, oldArea, target, targetArea, createTargetFolder, isCarry)
+        }
     }
 
     /** Retry one failed entry on demand (from the Inbox). */
@@ -225,12 +228,19 @@ class EntryRepository @Inject constructor(
     suspend fun countDeliverableReferences(name: String, project: String, area: String): Int =
         processor.countDeliverableReferences(name, project, area)
 
-    /** Rename a deliverable **and** re-tag every record of it, in one transaction (deterministic, no AI).
-     *  Returns true when it landed, false when refused (blank / unchanged / name already taken here).
-     *  Suspends deliberately: the two halves must not be observable apart — see
-     *  [EntryProcessor.renameDeliverable] for what splitting them looked like on screen. */
-    suspend fun renameDeliverable(id: Long, newName: String, description: String?): Boolean =
-        processor.renameDeliverable(id, newName, description)
+    /**
+     * Rename a deliverable **and** re-tag every record of it, in one transaction (deterministic, no AI).
+     *
+     * Fire-and-forget on the **application** scope, not the caller's. [EntryProcessor.renameDeliverable]
+     * blocks on the processing mutex, which `process()` holds across a live Groq round-trip — so a rename
+     * requested while any capture is filing can wait seconds. On a ViewModel scope that wait is
+     * cancellable: navigating back (or the sheet closing) killed the coroutine and the rename vanished
+     * with no error, after the UI had already said it saved. Every other durable mutation here runs on
+     * the app scope for exactly this reason.
+     */
+    fun renameDeliverable(id: Long, newName: String, description: String?) {
+        appScope.launch { processor.renameDeliverable(id, newName, description) }
+    }
 
     /** Clear the deliverable tag + anchor of every entry of a DELETED deliverable. The entries stay —
      *  only the grouping goes, so they fall back to listing plainly under their project. */

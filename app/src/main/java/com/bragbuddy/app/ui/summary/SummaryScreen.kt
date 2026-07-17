@@ -257,12 +257,14 @@ fun SummaryScreen(
                     line = target.bullet,
                     currentArea = target.area,
                     currentProject = target.project,
+                    currentProjectKnown = target.projectKnown,
                     framework = s.framework,
                     folders = s.allFolders,
                     deliverables = allDeliverables,
-                    onApply = { category, project, deliverable, createNew, touched ->
+                    onApply = { category, project, deliverable, createNew, touched, projTouched ->
                         viewModel.retagAchievement(
-                            target.area, target.bullet, category, project, deliverable, createNew, touched,
+                            target.area, target.bullet, category, project, deliverable,
+                            createNew, touched, projTouched,
                         )
                         retagLine = null
                     },
@@ -471,7 +473,19 @@ private fun ReadyBlock(
  * user who only wanted to fix the CATEGORY would tap Apply and silently un-file the entry from a project
  * they never touched — writing OUTSIDE_PROJECT into the record.
  */
-private data class RetagTarget(val bullet: String, val area: String, val project: String?)
+/**
+ * A summary line the user wants to re-place. [project] null is ambiguous on its own — it can mean "no
+ * project" (a goal-area line that really has none) or "unknown" (a DEVELOPMENT line, which the model
+ * returns as a bare string with no project attached). [projectKnown] disambiguates, because the sheet
+ * must not offer a guess as though it were the answer: treating unknown as "none" wrote OUTSIDE_PROJECT
+ * over a project the user never touched.
+ */
+private data class RetagTarget(
+    val bullet: String,
+    val area: String,
+    val project: String?,
+    val projectKnown: Boolean = true,
+)
 
 private fun goalHue(framework: Framework, name: String): PillarColor {
     val idx = framework.pillars.indexOfFirst { it.name.equals(name, ignoreCase = true) }
@@ -736,7 +750,8 @@ private fun DevelopmentSection(
                     onLongPress = { onLongPress(d) },
                     onEdit = { onEdit(d) },
                     onDelete = { onDelete(d) },
-                    onRetag = { onRetag(RetagTarget(d, devAreaName, null)) },
+                    // A development line is a bare string in the model's output — its project is UNKNOWN, not none.
+                    onRetag = { onRetag(RetagTarget(d, devAreaName, null, projectKnown = false)) },
                 )
                 Spacer(Modifier.height(Spacing.s2))
             }
@@ -1317,19 +1332,31 @@ private fun RetagSheet(
     /** The line's CURRENT project (null = none). Preselected, so opening the sheet to change only the
      *  CATEGORY can't silently un-file the entry from a project the user never touched. */
     currentProject: String?,
+    /**
+     * False when [currentProject] is **unknown**, not "none" — DEVELOPMENT lines are plain strings in the
+     * model's output and carry no project, so the sheet has nothing to preselect.
+     *
+     * The distinction is load-bearing: treating unknown as "none" rendered "No specific project" as the
+     * chosen answer, and Apply then wrote `OUTSIDE_PROJECT` over a project the user never touched — plus
+     * (once the deliverable axis existed) wiped its deliverable too. Unknown gets the same treatment as
+     * the deliverable axis: an explicit "Leave as is", opt-in, and untouched means the host keeps each
+     * entry's own value.
+     */
+    currentProjectKnown: Boolean = true,
     framework: Framework,
     folders: List<SummaryViewModel.FolderRef>,
     deliverables: List<DeliverableEntity>,
     /**
-     * (category, project, deliverable, createDeliverable, **deliverableTouched**).
+     * (category, project, deliverable, createDeliverable, **deliverableTouched**, **projectTouched**).
      *
-     * `deliverableTouched` false = "the user didn't say" → the host MUST leave each entry's existing
-     * deliverable alone. This sheet, unlike the entry-detail one, has **no current deliverable to
-     * preselect**: a summary line is AI-written prose that resolves back to its source entries only at
-     * Apply time (and a merged card resolves to several, which may differ). So the axis is opt-in rather
-     * than pre-filled with a guess — see the "Leave as is" chip.
+     * A `*Touched` false = "the user didn't say" → the host MUST leave each entry's existing value alone.
+     * This sheet, unlike the entry-detail one, works on AI-written prose that resolves back to its source
+     * entries only at Apply time (and a merged card resolves to several, which may differ), so anything
+     * it cannot know is opt-in rather than pre-filled with a guess — see the "Leave as is" chips.
+     * `projectTouched` is always true when the project WAS knowable (it was preselected from the truth,
+     * so writing it back is a no-op).
      */
-    onApply: (String, String?, String?, Boolean, Boolean) -> Unit,
+    onApply: (String, String?, String?, Boolean, Boolean, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val noRipple = remember { MutableInteractionSource() }
@@ -1348,6 +1375,10 @@ private fun RetagSheet(
             },
         )
     }
+    // True the moment the user answers the project question — or immediately, when the answer was already
+    // known and preselected (writing back the truth is a no-op). Only a DEVELOPMENT line starts false,
+    // because its project genuinely can't be resolved here.
+    var projectTouched by rememberSaveable(line) { mutableStateOf(currentProjectKnown) }
     // The deliverable axis (v0.33.0). THREE states, not two — this is the fix for a HIGH found in the
     // v0.33.0 accuracy assessment. It previously hardcoded "no deliverable" as the selection, so a user
     // who opened this sheet to fix the CATEGORY of a win they had tap-in filed into a deliverable had
@@ -1371,9 +1402,21 @@ private fun RetagSheet(
     var namingDeliverable by rememberSaveable(line) { mutableStateOf(false) }
     var newDeliverableText by rememberSaveable(line) { mutableStateOf("") }
 
-    // Moving the win to a different project settles the deliverable on its own — see above.
-    val projectChanged = !selectedFolder.orEmpty().equals(currentProject.orEmpty(), ignoreCase = true)
-    val effectiveTouched = deliverableTouched || projectChanged
+    // Moving the win settles the deliverable on its own — see above. "Moved" means EITHER parent moved:
+    // a deliverable is identified by (name, project, goalArea), and a project only by (name, goalArea),
+    // so the same folder name legitimately exists under two categories. Comparing the project NAME alone
+    // read a category-only move as "unchanged", left "Leave as is" active, and let the win be adopted
+    // AND anchored into the destination category's own, unrelated same-named deliverable — the exact
+    // failure this guard exists to stop, surviving along the axis it forgot to check.
+    //
+    // `projectKnown` is false for DEVELOPMENT summary lines, whose project can't be resolved at render
+    // time. There "unchanged" is unknowable, so an explicit pick is treated as a move.
+    val categoryChanged = !selectedCategory.orEmpty().equals(currentArea, ignoreCase = true)
+    val projectChanged =
+        if (!currentProjectKnown) projectTouched
+        else !selectedFolder.orEmpty().equals(currentProject.orEmpty(), ignoreCase = true)
+    val placementChanged = categoryChanged || projectChanged
+    val effectiveTouched = deliverableTouched || placementChanged
 
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -1410,6 +1453,10 @@ private fun RetagSheet(
                             newDeliverable = null
                             namingDeliverable = false
                             deliverableTouched = false
+                            // A known project can't survive a category change (a folder is unique by
+                            // (name, goalArea)), so the axis is settled-as-none until they pick again.
+                            // An unknown one goes back to "leave as is".
+                            projectTouched = currentProjectKnown
                         }
                     }
                     Row(
@@ -1432,7 +1479,25 @@ private fun RetagSheet(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            SelectChip(NO_PROJECT_LABEL, selected = selectedFolder == null, palette = palette) {
+                            // Offered only when the line's project is genuinely UNKNOWN (a DEVELOPMENT
+                            // line). Without it the sheet showed "No specific project" as though it were
+                            // the answer, and Apply un-filed a win from a project the user never touched.
+                            if (!currentProjectKnown) {
+                                SelectChip("Leave as is", selected = !projectTouched, palette = palette) {
+                                    projectTouched = false
+                                    selectedFolder = null
+                                    selectedDeliverable = null
+                                    newDeliverable = null
+                                    namingDeliverable = false
+                                    deliverableTouched = false
+                                }
+                            }
+                            SelectChip(
+                                NO_PROJECT_LABEL,
+                                selected = projectTouched && selectedFolder == null,
+                                palette = palette,
+                            ) {
+                                projectTouched = true
                                 selectedFolder = null
                                 selectedDeliverable = null
                                 newDeliverable = null
@@ -1444,10 +1509,11 @@ private fun RetagSheet(
                             catFolders.forEach { f ->
                                 SelectChip(
                                     f.name,
-                                    selected = selectedFolder?.equals(f.name, ignoreCase = true) == true,
+                                    selected = projectTouched && selectedFolder?.equals(f.name, ignoreCase = true) == true,
                                     palette = palette,
                                 ) {
-                                    if (selectedFolder?.equals(f.name, ignoreCase = true) != true) {
+                                    if (!projectTouched || selectedFolder?.equals(f.name, ignoreCase = true) != true) {
+                                        projectTouched = true
                                         selectedFolder = f.name
                                         selectedDeliverable = null
                                         newDeliverable = null
@@ -1458,7 +1524,9 @@ private fun RetagSheet(
                             }
                         }
                         // The deliverable level — only under a real project, the only place one exists.
-                        if (selectedFolder != null) {
+                        // Also requires the project to be SETTLED: with an unknown project left
+                        // "as is" there is no project to scope a deliverable list to.
+                        if (selectedFolder != null && projectTouched) {
                             val catDeliverables = Recategorize.deliverablesFor(cat.name, selectedFolder, deliverables)
                             Text(
                                 DELIVERABLE_LABEL.uppercase(),
@@ -1479,7 +1547,7 @@ private fun RetagSheet(
                                 // while the win stays in its own project — once it's moving elsewhere
                                 // there is no "as is" to keep, and showing it against a different
                                 // project's list would be claiming something incoherent.
-                                if (!projectChanged) {
+                                if (!placementChanged) {
                                     SelectChip(
                                         "Leave as is",
                                         selected = !deliverableTouched,
@@ -1582,6 +1650,7 @@ private fun RetagSheet(
                             newDeliverable ?: selectedDeliverable,
                             newDeliverable != null,
                             effectiveTouched,
+                            projectTouched,
                         )
                     }
                 }

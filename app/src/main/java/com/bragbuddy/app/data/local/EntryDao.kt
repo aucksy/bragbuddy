@@ -170,31 +170,6 @@ interface EntryDao {
     )
     suspend fun clearDeliverablesOfCategory(area: String)
 
-    /**
-     * The **project rename-remap** deliverable rule (v0.19.0's 3-option flow). Clears the deliverable
-     * axis of the records about to move from ([old], [oldArea]) to ([target], [targetArea]) — but ONLY
-     * where the tagged deliverable does not actually exist under the destination.
-     *
-     * This deliberately **tests reality instead of inferring intent**, because intent isn't knowable
-     * here: all three options (carry / reassign to an existing project / create a new one) arrive at
-     * [EntryProcessor.remapProjectEverywhere] as the same four arguments, and it is never told the
-     * renamed folder's new name — so it cannot distinguish "the records are following their own folder"
-     * (deliverables came along, keep the tag) from "the records are being moved to somebody else's
-     * folder" (the deliverables stayed behind, drop the tag). The `NOT EXISTS` answers that directly by
-     * asking whether the deliverable is present at the destination, whatever route got us here.
-     *
-     * ⚠️ Scoped on `project`/`goalCategory`, which [remapProjectScoped] rewrites — so it **MUST run
-     * before** that query, or its WHERE stops matching. Same hazard as [remapAnchorScoped]; see the
-     * ordering note there (getting it wrong cost a round in v0.31.0).
-     */
-    @Query(
-        "UPDATE entries SET deliverable = NULL, anchorDeliverable = NULL " +
-            "WHERE deliverable IS NOT NULL AND LOWER(project) = LOWER(:old) " +
-            "AND LOWER(goalCategory) = LOWER(:oldArea) " +
-            "AND NOT EXISTS (SELECT 1 FROM deliverables d WHERE LOWER(d.name) = LOWER(entries.deliverable) " +
-            "AND LOWER(d.project) = LOWER(:target) AND LOWER(d.goalArea) = LOWER(:targetArea))",
-    )
-    suspend fun clearDeliverablesNotUnder(old: String, oldArea: String, target: String, targetArea: String)
 
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteById(id: Long)

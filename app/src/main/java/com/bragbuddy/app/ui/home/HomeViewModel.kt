@@ -247,7 +247,9 @@ class HomeViewModel @Inject constructor(
         newName: String,
     ) = viewModelScope.launch {
         val d = runCatching { deliverablesRepo.byIdentity(oldName, project, goalArea) }.getOrNull() ?: return@launch
-        runCatching { repository.renameDeliverable(d.id, newName, d.description) }
+        // The rename itself runs on the APP scope inside the repository — it can wait on the processing
+        // mutex for the length of a live AI call, and this coroutine dies the moment the sheet closes.
+        repository.renameDeliverable(d.id, newName, d.description)
     }
 
     fun setDeliverableDoneByName(

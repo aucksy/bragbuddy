@@ -170,10 +170,8 @@ class FrameworkViewModel @Inject constructor(
             // the sheet already detects via id <= 0); an update reports whatever the row now holds.
             onSaved(newId, if (id == null) rn else stored?.name)
             // ⚠️ ORDER IS LOAD-BEARING (v0.33.0): `projects.update` above is AWAITED before the remap is
-            // offered below, and it is what moves this project's deliverables to their new parent. The
-            // remap's `clearDeliverablesNotUnder` then asks whether each tagged deliverable EXISTS at the
-            // destination — so if the offer ever raced ahead of the update, a plain "carry" would find
-            // nothing there and wipe every entry's deliverable tag.
+            // offered below, and it is what moves this project's deliverables to their new parent — so a
+            // "Carry" finds them already there and the records' tags stay valid.
             // A project row's category (`area`) doesn't change here, so old area == new area == area.
             val prev = before?.name?.trim()
             val landed = stored?.name?.trim()
@@ -218,7 +216,7 @@ class FrameworkViewModel @Inject constructor(
      *  follow the folder even if its category changed in the same edit). */
     fun applyProjectCarry() {
         val r = _pendingProjectRemap.value ?: return
-        entries.remapProjectEntries(r.oldName, r.oldArea, r.newName, r.newArea)
+        entries.remapProjectEntries(r.oldName, r.oldArea, r.newName, r.newArea, isCarry = true)
         _pendingProjectRemap.value = null
     }
 
