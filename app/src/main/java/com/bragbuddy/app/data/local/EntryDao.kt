@@ -117,6 +117,34 @@ interface EntryDao {
     @Query("UPDATE entries SET anchorGoalArea = NULL WHERE LOWER(anchorGoalArea) = LOWER(:area)")
     suspend fun clearAnchorGoalArea(area: String)
 
+    /**
+     * Drop the PROJECT and DELIVERABLE pins of every entry anchored into a **deleted category**.
+     *
+     * ⚠️ MUST run BEFORE [clearAnchorGoalArea], which nulls the `anchorGoalArea` this WHERE reads.
+     *
+     * Deleting a category cascades its projects and their deliverables away, so a pin into it points at
+     * nothing. Leaving those two columns behind while [clearAnchorGoalArea] removed the third was worse
+     * than either alone, because it re-armed the guess this whole batch exists to eliminate: `prepare()`
+     * derives a missing `anchorGoalArea` from the FIRST live project matching `anchorProject` by name.
+     * Delete "Performance Goals" while a tap-in capture into its "Payments ▸ Phase 1" is still queued
+     * offline, and the pin — now category-less — resolved against "Learning & Growth ▸ Payments", whose
+     * own "Phase 1" adopted the win. Filed, durably anchored, into a stranger's deliverable, under no
+     * signal at all. The filed-scoped [clearDeliverablesOfCategory] cannot see those rows: every filed
+     * column of a not-yet-categorized entry is NULL.
+     *
+     * The entry is never touched — only the pins. It re-files through the AI into a live category, which
+     * is the honest outcome when the user deletes the one they had chosen.
+     *
+     * (Deleting a *project* needs no twin: it leaves `anchorGoalArea` intact, so the pin stays exact and
+     * `prepare()`'s re-validation drops it correctly. This path is the only one that erases the pin's
+     * category and must therefore erase what depended on it.)
+     */
+    @Query(
+        "UPDATE entries SET anchorProject = NULL, anchorDeliverable = NULL " +
+            "WHERE LOWER(anchorGoalArea) = LOWER(:area)",
+    )
+    suspend fun clearAnchorsInCategory(area: String)
+
     // ---------------- deliverables (the third axis, v0.33.0) ----------------
     //
     // All three below are scoped by (project, goalCategory) as well as the deliverable name, because a

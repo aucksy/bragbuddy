@@ -1392,14 +1392,25 @@ private fun RetagSheet(
     val categories = remember(framework) { Recategorize.placementCategories(framework) }
     // Keyed on the LINE, not the area: two lines in the same area are different entries with different
     // projects, and keying on the area would hand the second one the first one's selection.
-    // The category the sheet OPENS on. Usually the line's own area — but when that names no placement
-    // category (an off-framework area, e.g. one renamed since the summary generated) it falls back to
-    // the first, and "changed" must then be measured against THIS, not against the line's raw area.
-    // Measuring against the raw area made `categoryChanged` true before the user touched anything, which
-    // silently settled the placement and wiped the deliverable of a win they only opened to look at.
+    // The category the sheet OPENS on: the line's own area, or NOTHING when that names no placement
+    // category (an off-framework area — e.g. one renamed since the summary was generated).
+    //
+    // Nothing, deliberately. Two wrong answers were tried here first. Measuring "changed" against the
+    // line's RAW area made `categoryChanged` true before the user touched anything, silently settling
+    // the placement and wiping the deliverable of a win they only opened to look at. Falling back to
+    // `categories.first()` fixed that and introduced a worse one: the sheet preselected an arbitrary
+    // category, reported `categoryChanged == false` because it was comparing the fallback to itself, and
+    // Apply then wrote that category while "Leave as is" faithfully kept the entry's project — a durable
+    // (project, goalArea) pair that exists nowhere, invisible to every editor (they all scope by
+    // (name, goalArea)) and beyond the reach of any later rename. The sheet was moving the win to a
+    // category the user never picked, while telling them nothing had changed.
+    //
+    // A sheet that doesn't know the answer must ASK, not guess. Null preselects no radio and leaves
+    // Apply disabled (it is already gated on `selectedCategory != null`), so the only way out is an
+    // explicit pick — which makes `categoryChanged` true honestly, settles the project axis visibly, and
+    // renders the deliverable axis. Opening the sheet to look and dismissing still writes nothing.
     val initialCategory = remember(line, currentArea, categories) {
         categories.firstOrNull { it.name.equals(currentArea, ignoreCase = true) }?.name
-            ?: categories.firstOrNull()?.name
     }
     var selectedCategory by rememberSaveable(line) { mutableStateOf(initialCategory) }
     // Scoped to the current category, mirroring Recategorize.defaultFolder: a folder is unique by
@@ -1409,9 +1420,9 @@ private fun RetagSheet(
         // unconstrained model-authored string, and Apply writes it straight into the record.
         //
         // Scoped by `initialCategory` — the category the sheet actually OPENS on — not the line's raw
-        // area. When the line's area names no live category, the two differ, and resolving against the
-        // raw area answered a question the sheet never asks: it decided the project was un-resolvable
-        // while the chips below happily offered that same folder under the fallback category.
+        // area, so the preselect can never contradict the chips below it. When the area names no live
+        // category, `initialCategory` is null and this correctly resolves to null too: nothing is
+        // preselected on either axis, because the sheet genuinely doesn't know where the win lives.
         currentProject?.let { p ->
             folders.firstOrNull {
                 it.name.equals(p, ignoreCase = true) && it.goalArea.equals(initialCategory.orEmpty(), ignoreCase = true)

@@ -531,7 +531,15 @@ class EntryProcessor @Inject constructor(
         val a = area.trim()
         if (a.isEmpty()) return@withLock
         runCatching {
-            entryDao.clearAnchorGoalArea(a)
+            db.withTransaction {
+                // ORDER IS LOAD-BEARING: the project/deliverable pins are scoped BY the category pin, so
+                // they must go first — see [EntryDao.clearAnchorsInCategory]. Clearing only the category
+                // left the narrower pins pointing at deleted parents, and `prepare()` then guessed a
+                // category by project NAME and filed the win into another category's same-named twin.
+                // One transaction, so a crash can never leave the half-state that caused the bug.
+                entryDao.clearAnchorsInCategory(a)
+                entryDao.clearAnchorGoalArea(a)
+            }
             reconcileLocked()
         }
         Unit

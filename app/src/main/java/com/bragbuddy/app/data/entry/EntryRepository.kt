@@ -6,6 +6,7 @@ import com.bragbuddy.app.data.local.EntrySource
 import com.bragbuddy.app.data.local.EntryStatus
 import com.bragbuddy.app.di.ApplicationScope
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -215,8 +216,18 @@ class EntryRepository @Inject constructor(
      * fire-and-forget. The Summary-tab retag (v0.31.0) needs to know the record has actually settled
      * before it re-derives the rollup signature; a fire-and-forget write would race the re-stamp and
      * leave the corrected summary looking stale (or, worse, stamp a signature for a rollup that hadn't
-     * been written yet). Runs on the CALLER's scope, so a cancelled caller cancels the write — only
-     * use it where the caller owns the outcome.
+     * been written yet).
+     *
+     * ⚠️ The work runs on the **application** scope and the caller merely awaits it. Awaiting and
+     * *owning* are different things, and conflating them was a real defect: this ran on the caller's
+     * scope, and the caller is `SummaryViewModel.retagAchievement`'s `viewModelScope.launch` — around a
+     * LOOP over a merged card's entries. `recategorize` blocks on the processing mutex, which
+     * `process()` holds across a live Groq round-trip, so a retag requested while any capture is filing
+     * waits seconds. Leaving the screen in that window cancelled the loop mid-way: entry 1 moved,
+     * entries 2 and 3 didn't, `wroteBack` never re-stamped the summary — a half-moved record, no error,
+     * no signal. Same lesson as [renameDeliverable]: a durable mutation must outlive the screen that
+     * asked for it. `async`/`await` keeps the caller's need (know when it settled) without handing it
+     * the power to cancel a half-done write.
      */
     suspend fun recategorizeNow(
         id: Long,
@@ -226,7 +237,9 @@ class EntryRepository @Inject constructor(
         demonstrates: List<String>,
         createDeliverable: Boolean = false,
     ) {
-        processor.recategorize(id, goalArea, project, deliverable, demonstrates, createDeliverable)
+        appScope.async {
+            processor.recategorize(id, goalArea, project, deliverable, demonstrates, createDeliverable)
+        }.await()
     }
 
     // ---------------- deliverables · the third axis (v0.33.0) ----------------
