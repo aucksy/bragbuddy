@@ -307,6 +307,7 @@ class DeliverableGroupingTest {
             status = EntryStatus.RAW,
             rawTranscript = "shipped the onboarding step",
             anchorProject = "Payments",
+            anchorGoalArea = "Performance Goals",
             anchorDeliverable = "Onboarding",
         )
 
@@ -314,9 +315,37 @@ class DeliverableGroupingTest {
         assertThat(pinned.deliverable).isNull()
         assertThat(pinned.project).isNull()
         assertThat(pinned.goalCategory).isNull()
-        // And the category is NOT pinned by a tap-in — prepare() derives it from the anchored folder — so
-        // an anchor-scoped query must tolerate a NULL anchorGoalArea or it misses these rows too.
-        assertThat(pinned.anchorGoalArea).isNull()
+        // The tap-in ALSO pins the category now (v0.33.1). Without it the two pins above are only names,
+        // and a name is not an identity — "Payments"/"Onboarding" couldn't say WHICH Payments, so every
+        // query following a pin had to be either too narrow (missing these rows) or too broad (hitting a
+        // same-named project in another category). Both mistakes shipped before this was pinned.
+        assertThat(pinned.anchorGoalArea).isEqualTo("Performance Goals")
+    }
+
+    @Test
+    fun `an entry can be pinned to a deliverable while carrying no filed columns at all`() {
+        // Restated as the rule, because it is the one this phase kept breaking: ANY query that follows a
+        // pin must scope by the ANCHOR columns. Filed-scoped queries cannot see these rows — which made a
+        // rename behave as a delete, and made a project reassign walk a stale pin into a stranger's
+        // same-named deliverable.
+        val inFlight = EntryEntity(
+            id = 2,
+            createdAt = 2000,
+            source = EntrySource.VOICE,
+            status = EntryStatus.FAILED, // AI unreachable — sits in the Inbox, still unfiled
+            rawTranscript = "cut onboarding time",
+            anchorProject = "Payments",
+            anchorGoalArea = "Performance Goals",
+            anchorDeliverable = "Onboarding",
+        )
+        // The pin is complete...
+        assertThat(inFlight.anchorProject).isNotNull()
+        assertThat(inFlight.anchorGoalArea).isNotNull()
+        assertThat(inFlight.anchorDeliverable).isNotNull()
+        // ...and every filed column a WHERE might scope by is NULL.
+        assertThat(inFlight.project).isNull()
+        assertThat(inFlight.goalCategory).isNull()
+        assertThat(inFlight.deliverable).isNull()
     }
 
     // ---------------- export ----------------

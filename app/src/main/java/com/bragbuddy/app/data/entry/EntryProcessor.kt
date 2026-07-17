@@ -231,7 +231,13 @@ class EntryProcessor @Inject constructor(
             // anchored — including its deliverable — but still goes FAILED if the AI was unreachable, and
             // FAILED rows are resolvable). Keep it only where it genuinely exists under the project the
             // user just chose; resolving somewhere else leaves it pointing at nothing.
-            val keptDeliverable = e.deliverable?.takeIf { !isOutside && deliverableExists(it, clean, area) }
+            //
+            // Read the PIN first, not the filed label. A row that reached the Inbox via an AI failure was
+            // never filed, so `deliverable` is NULL and only `anchorDeliverable` holds the user's tap-in —
+            // reading the filed column dropped the pin on precisely the rows the paragraph above says it
+            // protects, which is how a comment can be right while the code under it isn't.
+            val pinned = e.anchorDeliverable?.takeIf { it.isNotBlank() } ?: e.deliverable
+            val keptDeliverable = pinned?.takeIf { !isOutside && deliverableExists(it, clean, area) }
             val updated = e.copy(
                 status = EntryStatus.PROCESSED,
                 // A FAILED / empty-result row has no cleaned bullet; fall back to its raw transcript so
@@ -591,7 +597,18 @@ class EntryProcessor @Inject constructor(
             // NEW folder called "Alpha" and moving the records there needs no row rewrite (the labels
             // already read "Alpha") — but Alpha's deliverables left with Beta, so every tag left behind
             // points at nothing (found in the v0.33.1 assessment).
-            if (!isCarry) entryDao.clearDeliverablesOfProject(o, oa)
+            //
+            // BOTH halves, filed and pinned. The filed clear cannot see a tap-in capture that hasn't been
+            // categorized yet (all its filed columns are NULL) — and leaving that half undone became a
+            // live mis-file the moment remapAnchorScoped below learned to reach those rows: their pin's
+            // project would be rewritten to the destination while its deliverable stayed behind, so the
+            // win arrived at somebody else's folder still pinned to "Phase 1" and, if that folder owned
+            // its own "Phase 1", silently filed into it. Both run BEFORE remapAnchorScoped rewrites the
+            // anchorProject their WHEREs read.
+            if (!isCarry) {
+                entryDao.clearDeliverablesOfProject(o, oa)
+                entryDao.clearDeliverableAnchorsOfProject(o, oa)
+            }
             // Skip the row rewrite only when nothing actually changes (same name AND same goal area).
             if (!(o.equals(t, ignoreCase = true) && oa.equals(ta, ignoreCase = true))) {
                 // ORDER MATTERS. Both queries below read `project`/`goalCategory`, which

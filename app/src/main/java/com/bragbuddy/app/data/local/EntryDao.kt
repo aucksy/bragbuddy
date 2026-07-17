@@ -190,15 +190,40 @@ interface EntryDao {
     )
     suspend fun clearDeliverable(name: String, project: String, area: String)
 
-    /** Clear the deliverable axis on every entry of a **deleted project**. The entries themselves are
-     *  never touched — they keep their labels and fall into their category's "no specific project"
-     *  bucket exactly as they already do today; only the now-dangling deliverable tag goes. */
+    /** Clear the deliverable axis on every FILED entry of a project. The entries themselves are never
+     *  touched — they keep their labels and fall into their category's "no specific project" bucket
+     *  exactly as they already do today; only the now-dangling deliverable tag goes.
+     *
+     *  Filed rows only, by construction — pair it with [clearDeliverableAnchorsOfProject]. */
     @Query(
         "UPDATE entries SET deliverable = NULL, anchorDeliverable = NULL " +
             "WHERE deliverable IS NOT NULL AND LOWER(project) = LOWER(:project) " +
             "AND LOWER(goalCategory) = LOWER(:area)",
     )
     suspend fun clearDeliverablesOfProject(project: String, area: String)
+
+    /**
+     * The **anchor-scoped twin** of [clearDeliverablesOfProject]: drop the deliverable PIN of entries
+     * anchored to ([project], [area]) but not yet filed.
+     *
+     * The rule this batch keeps re-learning: **an anchor must be scoped by anchor columns.** A tap-in
+     * capture that hasn't been through the categorizer — RAW, FAILED after an AI outage, PENDING_* queued
+     * offline — has every filed column NULL, so the filed-scoped clear above cannot see it. Clearing only
+     * half was actively harmful once [remapAnchorScoped] learned to reach those rows: on a
+     * reassign/create-new the pin's PROJECT was rewritten to the destination while its DELIVERABLE was
+     * left behind, so the entry arrived at somebody else's folder still pinned to "Phase 1" — and if the
+     * destination owned its own "Phase 1", `prepare()` resolved it and filed the win there, durably
+     * anchored, under no signal at all.
+     *
+     * ⚠️ MUST run BEFORE [remapAnchorScoped], which rewrites the `anchorProject` this WHERE reads.
+     */
+    @Query(
+        "UPDATE entries SET anchorDeliverable = NULL " +
+            "WHERE anchorDeliverable IS NOT NULL AND LOWER(anchorProject) = LOWER(:project) " +
+            "AND (LOWER(anchorGoalArea) = LOWER(:area) " +
+            "OR (anchorGoalArea IS NULL AND LOWER(goalCategory) = LOWER(:area)))",
+    )
+    suspend fun clearDeliverableAnchorsOfProject(project: String, area: String)
 
     /** Clear the deliverable axis on every entry under a **deleted category** (whose projects and
      *  deliverables are both cascaded away). Needed because deleting a category deliberately LEAVES the

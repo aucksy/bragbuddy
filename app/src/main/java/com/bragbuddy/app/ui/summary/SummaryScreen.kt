@@ -1404,12 +1404,17 @@ private fun RetagSheet(
     var selectedCategory by rememberSaveable(line) { mutableStateOf(initialCategory) }
     // Scoped to the current category, mirroring Recategorize.defaultFolder: a folder is unique by
     // (name, goalArea), so a project only preselects under the category it actually belongs to.
-    val initialFolder = remember(line, currentProject, currentArea, folders) {
+    val initialFolder = remember(line, currentProject, initialCategory, folders) {
         // Resolve to the FOLDER's own spelling rather than echoing the model's: `currentProject` is an
         // unconstrained model-authored string, and Apply writes it straight into the record.
+        //
+        // Scoped by `initialCategory` — the category the sheet actually OPENS on — not the line's raw
+        // area. When the line's area names no live category, the two differ, and resolving against the
+        // raw area answered a question the sheet never asks: it decided the project was un-resolvable
+        // while the chips below happily offered that same folder under the fallback category.
         currentProject?.let { p ->
             folders.firstOrNull {
-                it.name.equals(p, ignoreCase = true) && it.goalArea.equals(currentArea, ignoreCase = true)
+                it.name.equals(p, ignoreCase = true) && it.goalArea.equals(initialCategory.orEmpty(), ignoreCase = true)
             }?.name
         }
     }
@@ -1703,12 +1708,17 @@ private fun RetagSheet(
                 Spacer(Modifier.height(Spacing.s3))
                 PrimaryButton("Apply", palette, enabled = selectedCategory != null) {
                     selectedCategory?.let {
+                        // Honour a name still sitting in the "+ New" field. Requiring "Add" first and
+                        // silently binning it otherwise punishes the user for a step that looks optional —
+                        // they typed the name and pressed the button that says Apply.
+                        val staged = newDeliverable
+                            ?: newDeliverableText.trim().takeIf { t -> namingDeliverable && t.isNotEmpty() }
                         onApply(
                             it,
                             selectedFolder,
-                            newDeliverable ?: selectedDeliverable,
-                            newDeliverable != null,
-                            effectiveTouched,
+                            staged ?: selectedDeliverable,
+                            staged != null,
+                            effectiveTouched || staged != null,
                             projectSettled,
                         )
                     }

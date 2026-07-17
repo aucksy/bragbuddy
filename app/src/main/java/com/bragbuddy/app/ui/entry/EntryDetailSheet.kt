@@ -411,12 +411,17 @@ fun EntryDetailSheet(
                     Spacer(Modifier.height(Spacing.s4))
                     ApplyRecatButton(enabled = selectedCategory != null, palette = palette) {
                         val cat = selectedCategory ?: return@ApplyRecatButton
+                        // Honour a name still sitting in the "+ New" field. Requiring "Add" first and
+                        // silently binning it otherwise punishes the user for a step that looks optional —
+                        // they typed the name and pressed the button that says Apply.
+                        val staged = newDeliverable
+                            ?: newDeliverableText.trim().takeIf { namingDeliverable && it.isNotEmpty() }
                         onRecategorize(
                             cat,
                             selectedFolder ?: OUTSIDE_PROJECT,
-                            newDeliverable ?: selectedDeliverable,
+                            staged ?: selectedDeliverable,
                             selectedBehaviours.toList(),
-                            newDeliverable != null,
+                            staged != null,
                         )
                         onDismiss()
                     }
