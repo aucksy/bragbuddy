@@ -225,10 +225,12 @@ class EntryRepository @Inject constructor(
     suspend fun countDeliverableReferences(name: String, project: String, area: String): Int =
         processor.countDeliverableReferences(name, project, area)
 
-    /** Re-tag every record of a renamed deliverable, old → new (deterministic, no AI). */
-    fun renameDeliverableEntries(old: String, project: String, area: String, newName: String) {
-        appScope.launch { processor.renameDeliverableEverywhere(old, project, area, newName) }
-    }
+    /** Rename a deliverable **and** re-tag every record of it, in one transaction (deterministic, no AI).
+     *  Returns true when it landed, false when refused (blank / unchanged / name already taken here).
+     *  Suspends deliberately: the two halves must not be observable apart — see
+     *  [EntryProcessor.renameDeliverable] for what splitting them looked like on screen. */
+    suspend fun renameDeliverable(id: Long, newName: String, description: String?): Boolean =
+        processor.renameDeliverable(id, newName, description)
 
     /** Clear the deliverable tag + anchor of every entry of a DELETED deliverable. The entries stay —
      *  only the grouping goes, so they fall back to listing plainly under their project. */

@@ -478,6 +478,14 @@ class SummaryViewModel @Inject constructor(
      * [toProject] null = no specific project. A merged card (`count > 1`) re-files EVERY entry behind it.
      * [toDeliverable] null = not part of one (v0.33.0); [createDeliverable] means it was named in the
      * sheet and must be created before the win is filed into it.
+     *
+     * [deliverableTouched] false = **the user didn't answer the deliverable question**, so each entry
+     * keeps its own. This sheet cannot preselect that axis — a summary line is AI prose that only
+     * resolves to its source entries here, and a merged card resolves to several which may hold
+     * different deliverables. Treating "unanswered" as "none" silently wiped the deliverable (and its
+     * anchor) off any win the user had tap-in filed, whenever they opened this sheet to fix something
+     * else — a HIGH found in the v0.33.0 assessment, and the v0.31.0 project-axis bug repeated.
+     * Passing each entry's own value keeps the per-entry truth a merged card would otherwise flatten.
      */
     fun retagAchievement(
         areaName: String,
@@ -486,6 +494,7 @@ class SummaryViewModel @Inject constructor(
         toProject: String?,
         toDeliverable: String? = null,
         createDeliverable: Boolean = false,
+        deliverableTouched: Boolean = true,
     ) {
         val s = state.value ?: return
         if (bullet.isBlank() || toCategory.isBlank()) return
@@ -499,25 +508,32 @@ class SummaryViewModel @Inject constructor(
 
             var wroteBack = 0
             if (match != null) {
-                // A merged card re-files several entries. Only the FIRST asks to create the deliverable;
-                // the rest just file into it. The insert IGNOREs duplicates so passing the flag every
-                // time would still be correct — but this states the intent, and keeps the write count
-                // honest if the conflict strategy ever changes.
-                var createOnce = createDeliverable
                 for (id in match.entryIds) {
                     val e = entryRepository.getById(id) ?: continue
                     // Behaviour evidence is the AI's call and is preserved verbatim — this action is
                     // about PLACEMENT only, and recategorize() rewrites `demonstrates` wholesale.
+                    //
+                    // `createDeliverable` is passed on EVERY iteration, not just the first. A merged card
+                    // re-files several entries, and an earlier attempt to "create once then reuse" was a
+                    // real bug: `recategorize` **returns normally when it skips a row** (a still-filing
+                    // RAW or offline PENDING_* entry is deliberately left alone), so the flag would be
+                    // cleared by a call that never reached the insert — and every later entry would then
+                    // fail the destination validation and silently lose the deliverable the user just
+                    // named. The insert IGNOREs duplicates, so repeating it is free and cannot double-create.
                     runCatching {
                         entryRepository.recategorizeNow(
                             id = id,
                             goalArea = toCategory,
                             project = toProject?.takeIf { it.isNotBlank() } ?: OUTSIDE_PROJECT,
-                            deliverable = toDeliverable?.takeIf { it.isNotBlank() },
+                            // Untouched → this entry's OWN deliverable, not a blanket null. If the move
+                            // takes it to a different project the destination validation drops it there
+                            // anyway, which is correct — a deliverable belongs to its project.
+                            deliverable = if (deliverableTouched) toDeliverable?.takeIf { it.isNotBlank() }
+                            else e.deliverable,
                             demonstrates = e.demonstrates,
-                            createDeliverable = createOnce,
+                            createDeliverable = createDeliverable && deliverableTouched,
                         )
-                    }.onSuccess { wroteBack++; createOnce = false }
+                    }.onSuccess { wroteBack++ }
                 }
             }
 

@@ -46,11 +46,19 @@ interface ProjectDao {
 
     /** Move every sub-folder from one category (pillar) to another — used when a category is renamed.
      *  OR IGNORE: if a folder would collide with one already under the target category, skip it rather
-     *  than crash (the UI blocks renaming onto an existing category name; this is the safety net). */
-    @Query("UPDATE OR IGNORE projects SET goalArea = :newCategory WHERE goalArea = :oldCategory")
+     *  than crash (the UI blocks renaming onto an existing category name; this is the safety net).
+     *
+     *  Case-INSENSITIVE, like every other name match in this schema. A binary compare here silently
+     *  diverged from [DeliverableDao.reassignCategory], which is case-insensitive: rename a category by
+     *  case alone (the cascade is skipped as a no-op, leaving folders on the old casing), then rename it
+     *  properly, and the folders no longer matched while their deliverables did — moving deliverables to
+     *  a category holding no parent project, unreachable forever (v0.33.0 assessment). */
+    @Query("UPDATE OR IGNORE projects SET goalArea = :newCategory WHERE LOWER(goalArea) = LOWER(:oldCategory)")
     suspend fun reassignCategory(oldCategory: String, newCategory: String)
 
-    /** Delete every sub-folder under a category — used when the category itself is removed. */
-    @Query("DELETE FROM projects WHERE goalArea = :category")
+    /** Delete every sub-folder under a category — used when the category itself is removed.
+     *  Case-insensitive for the same reason as [reassignCategory]: it must delete exactly the set
+     *  [DeliverableDao.deleteByCategory] deletes, or one table outlives the other. */
+    @Query("DELETE FROM projects WHERE LOWER(goalArea) = LOWER(:category)")
     suspend fun deleteByCategory(category: String)
 }

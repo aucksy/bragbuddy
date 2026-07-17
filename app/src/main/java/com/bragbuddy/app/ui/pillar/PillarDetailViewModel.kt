@@ -51,6 +51,15 @@ data class PillarDetail(
     val singleFolder: Boolean = false,
     val projects: List<ProjectBullets> = emptyList(),
     val evidence: List<EntryEntity> = emptyList(),
+    /**
+     * The **category (goal area)** this screen is showing — stated explicitly rather than re-derived,
+     * because it is NOT always [name]: in the single-folder view [name] is the *folder*, and the pillar
+     * name rides in [blurb]. Every deliverable action scopes by it (a deliverable is unique by
+     * `(name, project, goalArea)`), so both the screen and the VM must read the same one — deriving it
+     * in two places is how they drift, and a wrong area silently no-ops the action or writes elsewhere.
+     * Blank for the behaviour / synthetic / not-found views, which own no deliverables.
+     */
+    val goalArea: String = "",
 )
 
 /**
@@ -119,6 +128,7 @@ class PillarDetailViewModel @Inject constructor(
                     isBehaviour = false,
                     singleFolder = true,
                     projects = listOfNotNull(match),
+                    goalArea = pillar.name,
                 )
             } else {
                 PillarDetail(
@@ -128,6 +138,7 @@ class PillarDetailViewModel @Inject constructor(
                     colorIndex = index,
                     isBehaviour = false,
                     projects = allGroups,
+                    goalArea = pillar.name,
                 )
             }
         }
@@ -154,25 +165,22 @@ class PillarDetailViewModel @Inject constructor(
     // ---------------- Deliverable CRUD (v0.33.0) — mirrors HomeViewModel; identity is the name triple.
     // This screen always knows its own category, so callers pass the project and it supplies the area.
 
-    /** This screen's category — the goal area every deliverable action here is scoped to. Blank in the
-     *  single-folder view, where `blurb` carries the pillar name instead of the pillar's own blurb. */
-    private fun currentArea(): String {
-        val d = detail.value
-        return if (d.singleFolder) d.blurb.trim() else d.name.trim()
-    }
+    /** This screen's category — the one [PillarDetail.goalArea] the screen renders, so an action can
+     *  never scope to a different area than the header the user is looking at. Blank (→ every action
+     *  below no-ops) for the behaviour / synthetic / not-found views, which own no deliverables. */
+    private fun currentArea(): String = detail.value.goalArea.trim()
 
     fun createDeliverable(name: String, project: String) = viewModelScope.launch {
         val area = currentArea().ifBlank { return@launch }
         runCatching { deliverablesRepo.create(name, project, area) }
     }
 
+    /** Rename a deliverable. The row and every record that references it move together, in one
+     *  transaction inside the processor — see [EntryRepository.renameDeliverable]. */
     fun renameDeliverableByName(oldName: String, project: String, newName: String) = viewModelScope.launch {
         val area = currentArea().ifBlank { return@launch }
-        val n = newName.trim()
-        if (n.isEmpty() || n.equals(oldName.trim(), ignoreCase = true)) return@launch
         val d = runCatching { deliverablesRepo.byIdentity(oldName, project, area) }.getOrNull() ?: return@launch
-        val before = runCatching { deliverablesRepo.rename(d.id, n, d.description) }.getOrNull() ?: return@launch
-        repository.renameDeliverableEntries(before.name, before.project, before.goalArea, n)
+        runCatching { repository.renameDeliverable(d.id, newName, d.description) }
     }
 
     fun setDeliverableDoneByName(name: String, project: String, done: Boolean) = viewModelScope.launch {

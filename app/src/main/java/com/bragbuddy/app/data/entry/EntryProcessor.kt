@@ -306,10 +306,20 @@ class EntryProcessor @Inject constructor(
             val isOutside = clean.isBlank() || clean.equals(OUTSIDE_PROJECT, ignoreCase = true)
             val area = goalArea.trim().ifBlank { e.goalCategory?.takeIf { it.isNotBlank() } ?: INBOX_LABEL }
             val cleanDemos = demonstrates.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-            // Create the destination deliverable first when the user named a new one. IGNORE-on-conflict
-            // means racing/duplicate names simply reuse the existing row and the win joins it.
-            val wanted = deliverable?.trim()?.takeIf { it.isNotBlank() }
-            if (createDeliverable && wanted != null && !isOutside && area.isNotBlank()) {
+            // Resolve the deliverable against the DESTINATION — never trust the name that came in. A
+            // deliverable exists only inside one (project, goalArea), so "no project" can't have one, and
+            // a stale pick (deleted since, or belonging to the project the user just moved away from)
+            // resolves to none.
+            val cleanDeliverable: String? = run {
+                val wanted = deliverable?.trim()?.takeIf { it.isNotBlank() } ?: return@run null
+                if (isOutside || area.isBlank()) return@run null
+                // Match case-INSENSITIVELY and adopt the stored row's own spelling. The unique index is
+                // case-sensitive while every lookup here is not, so a "+ New" named "Alpha" beside an
+                // existing "alpha" would insert a TWIN the UI can't tell apart — Home would render two
+                // headers, one of them permanently empty (found in the v0.33.0 accuracy assessment; the
+                // dedicated create dialogs block this, the move sheets' inline "+ New" didn't).
+                deliverableDao.getByIdentity(wanted, clean, area)?.let { return@run it.name }
+                if (!createDeliverable) return@run null
                 runCatching {
                     deliverableDao.insert(
                         DeliverableEntity(
@@ -318,11 +328,10 @@ class EntryProcessor @Inject constructor(
                         ),
                     )
                 }
+                // Re-read rather than assume: the insert IGNOREs on conflict, so only a row that really
+                // landed may be tagged — otherwise the entry would point at nothing.
+                deliverableDao.getByIdentity(wanted, clean, area)?.name
             }
-            // Validated against the destination, not trusted: a deliverable exists only inside one
-            // (project, goalArea), so "no project" can't have one, and a stale pick (its deliverable
-            // deleted, or belonging to the project the user just moved AWAY from) resolves to none.
-            val cleanDeliverable = wanted?.takeIf { !isOutside && deliverableExists(it, clean, area) }
             val updated = e.copy(
                 status = EntryStatus.PROCESSED,
                 // A bullet-less row (recategorized straight from FAILED) falls back to its transcript so
@@ -600,27 +609,50 @@ class EntryProcessor @Inject constructor(
     }
 
     /**
-     * Deterministically re-tag every record of a renamed deliverable — NO AI, instant, mirroring
-     * [remapProjectEverywhere]. Rewrites the filed label and the anchor together (one statement; unlike
-     * the project remap there's no ordering hazard, since neither `project` nor `goalCategory` moves),
-     * then rebuilds the rollup so the summary follows the new name.
+     * Rename a deliverable **and re-tag every record of it, atomically** — NO AI, deterministic.
+     * Returns true when the rename landed; false when it was refused (blank, unchanged, or the name is
+     * already taken under the same project) or the row is gone.
+     *
+     * **Both halves live here, in ONE transaction, deliberately.** They were briefly split — rename the
+     * row in the repository, then remap the entries fire-and-forget — and that was visibly wrong:
+     * rendering canonicalises each entry against the *live* deliverable names ([deliverableGroups]), so
+     * the instant the row was renamed every entry still tagged with the old name matched nothing and
+     * fell out into the project's loose list. The user saw the deliverable go empty and its wins scatter.
+     * And the window was not milliseconds: the remap blocks on this very [mutex], which `process()`
+     * holds across a live Groq round-trip — so renaming while any capture was filing left the record
+     * looking gutted for the whole network call, then snapped back. It self-healed; it looked like data
+     * loss, which for a record whose only job is to be trustworthy is just as bad.
+     *
+     * Collisions are refused up front rather than left to `UPDATE OR IGNORE`, which reports nothing —
+     * and the row is re-read afterwards, so the remap can only ever follow a rename that actually landed
+     * (the v0.33.0 review's intent-vs-effect lesson).
      */
-    suspend fun renameDeliverableEverywhere(
-        old: String,
-        project: String,
-        area: String,
-        newName: String,
-    ) = mutex.withLock {
-        val o = old.trim()
-        val p = project.trim()
-        val a = area.trim()
-        val nw = newName.trim()
-        if (o.isEmpty() || nw.isEmpty() || o.equals(nw, ignoreCase = true)) return@withLock
+    suspend fun renameDeliverable(id: Long, newName: String, description: String?): Boolean = mutex.withLock {
+        val clean = newName.trim()
+        if (clean.isEmpty()) return@withLock false
+        val existing = deliverableDao.getById(id) ?: return@withLock false
+        // Case-insensitive, matching the name dialogs' own "unchanged" test: a case-only rename is a
+        // no-op here rather than a half-applied one (`getByIdentity` would find this very row anyway).
+        if (clean.equals(existing.name, ignoreCase = true)) return@withLock false
+        if (deliverableDao.getByIdentity(clean, existing.project, existing.goalArea) != null) return@withLock false
+
+        var renamed = false
         runCatching {
-            entryDao.remapDeliverableScoped(o, p, a, nw)
-            reconcileLocked()
+            db.withTransaction {
+                deliverableDao.update(
+                    existing.copy(name = clean, description = description?.trim()?.takeIf { it.isNotBlank() }),
+                )
+                val after = deliverableDao.getById(id)
+                if (after != null && !after.name.equals(existing.name, ignoreCase = true)) {
+                    // One statement rewrites the filed label AND the anchor. Unlike the project remap
+                    // there's no ordering hazard: neither `project` nor `goalCategory` moves here.
+                    entryDao.remapDeliverableScoped(existing.name, existing.project, existing.goalArea, after.name)
+                    renamed = true
+                }
+            }
+            if (renamed) reconcileLocked() // the rollup is a derived store, so it syncs after the commit
         }
-        Unit
+        renamed
     }
 
     /**

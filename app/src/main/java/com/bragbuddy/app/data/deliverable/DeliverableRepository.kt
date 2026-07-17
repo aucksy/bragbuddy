@@ -56,43 +56,10 @@ class DeliverableRepository @Inject constructor(
         )
     }
 
-    /**
-     * Rename / re-describe in place. The parents never change here — a deliverable moves only by its
-     * project moving (which cascades in `ProjectRepository`).
-     *
-     * Returns the row's identity **BEFORE** the change, so the caller can remap the entries that
-     * reference the old name — and **null when the name did not actually move**, which the caller MUST
-     * treat as "do not remap".
-     *
-     * ⚠️ That distinction is the whole contract, and it is why this re-reads the row instead of trusting
-     * the requested name. [DeliverableDao.update] is `UPDATE OR IGNORE`: a rename colliding with a
-     * sibling under the same (project, goalArea) is **silently skipped — no exception, no row change**.
-     * Reporting success from the requested name there was a real corruption (found in review, v0.33.0):
-     * renaming "Phase 1" → "Phase 2" when "Phase 2" already exists left "Phase 1" untouched on screen
-     * while the remap rewrote its entries' `deliverable` AND `anchorDeliverable` to "Phase 2" — so every
-     * one of them silently jumped into an unrelated deliverable, durably (the anchor survives a re-file)
-     * and with no undo. The user's own placement decision, overwritten by one they never made.
-     */
-    suspend fun rename(id: Long, name: String, description: String?): DeliverableEntity? {
-        val existing = dao.getById(id) ?: return null
-        val clean = name.trim().ifBlank { return null }
-        // Refuse a colliding rename outright rather than leaning on OR IGNORE, so the intent is stated
-        // here rather than inferred from a silent non-effect below.
-        if (!clean.equals(existing.name, ignoreCase = true) &&
-            dao.getByIdentity(clean, existing.project, existing.goalArea) != null
-        ) {
-            return null
-        }
-        dao.update(
-            existing.copy(
-                name = clean,
-                description = description?.trim()?.takeIf { it.isNotBlank() },
-            ),
-        )
-        // Report the EFFECT, not the intent: only a row whose name genuinely moved may be remapped.
-        val after = dao.getById(id) ?: return null
-        return existing.takeIf { !after.name.equals(it.name, ignoreCase = true) }
-    }
+    // NOTE: there is deliberately **no `rename` here**. A rename must rewrite the row AND re-tag every
+    // entry that references it by name, in ONE transaction — split across two layers, the UI showed the
+    // deliverable go empty and its wins scatter into the project until the second half landed. It lives
+    // in `EntryProcessor.renameDeliverable`, which owns the entry mutex and the transaction.
 
     /** Mark done / re-open. Done drops it out of the log-into list; its entries stay visible. */
     suspend fun setDone(id: Long, done: Boolean) = dao.setDone(id, done)

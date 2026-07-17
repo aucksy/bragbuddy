@@ -51,11 +51,21 @@ class ProjectRepository @Inject constructor(
         )
     }
 
-    /** Rename / re-describe / re-home a project. Its **deliverables follow it** — they're identified by
-     *  their parent's name, so without this a rename would strand every one of them (v0.33.0). */
-    suspend fun update(id: Long, name: String, goalArea: String, description: String?) {
-        val existing = dao.getById(id) ?: return
-        val clean = name.trim().ifBlank { return }
+    /**
+     * Rename / re-describe / re-home a project. Its **deliverables follow it** — they're identified by
+     * their parent's name, so without this a rename would strand every one of them (v0.33.0).
+     *
+     * **Returns the row AS STORED afterwards** (null if it's gone). Callers MUST compare it to what they
+     * asked for rather than assuming the rename landed: [ProjectDao.update] is `UPDATE OR IGNORE`, so a
+     * name colliding with a sibling folder under the same goal area is **silently skipped** — no
+     * exception, no row count. A caller that then acts on the *requested* name offers the user a
+     * rename-remap for a rename that never happened, and "Carry" merges this folder's records into the
+     * unrelated folder that already owned the name, wiping their deliverable tags on the way (found in
+     * the v0.33.0 stability assessment).
+     */
+    suspend fun update(id: Long, name: String, goalArea: String, description: String?): ProjectEntity? {
+        val existing = dao.getById(id) ?: return null
+        val clean = name.trim().ifBlank { return existing }
         val area = goalArea.trim().ifBlank { existing.goalArea }
         dao.update(
             existing.copy(
@@ -64,21 +74,16 @@ class ProjectRepository @Inject constructor(
                 description = description?.trim()?.takeIf { it.isNotBlank() },
             ),
         )
-        // Cascade on the EFFECT, not the intent — re-read rather than trusting `clean`/`area`.
-        // [ProjectDao.update] is `UPDATE OR IGNORE`, so a rename that collides with a sibling folder
-        // under the same goal area is silently skipped, and no caller validates that up front. Gating on
-        // the requested name would then move this project's deliverables to a project the user never
-        // touched (found in review, v0.33.0): rename "Alpha" → "Beta" where Beta exists, the folder stays
-        // "Alpha", but "Alpha"'s deliverables re-parent under Beta — leaving Alpha's entries tagged to a
-        // deliverable that is no longer there, and Beta owning one nobody created.
-        // Before this phase the IGNOREd update was a harmless no-op; it only desynchronises now that a
-        // second table hangs off the name.
-        val after = dao.getById(id) ?: return
+        // Cascade on the EFFECT, not the intent — re-read rather than trusting `clean`/`area`. See the
+        // KDoc above for why an IGNOREd update is invisible here. Before this phase the no-op affected
+        // nothing; it only desynchronises now that a second table hangs off the name.
+        val after = dao.getById(id) ?: return null
         if (!after.name.equals(existing.name, ignoreCase = true) ||
             !after.goalArea.equals(existing.goalArea, ignoreCase = true)
         ) {
             deliverables.remapProject(existing.name, existing.goalArea, after.name, after.goalArea)
         }
+        return after
     }
 
     /** Delete a project **and its deliverables** (a deliverable can't outlive the project it names).

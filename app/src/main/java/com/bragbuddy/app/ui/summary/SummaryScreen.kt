@@ -257,15 +257,12 @@ fun SummaryScreen(
                     line = target.bullet,
                     currentArea = target.area,
                     currentProject = target.project,
-                    // Always null this phase: a summary card has no deliverable to carry, because the
-                    // model isn't told deliverables exist until v0.34.0. The picker still SETS one.
-                    currentDeliverable = null,
                     framework = s.framework,
                     folders = s.allFolders,
                     deliverables = allDeliverables,
-                    onApply = { category, project, deliverable, createNew ->
+                    onApply = { category, project, deliverable, createNew, touched ->
                         viewModel.retagAchievement(
-                            target.area, target.bullet, category, project, deliverable, createNew,
+                            target.area, target.bullet, category, project, deliverable, createNew, touched,
                         )
                         retagLine = null
                     },
@@ -1320,14 +1317,19 @@ private fun RetagSheet(
     /** The line's CURRENT project (null = none). Preselected, so opening the sheet to change only the
      *  CATEGORY can't silently un-file the entry from a project the user never touched. */
     currentProject: String?,
-    /** The line's CURRENT deliverable (null = none), preselected for the same reason as the project. */
-    currentDeliverable: String?,
     framework: Framework,
     folders: List<SummaryViewModel.FolderRef>,
     deliverables: List<DeliverableEntity>,
-    /** (category, project, deliverable, createDeliverable) — `createDeliverable` means the name was
-     *  typed here and must be created before the win is filed into it. */
-    onApply: (String, String?, String?, Boolean) -> Unit,
+    /**
+     * (category, project, deliverable, createDeliverable, **deliverableTouched**).
+     *
+     * `deliverableTouched` false = "the user didn't say" → the host MUST leave each entry's existing
+     * deliverable alone. This sheet, unlike the entry-detail one, has **no current deliverable to
+     * preselect**: a summary line is AI-written prose that resolves back to its source entries only at
+     * Apply time (and a merged card resolves to several, which may differ). So the axis is opt-in rather
+     * than pre-filled with a guess — see the "Leave as is" chip.
+     */
+    onApply: (String, String?, String?, Boolean, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val noRipple = remember { MutableInteractionSource() }
@@ -1346,19 +1348,17 @@ private fun RetagSheet(
             },
         )
     }
-    // The deliverable axis (v0.33.0), scoped by BOTH parents for the same reason the folder is scoped
-    // by category: a deliverable is unique by (name, project, goalArea), never by name alone.
-    var selectedDeliverable by rememberSaveable(line) {
-        mutableStateOf(
-            currentDeliverable?.takeIf { d ->
-                deliverables.any {
-                    it.name.equals(d, ignoreCase = true) &&
-                        it.project.equals(currentProject.orEmpty(), ignoreCase = true) &&
-                        it.goalArea.equals(currentArea, ignoreCase = true)
-                }
-            },
-        )
-    }
+    // The deliverable axis (v0.33.0). THREE states, not two — this is the fix for a HIGH found in the
+    // v0.33.0 accuracy assessment. It previously hardcoded "no deliverable" as the selection, so a user
+    // who opened this sheet to fix the CATEGORY of a win they had tap-in filed into a deliverable had
+    // that deliverable (and its anchor) silently wiped by Apply — durable, no undo, under a snackbar
+    // reading "Re-filed in your record". That is the v0.31.0 project-axis HIGH, reproduced verbatim.
+    //
+    // The root cause was pretending to know: a summary line is AI prose whose source entries are only
+    // resolved at Apply time. So "untouched" is now its own state and means LEAVE IT ALONE, which the
+    // host honours per-entry — correct even for a merged card whose entries differ.
+    var deliverableTouched by rememberSaveable(line) { mutableStateOf(false) }
+    var selectedDeliverable by rememberSaveable(line) { mutableStateOf<String?>(null) }
     // A deliverable named right here, staged rather than created — Apply creates and files in one
     // locked step, so a fast tap can't beat the insert and have its tag silently dropped.
     var newDeliverable by rememberSaveable(line) { mutableStateOf<String?>(null) }
@@ -1399,6 +1399,7 @@ private fun RetagSheet(
                             selectedDeliverable = null
                             newDeliverable = null
                             namingDeliverable = false
+                            deliverableTouched = false
                         }
                     }
                     Row(
@@ -1426,6 +1427,9 @@ private fun RetagSheet(
                                 selectedDeliverable = null
                                 newDeliverable = null
                                 namingDeliverable = false
+                                // Moving to "no project" DOES settle the deliverable — there is nowhere
+                                // for one to live — so this counts as touching the axis.
+                                deliverableTouched = true
                             }
                             catFolders.forEach { f ->
                                 SelectChip(
@@ -1438,6 +1442,7 @@ private fun RetagSheet(
                                         selectedDeliverable = null
                                         newDeliverable = null
                                         namingDeliverable = false
+                                        deliverableTouched = false
                                     }
                                 }
                             }
@@ -1458,17 +1463,36 @@ private fun RetagSheet(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
+                                // "Leave as is" is the DEFAULT and is not a no-op chip: it is the only
+                                // honest answer this sheet has, because it doesn't know the line's
+                                // deliverable. Picking anything else overrides it.
+                                SelectChip(
+                                    "Leave as is",
+                                    selected = !deliverableTouched,
+                                    palette = palette,
+                                ) {
+                                    deliverableTouched = false
+                                    selectedDeliverable = null
+                                    newDeliverable = null
+                                    namingDeliverable = false
+                                }
                                 SelectChip(
                                     "None",
-                                    selected = selectedDeliverable == null && newDeliverable == null,
+                                    selected = deliverableTouched && selectedDeliverable == null && newDeliverable == null,
                                     palette = palette,
-                                ) { selectedDeliverable = null; newDeliverable = null; namingDeliverable = false }
+                                ) {
+                                    deliverableTouched = true
+                                    selectedDeliverable = null; newDeliverable = null; namingDeliverable = false
+                                }
                                 catDeliverables.forEach { d ->
                                     SelectChip(
                                         if (d.done) "${d.name} · Done" else d.name,
                                         selected = selectedDeliverable?.equals(d.name, ignoreCase = true) == true,
                                         palette = palette,
-                                    ) { selectedDeliverable = d.name; newDeliverable = null; namingDeliverable = false }
+                                    ) {
+                                        deliverableTouched = true
+                                        selectedDeliverable = d.name; newDeliverable = null; namingDeliverable = false
+                                    }
                                 }
                                 newDeliverable?.let { pending ->
                                     SelectChip("$pending · new", selected = true, palette = palette) {}
@@ -1513,6 +1537,7 @@ private fun RetagSheet(
                                             newDeliverable = n
                                             selectedDeliverable = null
                                             namingDeliverable = false
+                                            deliverableTouched = true
                                         }
                                     }
                                     Spacer(Modifier.width(6.dp))
@@ -1536,7 +1561,13 @@ private fun RetagSheet(
                 Spacer(Modifier.height(Spacing.s3))
                 PrimaryButton("Apply", palette, enabled = selectedCategory != null) {
                     selectedCategory?.let {
-                        onApply(it, selectedFolder, newDeliverable ?: selectedDeliverable, newDeliverable != null)
+                        onApply(
+                            it,
+                            selectedFolder,
+                            newDeliverable ?: selectedDeliverable,
+                            newDeliverable != null,
+                            deliverableTouched,
+                        )
                     }
                 }
             }

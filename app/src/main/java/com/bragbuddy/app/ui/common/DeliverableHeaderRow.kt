@@ -62,7 +62,11 @@ fun DeliverableHeader(
     onToggleDone: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
+    // Keyed on the group, not left positional. Callers wrap each group in `key(name)` so a reorder moves
+    // the whole slot and an open menu follows its own row — this is the backstop for anywhere that
+    // doesn't: if this slot is ever handed a DIFFERENT deliverable, the menu closes instead of silently
+    // re-pointing its Delete at it (the v0.33.0 stability assessment's async-reorder path).
+    var menuOpen by remember(group.name) { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
@@ -89,9 +93,15 @@ fun DeliverableHeader(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
+            // ONE weighted child, and no trailing `Spacer(weight(1f))`. A weighted child's max width is
+            // its SHARE of the free space (`fill = false` only relaxes the minimum), so a weighted name
+            // beside a weighted Spacer split the row 50/50 — the name ellipsised at half width with
+            // blank space sitting next to it, which is the one thing this row exists to show (found in
+            // the v0.33.0 stability assessment). Row measures unweighted children first, so the count,
+            // the chevron and the ⋮ each reserve their width; `fill = true` (the default) then lets the
+            // name claim all the remaining space and push them to the right edge — no Spacer needed.
+            modifier = Modifier.weight(1f),
         )
-        Spacer(Modifier.size(6.dp))
         Text(
             // A done one always states its count, since its wins are collapsed behind the row — without
             // it the row would read as though the work vanished.
@@ -100,7 +110,7 @@ fun DeliverableHeader(
             color = palette.text3,
             maxLines = 1,
         )
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.size(6.dp))
         if (collapsible) {
             Icon(
                 if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
@@ -111,7 +121,10 @@ fun DeliverableHeader(
         }
         Box {
             Box(
-                Modifier.size(26.dp).clip(RoundedCornerShape(999.dp)).clickable { menuOpen = true },
+                // 40dp, not the icon's 15: this menu holds Delete, and a target under the ~48dp
+                // guidance is one mis-tap away from an action the user didn't mean. The glyph stays
+                // small; only the touchable box grows.
+                Modifier.size(40.dp).clip(RoundedCornerShape(999.dp)).clickable { menuOpen = true },
                 contentAlignment = Alignment.Center,
             ) { Icon(Icons.Outlined.MoreVert, "More", tint = palette.text3, modifier = Modifier.size(15.dp)) }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {

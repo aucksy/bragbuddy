@@ -238,19 +238,16 @@ class HomeViewModel @Inject constructor(
         runCatching { deliverablesRepo.create(name, project, goalArea) }
     }
 
-    /** Rename, then re-tag every record that referenced the old name — both halves, or the entries are
-     *  orphaned from the deliverable they belong to. */
+    /** Rename a deliverable. The row and every record that references it move together, in one
+     *  transaction inside the processor — see [EntryRepository.renameDeliverable]. */
     fun renameDeliverableByName(
         oldName: String,
         project: String,
         goalArea: String,
         newName: String,
     ) = viewModelScope.launch {
-        val n = newName.trim()
-        if (n.isEmpty() || n.equals(oldName.trim(), ignoreCase = true)) return@launch
         val d = runCatching { deliverablesRepo.byIdentity(oldName, project, goalArea) }.getOrNull() ?: return@launch
-        val before = runCatching { deliverablesRepo.rename(d.id, n, d.description) }.getOrNull() ?: return@launch
-        repository.renameDeliverableEntries(before.name, before.project, before.goalArea, n)
+        runCatching { repository.renameDeliverable(d.id, newName, d.description) }
     }
 
     fun setDeliverableDoneByName(

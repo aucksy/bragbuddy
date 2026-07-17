@@ -107,20 +107,31 @@ class SettingsViewModel @Inject constructor(
         val existing = projectRepository.getById(id)
         // Preserve the folder's existing detail — the Settings dialog doesn't edit it, and passing null
         // silently wiped it before. Only the name / goal area change here.
-        projectRepository.update(id, name, goalArea, description = existing?.description)
+        // `stored` is the row AS SAVED — NOT what was asked for. See the remap gate below.
+        val stored = projectRepository.update(id, name, goalArea, description = existing?.description)
         // ⚠️ ORDER IS LOAD-BEARING (v0.33.0): the update above is AWAITED, and it is what moves this
         // folder's deliverables to their new parent. The remap offered below resolves each entry's
         // deliverable tag by asking whether it EXISTS at the destination — so a remap that ran before
         // the move would find nothing and wipe every tag. See EntryDao.clearDeliverablesNotUnder.
-        // A rename of an existing folder with filed records → offer the 3-option remap (Phase B2b).
-        // The Settings dialog can change the folder's goal area too, so match on the OLD area
-        // (existing.goalArea) and carry to the NEW area (goalArea).
+        //
+        // ⚠️ And the offer is gated on the STORED name/area, never the requested ones. `ProjectDao.update`
+        // is `UPDATE OR IGNORE`, so renaming onto an existing sibling folder is silently skipped and
+        // nothing here validates it. Offering a remap for a rename that never landed let "Carry" merge
+        // this folder's records into the unrelated folder that already owned the name — and wipe their
+        // deliverable tags on the way (v0.33.0 stability assessment).
         val oldName = existing?.name
         val oldArea = existing?.goalArea.orEmpty()
-        val rn = name.trim()
-        if (oldName != null && rn.isNotBlank() && !oldName.equals(rn, ignoreCase = true)) {
-            val count = runCatching { entryRepository.countProjectReferences(oldName, oldArea) }.getOrDefault(0)
-            if (count > 0) _pendingProjectRemap.value = ProjectRemap(oldName, rn, oldArea, goalArea.trim(), count)
+        val newName = stored?.name ?: return@launch
+        val newArea = stored.goalArea
+        // The dialog can change the folder's goal area as well as its name, so BOTH count as a move: a
+        // category-only re-home used to skip the offer entirely, stranding every record's `goalCategory`
+        // on the old category — the folder then rendered under BOTH (records under the old, its
+        // deliverable groups under the new), so the structure silently vanished from the records' side.
+        val moved = oldName != null &&
+            (!oldName.equals(newName, ignoreCase = true) || !oldArea.equals(newArea, ignoreCase = true))
+        if (moved) {
+            val count = runCatching { entryRepository.countProjectReferences(oldName!!, oldArea) }.getOrDefault(0)
+            if (count > 0) _pendingProjectRemap.value = ProjectRemap(oldName!!, newName, oldArea, newArea, count)
         }
     }
 

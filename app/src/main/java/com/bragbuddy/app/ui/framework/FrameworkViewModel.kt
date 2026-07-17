@@ -142,9 +142,14 @@ class FrameworkViewModel @Inject constructor(
         val rn = name.trim().ifBlank { return }
         val area = category.trim()
         viewModelScope.launch {
+            // `stored` is the row AS SAVED — NOT what was asked for. See the remap gate below.
+            var stored: com.bragbuddy.app.data.local.ProjectEntity? = null
             val newId = runCatching {
                 if (id == null) projects.create(rn, area, detail.trim().ifBlank { null })
-                else { projects.update(id, rn, area, detail.trim().takeIf { it.isNotBlank() }); id }
+                else {
+                    stored = projects.update(id, rn, area, detail.trim().takeIf { it.isNotBlank() })
+                    id
+                }
             }.getOrDefault(id ?: 0L)
             onSaved(newId)
             val prev = previousName?.trim()
@@ -153,10 +158,18 @@ class FrameworkViewModel @Inject constructor(
             // remap's `clearDeliverablesNotUnder` then asks whether each tagged deliverable EXISTS at the
             // destination — so if the offer ever raced ahead of the update, a plain "carry" would find
             // nothing there and wipe every entry's deliverable tag.
+            //
+            // ⚠️ And the offer is gated on the STORED name, never `rn`. `ProjectDao.update` is
+            // `UPDATE OR IGNORE`: renaming "Alpha" → "Beta" when Beta already exists is silently skipped,
+            // and nothing here validates that. Offering the remap for a rename that never happened let
+            // "Carry" merge Alpha's records into the unrelated Beta AND wipe their deliverable tags on the
+            // way (found in the v0.33.0 stability assessment) — the same intent-vs-effect trap as the
+            // repository cascade, one layer up.
             // A project row's category (`area`) doesn't change here, so old area == new area == area.
-            if (id != null && !prev.isNullOrBlank() && !prev.equals(rn, ignoreCase = true)) {
+            val landed = stored?.name ?: prev
+            if (id != null && !prev.isNullOrBlank() && !prev.equals(landed, ignoreCase = true)) {
                 val count = runCatching { entries.countProjectReferences(prev, area) }.getOrDefault(0)
-                if (count > 0) _pendingProjectRemap.value = ProjectRemap(prev, rn, area, area, count)
+                if (count > 0) _pendingProjectRemap.value = ProjectRemap(prev, landed!!, area, area, count)
             }
         }
     }

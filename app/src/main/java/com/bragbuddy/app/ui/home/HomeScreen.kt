@@ -48,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -629,38 +630,37 @@ private fun FolderCard(
                     // Active deliverables: a heading with its wins already under it — no extra tap
                     // (owner's call). Then the loose wins with no heading at all, because "not in a
                     // deliverable" is the ordinary case and labelling it would be noise on every project.
+                    // `key(g.name)`: these render in a forEach, so state would otherwise bind to the SLOT
+                    // — and groups reorder on their own (sorted by recency, so an entry finishing filing
+                    // in the background re-sorts them). With an open ⋮ popup covering the swap, the next
+                    // tap would land on whatever slid into that slot. Keyed, a group carries its state.
                     view.groups.forEach { g ->
-                        DeliverableHeader(
-                            group = g,
-                            hue = hue,
-                            palette = palette,
-                            expanded = true,
-                            collapsible = false,
-                            onToggle = {},
-                            onAddEntry = { onAddEntryTo(g.name) },
-                            onRename = { onRenameDeliverable(g.name) },
-                            onToggleDone = { onSetDeliverableDone(g.name, true) },
-                            onDelete = { onDeleteDeliverable(g.name) },
-                        )
-                        g.entries.forEach { entry ->
-                            EntryBulletRow(
-                                entry = entry,
+                        key(g.name) {
+                            DeliverableHeader(
+                                group = g,
                                 hue = hue,
-                                showFromProject = false,
-                                indent = true,
-                                onEdit = { onEdit(entry) },
-                                onRedo = { onRedo(entry) },
-                                onDelete = { onDelete(entry) },
-                                onTap = { onOpenDetail(entry) },
+                                palette = palette,
+                                expanded = true,
+                                collapsible = false,
+                                onToggle = {},
+                                onAddEntry = { onAddEntryTo(g.name) },
+                                onRename = { onRenameDeliverable(g.name) },
+                                onToggleDone = { onSetDeliverableDone(g.name, true) },
+                                onDelete = { onDeleteDeliverable(g.name) },
                             )
-                        }
-                        if (g.entries.isEmpty()) {
-                            Text(
-                                "Nothing logged here yet",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = palette.text3,
-                                modifier = Modifier.padding(start = 22.dp),
-                            )
+                            g.entries.forEach { entry ->
+                                EntryBulletRow(
+                                    entry = entry,
+                                    hue = hue,
+                                    showFromProject = false,
+                                    indent = true,
+                                    onEdit = { onEdit(entry) },
+                                    onRedo = { onRedo(entry) },
+                                    onDelete = { onDelete(entry) },
+                                    onTap = { onOpenDetail(entry) },
+                                )
+                            }
+                            if (g.entries.isEmpty()) EmptyGroupNote(palette)
                         }
                     }
                     view.loose.forEach { entry ->
@@ -677,31 +677,37 @@ private fun FolderCard(
                     // Done ones sit at the bottom, collapsed — they never hide their entries, they just
                     // stop competing for attention with live work.
                     view.doneGroups.forEach { g ->
-                        val open = isDeliverableExpanded(g.name)
-                        DeliverableHeader(
-                            group = g,
-                            hue = hue,
-                            palette = palette,
-                            expanded = open,
-                            collapsible = true,
-                            onToggle = { onToggleDeliverable(g.name) },
-                            onAddEntry = { onAddEntryTo(g.name) },
-                            onRename = { onRenameDeliverable(g.name) },
-                            onToggleDone = { onSetDeliverableDone(g.name, false) },
-                            onDelete = { onDeleteDeliverable(g.name) },
-                        )
-                        if (open) {
-                            g.entries.forEach { entry ->
-                                EntryBulletRow(
-                                    entry = entry,
-                                    hue = hue,
-                                    showFromProject = false,
-                                    indent = true,
-                                    onEdit = { onEdit(entry) },
-                                    onRedo = { onRedo(entry) },
-                                    onDelete = { onDelete(entry) },
-                                    onTap = { onOpenDetail(entry) },
-                                )
+                        key(g.name) {
+                            val open = isDeliverableExpanded(g.name)
+                            DeliverableHeader(
+                                group = g,
+                                hue = hue,
+                                palette = palette,
+                                expanded = open,
+                                collapsible = true,
+                                onToggle = { onToggleDeliverable(g.name) },
+                                onAddEntry = { onAddEntryTo(g.name) },
+                                onRename = { onRenameDeliverable(g.name) },
+                                onToggleDone = { onSetDeliverableDone(g.name, false) },
+                                onDelete = { onDeleteDeliverable(g.name) },
+                            )
+                            if (open) {
+                                g.entries.forEach { entry ->
+                                    EntryBulletRow(
+                                        entry = entry,
+                                        hue = hue,
+                                        showFromProject = false,
+                                        indent = true,
+                                        onEdit = { onEdit(entry) },
+                                        onRedo = { onRedo(entry) },
+                                        onDelete = { onDelete(entry) },
+                                        onTap = { onOpenDetail(entry) },
+                                    )
+                                }
+                                // A done deliverable can legitimately hold nothing (marked done before
+                                // anything was logged, or its last win deleted) — without this the
+                                // chevron flips and nothing appears, which reads as a dead control.
+                                if (g.entries.isEmpty()) EmptyGroupNote(palette)
                             }
                         }
                     }
@@ -714,6 +720,18 @@ private fun FolderCard(
             }
         }
     }
+}
+
+/** Shown when an expanded deliverable holds nothing — otherwise opening it does visibly nothing, which
+ *  reads as broken rather than empty. */
+@Composable
+private fun EmptyGroupNote(palette: BragPalette) {
+    Text(
+        "Nothing logged here yet",
+        style = MaterialTheme.typography.bodySmall,
+        color = palette.text3,
+        modifier = Modifier.padding(start = 22.dp),
+    )
 }
 
 @Composable

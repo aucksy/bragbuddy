@@ -136,9 +136,22 @@ fun ProjectRemapSheet(
                 )
                 Spacer(Modifier.height(Spacing.s2))
                 Text(
-                    "${remap.count} filed ${if (one) "record is" else "records are"} tagged to " +
-                        "“${remap.oldName}”, now renamed to “${remap.newName}”. Where should " +
-                        "${if (one) "it" else "they"} go?",
+                    // Adaptive, because the folder can move in three different ways and telling the user
+                    // it was "renamed" when only its category changed is simply false (v0.33.0: a
+                    // category-only re-home now offers this sheet too, where it used to silently strand
+                    // every record under the old category).
+                    buildString {
+                        append("${remap.count} filed ${if (one) "record is" else "records are"} tagged to ")
+                        append("“${remap.oldName}”, now ")
+                        val renamed = !remap.oldName.equals(remap.newName, ignoreCase = true)
+                        val moved = !remap.oldArea.equals(remap.newArea, ignoreCase = true)
+                        when {
+                            renamed && moved -> append("renamed to “${remap.newName}” and moved to ${remap.newArea}")
+                            renamed -> append("renamed to “${remap.newName}”")
+                            else -> append("moved to ${remap.newArea}")
+                        }
+                        append(". Where should ${if (one) "it" else "they"} go?")
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = palette.text3,
                 )
@@ -148,7 +161,11 @@ fun ProjectRemapSheet(
                 OptionRow(
                     selected = choice == 0,
                     title = "Carry ${if (one) "it" else "them"} to “${remap.newName}”",
-                    subtitle = "Keep the records with this project under its new name.",
+                    subtitle = if (remap.oldArea.equals(remap.newArea, ignoreCase = true)) {
+                        "Keep the records with this project under its new name."
+                    } else {
+                        "Keep the records with this project, under ${remap.newArea}."
+                    },
                     palette = palette,
                     onClick = { choice = 0 },
                 )

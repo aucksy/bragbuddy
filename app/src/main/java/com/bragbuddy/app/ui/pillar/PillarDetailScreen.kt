@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -333,7 +334,12 @@ fun PillarDetailScreen(
                 }
                 if (!detail.synthetic) {
                     item(key = "add-folder-deliverable") {
-                        if (proj?.isOutside != true) {
+                        // `proj != null` matters: the folder arg can match no group (deleted from
+                        // another surface, or a restore landed while this screen was open), and
+                        // `detail.name` then falls back to the raw route argument — so this would offer
+                        // to create a deliverable under a project that doesn't exist, producing a row
+                        // that renders nowhere (v0.33.0 assessment).
+                        if (proj != null && !proj.isOutside) {
                             AddRow("Add ${DELIVERABLE_LABEL.lowercase()}", palette) {
                                 createDeliverableFor = DeliverableTarget(detail.name, "")
                             }
@@ -430,12 +436,13 @@ fun PillarDetailScreen(
             onDismiss = { showAddProject = false },
         )
     }
-    // Sibling names a new/renamed deliverable must not collide with. Scoped by BOTH parents — this
-    // screen IS one category, so its own name supplies the area (see the VM's currentArea()).
+    // Sibling names a new/renamed deliverable must not collide with. Scoped by BOTH parents, reading
+    // the SAME `detail.goalArea` the VM's actions scope by — deriving the area here independently is
+    // how the two would drift into checking one project's names while writing to another's.
     fun takenNames(project: String) = deliverables
         .filter {
             it.project.equals(project, ignoreCase = true) &&
-                it.goalArea.equals(if (detail.singleFolder) detail.blurb else detail.name, ignoreCase = true)
+                it.goalArea.equals(detail.goalArea, ignoreCase = true)
         }
         .map { it.name }
 
@@ -725,38 +732,63 @@ private fun ProjectBody(
         )
     }
 
+    // `key(g.name)` on each group: these render in a forEach, so without it Compose binds state to the
+    // SLOT, and groups reorder on their own (the sort is by recency — an entry finishing filing in the
+    // background re-sorts them under an open menu). The popup hides the swap, so the next tap would hit
+    // whatever slid into that slot. Keyed, the whole group moves with its state.
     project.activeDeliverables.forEach { g ->
-        DeliverableHeader(
-            group = g,
-            hue = hue,
-            palette = palette,
-            expanded = true,
-            collapsible = false,
-            onToggle = {},
-            onAddEntry = { onAddEntryTo(g.name) },
-            onRename = { onRenameDeliverable(g.name) },
-            onToggleDone = { onSetDeliverableDone(g.name, true) },
-            onDelete = { onDeleteDeliverable(g.name) },
-        )
-        g.entries.forEach { bullet(it, indent = true) }
+        key(g.name) {
+            DeliverableHeader(
+                group = g,
+                hue = hue,
+                palette = palette,
+                expanded = true,
+                collapsible = false,
+                onToggle = {},
+                onAddEntry = { onAddEntryTo(g.name) },
+                onRename = { onRenameDeliverable(g.name) },
+                onToggleDone = { onSetDeliverableDone(g.name, true) },
+                onDelete = { onDeleteDeliverable(g.name) },
+            )
+            g.entries.forEach { bullet(it, indent = true) }
+            // Home says this; without it the deep view shows a bare heading and reads like a bug.
+            if (g.entries.isEmpty()) EmptyGroupNote(palette)
+        }
     }
     project.loose.forEach { bullet(it, indent = false) }
     project.doneDeliverables.forEach { g ->
-        // Selection mode force-opens everything, exactly as the project level does — a hidden win
-        // can't be bulk-selected, and a done deliverable's wins are still part of the record.
-        val open = selectionMode || isDeliverableExpanded(g.name)
-        DeliverableHeader(
-            group = g,
-            hue = hue,
-            palette = palette,
-            expanded = open,
-            collapsible = true,
-            onToggle = { onToggleDeliverable(g.name) },
-            onAddEntry = { onAddEntryTo(g.name) },
-            onRename = { onRenameDeliverable(g.name) },
-            onToggleDone = { onSetDeliverableDone(g.name, false) },
-            onDelete = { onDeleteDeliverable(g.name) },
-        )
-        if (open) g.entries.forEach { bullet(it, indent = true) }
+        key(g.name) {
+            // Selection mode force-opens everything, exactly as the project level does — a hidden win
+            // can't be bulk-selected, and a done deliverable's wins are still part of the record.
+            val open = selectionMode || isDeliverableExpanded(g.name)
+            DeliverableHeader(
+                group = g,
+                hue = hue,
+                palette = palette,
+                expanded = open,
+                collapsible = true,
+                onToggle = { onToggleDeliverable(g.name) },
+                onAddEntry = { onAddEntryTo(g.name) },
+                onRename = { onRenameDeliverable(g.name) },
+                onToggleDone = { onSetDeliverableDone(g.name, false) },
+                onDelete = { onDeleteDeliverable(g.name) },
+            )
+            if (open) {
+                g.entries.forEach { bullet(it, indent = true) }
+                if (g.entries.isEmpty()) EmptyGroupNote(palette)
+            }
+        }
     }
+}
+
+/** Shown when an expanded deliverable holds nothing — otherwise opening it does visibly nothing, which
+ *  reads as broken rather than empty. */
+@Composable
+private fun EmptyGroupNote(palette: BragPalette) {
+    Text(
+        "Nothing logged here yet",
+        style = MaterialTheme.typography.bodySmall,
+        color = palette.text3,
+        modifier = Modifier.padding(start = 22.dp),
+    )
 }

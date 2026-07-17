@@ -15,9 +15,6 @@ import androidx.room.PrimaryKey
  */
 const val DELIVERABLE_LABEL = "Deliverable"
 
-/** Plural of [DELIVERABLE_LABEL], derived so the two can never drift apart. */
-val DELIVERABLE_LABEL_PLURAL: String get() = "${DELIVERABLE_LABEL}s"
-
 /**
  * A **deliverable** — the third level of the record: Category → Project → **Deliverable** → entries
  * (owner's reshape, 2026-07-17). A concrete stream of work inside a project ("Merchant onboarding"
