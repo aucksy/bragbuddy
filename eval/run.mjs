@@ -1291,6 +1291,16 @@ async function main() {
   if (process.env.GITHUB_ACTIONS) {
     const failedCalls = calls.filter((r) => r.parsed == null);
     const rateLimited = failedCalls.filter((r) => /429|rate|quota|too many/i.test(r.error || '')).length;
+    // ALWAYS-ON public metric line + explicit per-case results for the splitting goldens (id "paste-*").
+    // The per-case stdout log needs authed log access, and the ::warning:: list above is GitHub-capped at
+    // ~10, which hides late-in-file cases — so a phase whose whole point is a specific golden could not be
+    // verified from the public annotations. This notice makes that verifiable without auth. (Diagnostics
+    // only — no scoring/mirror change.)
+    console.log(`::notice::METRICS placementAccuracy=${pct(metrics.placementAccuracy)} inboxPrecision=${pct(metrics.inboxPrecision)} inboxRecall=${pct(metrics.inboxRecall)} entryCountAccuracy=${pct(metrics.entryCountAccuracy)} deliverableAccuracy=${pct(metrics.deliverableAccuracy)} summaryChecks=${pct(metrics.summaryChecks)} coachPass=${pct(metrics.coachPass)} gatesPassed=${gatesPassed}`);
+    for (const r of catResults.filter((x) => /^paste/.test(x.case.id))) {
+      const flags = Object.entries(r.checks).map(([k, v]) => `${k}:${v.pass ? '✓' : '✗'}`).join(' ');
+      console.log(`::notice::SPLIT-CASE ${r.case.id} — ${flags || '(no checks)'}`);
+    }
     if (!gatesPassed) {
       for (const g of gates.filter((x) => !x.pass)) console.log(`::error::gate FAILED ${g.name}: ${pct(g.value)} (need ≥ ${pct(g.threshold)})`);
       for (const r of baselineRows.filter((x) => !x.pass)) console.log(`::error::below baseline ${r.name}: now ${pct(r.value)} vs baseline ${pct(r.prev)} (tolerance ${pct(r.tolerance)})`);
