@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,6 +69,7 @@ import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.common.DeliverableHeader
 import com.bragbuddy.app.ui.common.EmptyDeliverableNote
 import com.bragbuddy.app.ui.common.EntryBulletRow
+import com.bragbuddy.app.ui.common.LocalBottomBarInset
 import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.ui.entry.EntryDetailSheet
 import com.bragbuddy.app.ui.home.OUTSIDE_PROJECT_LABEL
@@ -232,7 +236,16 @@ fun PillarDetailScreen(
 
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(Spacing.s3),
-            contentPadding = PaddingValues(bottom = Spacing.s12),
+            // This is a pushed, edge-to-edge route with no navigationBarsPadding, so the last "Add…" row
+            // must reserve the REAL system nav-bar inset — a hardcoded 48dp guessed it and left the row
+            // under the nav bar on devices where the bar is taller. LocalBottomBarInset is 0 here (no app
+            // bar on a pushed route) but is kept per the standing rule so an embed under the tab bar
+            // would still clear it: <gap> + <systemNavInset> + LocalBottomBarInset.current.
+            contentPadding = PaddingValues(
+                bottom = Spacing.s6 +
+                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
+                    LocalBottomBarInset.current,
+            ),
         ) {
             if (detail.singleFolder) {
                 // Scoped to one folder: the header already names it; show which pillar it rolls up to.

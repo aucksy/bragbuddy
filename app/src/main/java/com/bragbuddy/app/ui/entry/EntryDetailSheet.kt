@@ -447,12 +447,17 @@ fun EntryDetailSheet(
                         DangerPill("Delete", palette) { onDelete() }
                     }
                 }
-            }
 
-            val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            // + the app's own bottom bar/FAB when this sheet is opened from a TAB (Home). It is 0.dp on
-            // the pushed pillar/folder routes, which have no bar.
-            Spacer(Modifier.height(18.dp + bottomInset + LocalBottomBarInset.current))
+                val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                // + the app's own bottom bar/FAB when opened from a TAB (Home); 0.dp on the pushed
+                // pillar/folder routes, which have no bar. This lives INSIDE the scroll as its terminal
+                // child (it used to be an outer sibling): a non-weighted verticalScroll child is measured
+                // first and greedily takes all the remaining height, so an outer spacer after it was
+                // squeezed to ~0 once the content grew tall (Recategorize open) — which dropped the
+                // scrolled Apply/Delete under the bar + FAB. Terminal-inside-scroll is the robust pattern
+                // used by AddImpactSheet and the Summary sheets.
+                Spacer(Modifier.height(18.dp + bottomInset + LocalBottomBarInset.current))
+            }
         }
     }
 }

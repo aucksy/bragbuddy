@@ -238,12 +238,14 @@ fun ProjectRemapSheet(
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
+                val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                // + the app's own bottom bar/FAB when opened from the Framework TAB; 0.dp from Settings
+                // (a pushed route with no bar). INSIDE the scroll as its terminal child (it used to be an
+                // outer sibling): a non-weighted verticalScroll child greedily takes all remaining height,
+                // squeezing an outer spacer to ~0 when the option list is tall — which dropped Apply under
+                // the bar. Terminal-inside-scroll matches AddImpactSheet / the Summary sheets.
+                Spacer(Modifier.height(18.dp + bottomInset + LocalBottomBarInset.current))
             }
-
-            val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            // + the app's own bottom bar/FAB when opened from the Framework TAB. 0.dp from Settings
-            // (a pushed route with no bar).
-            Spacer(Modifier.height(18.dp + bottomInset + LocalBottomBarInset.current))
         }
     }
 }
