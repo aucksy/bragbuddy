@@ -159,13 +159,17 @@ current code — that is the context, not chat history.
 - **Sequence: v0.32.0 transcript access → v0.33.0 deliverables (structure, manual) → v0.34.0 AI filing +
   per-deliverable summary → … → M3 last.**
 
-> **▶ WHERE WE ARE (2026-07-17): `v0.34.0` is SHIPPED, signed (`versionCode 41`). The DELIVERABLES
-> ARC IS COMPLETE — structure (v0.33.0), hardening (v0.33.1), and now the AI filling it (v0.34.0).**
-> **▶ THE EXACT NEXT STEP: the owner's next direction.** The roadmap's remaining named item is **M3
-> (Play Store + Billing + metering), which stays DEFERRED TO THE VERY END** until the owner says
-> on-device testing is done. Read `## Status: v0.34.0` for what shipped, its eval evidence, the one
-> **deliberately-open gap**, and the **"already refuted — do NOT re-fix"** list (feed that list to any
-> reviewer, or it re-raises them — it did, twice, unprompted, in v0.33.1).
+> **▶ WHERE WE ARE (2026-07-19): `v0.34.0` is SHIPPED, signed (`versionCode 41`), release APK+AAB live.
+> The DELIVERABLES ARC IS COMPLETE.** The owner then filed a **5-request batch** (2026-07-19), now
+> planned as **4 phases** — the durable spec + the LOCKED owner decisions are in
+> **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 1 (bottom-bar truncation audit +
+> fix, items 3+4) — LOW risk, independent of every open question, root cause already found (the
+> Recategorize sheet's inset spacer is a sibling AFTER a non-weighted scroll → squeezed to 0 when
+> tall).** Then Phase 2 (reminder weekday selector), Phase 3 (big-paste splitting, ⚠️ EVAL-GATED),
+> Phase 4 (capture→review flow, HIGH risk, retires fire-and-forget — mockup-gated, LAST).
+> **M3 (Play Store + Billing) stays DEFERRED to the very end.** Read `## Status: v0.34.0` for the
+> shipped detail, the KNOWN-OPEN `inboxPrecision` gap (every future prompt phase inherits it — never
+> lower the threshold), and the **"already refuted — do NOT re-fix"** list.
 >
 > Carry these forward into whatever comes next:
 > - **Room is v8** (unchanged by v0.34.0 — this phase added no column).
