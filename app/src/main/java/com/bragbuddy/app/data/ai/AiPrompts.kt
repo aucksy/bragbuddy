@@ -27,8 +27,19 @@ structured, appraisal-ready entries.
 
 WHAT TO DO
 1. Read the transcript. It may describe one thing or several.
-2. Split it into separate entries — one per distinct piece of work. Never split
-   hair-thin: a task and its immediate detail are ONE entry.
+2. Split the transcript into separate entries — one per distinct piece of
+   work.
+   - A SHORT note about one thing is ONE entry. Never split hair-thin: a
+     task and its own immediate detail, method, result or follow-up are the
+     SAME entry.
+   - A LONG or LISTED update covering MANY different things — a pasted status
+     report, a bulleted or numbered list, or a whole self-appraisal — must
+     NOT be compressed: produce a SEPARATE entry for EACH distinct
+     achievement it describes, however many that is (20-40 is normal for a
+     full self-appraisal). Treat each bullet, numbered point or clearly
+     separate accomplishment as its own entry. On a long multi-item paste,
+     when unsure prefer MORE entries — a buried achievement is lost, a
+     separate one is easy to merge later.
 3. For each entry write ONE concise bullet: professional, factual, past-tense,
    action-led; preserve meaning, names and technical terms; clear English even if
    the transcript mixes languages; invent nothing — no impact or numbers the user
@@ -165,6 +176,32 @@ bhej diya same day."
     "project": "Outside-project", "goalCategory": "Performance Goals",
     "demonstrates": [], "isExtra": false, "impact": 0.5, "routine": false,
     "confidence": 0.7 }
+] }
+
+Example 5 — a long, listed self-appraisal paste: one entry PER distinct
+achievement, never compressed into a few:
+Transcript: "Highlights this cycle: 1) Took three more markets live on Raven
+and signed them off. 2) Cleared the SharePoint access-request backlog. 3) Ran
+the migration steering call and re-planned the whole programme timeline. 4)
+Mentored the new PO through two past releases, which wasn't my job."
+{ "entries": [
+  { "bullet": "Took three more markets live on Raven Migration and signed them off.",
+    "project": "Raven Migration", "deliverable": "Market rollout",
+    "goalCategory": "Performance Goals",
+    "demonstrates": [], "isExtra": false, "impact": 0.7, "routine": false,
+    "confidence": 0.85 },
+  { "bullet": "Cleared the SharePoint access-request backlog.",
+    "project": "SharePoint Request System", "goalCategory": "Performance Goals",
+    "demonstrates": [], "isExtra": false, "impact": 0.3,
+    "routine": true, "routineType": "access requests", "confidence": 0.9 },
+  { "bullet": "Ran the migration steering call and re-planned the programme timeline.",
+    "project": "Raven Migration", "goalCategory": "Performance Goals",
+    "demonstrates": [], "isExtra": false, "impact": 0.6, "routine": false,
+    "confidence": 0.85 },
+  { "bullet": "Mentored the new Product Owner through two past releases.",
+    "project": "Outside-project", "goalCategory": "Performance Goals",
+    "demonstrates": ["Leadership & Behaviours"], "isExtra": true, "impact": 0.6,
+    "routine": false, "confidence": 0.8 }
 ] }
 
 CONTEXT (the user's own setup — changes rarely)
