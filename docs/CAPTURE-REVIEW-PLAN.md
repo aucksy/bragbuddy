@@ -60,7 +60,21 @@ LocalBottomBarInset.current`, and it must live where the scroll can't eat it (in
 `weight(1f)` region). **Self-verify:** compile gate + reason against the robust references (cannot run the
 app locally — cloud build only).
 
-## Phase 2 — "Which days" reminder selector (item 1) · LOW–MED risk
+## Phase 2 — "Which days" reminder selector (item 1) · LOW–MED risk · ✅ SHIPPED v0.36.0 (2026-07-19)
+> **DONE.** `versionCode 43`; compile+unit-test gate GREEN; independent adversarial review (compile-clean +
+> logic sound; 1 MED rapid-tap lost-update race fixed atomically); no prompt/schema change → no eval gate.
+> `SettingsStore.reminderDays` = a **7-bit mask** in DataStore (device-local, NOT backed up — mirrors
+> `weeklyRecapEnabled`; absent key → all seven days so existing installs are unchanged). `ReminderScheduler.
+> schedule(hour, minute, days)` advances the re-arm target to the next enabled weekday and **cancels +
+> schedules nothing when the set is empty** (all days off = paused, never a never-firing alarm).
+> `ReminderReceiver.ACTION_FIRE` gates `postReminder` on today∈days and re-arms to the next enabled day;
+> boot/time-change re-arm passes days. Settings → Daily reminder gained a **7 weekday-chip row** (Mon-first,
+> single-letter) under the Time row + a plain-English summary ("Reminds you on weekdays (Mon–Fri).",
+> "…paused." when empty). The chip toggle is an **atomic read-modify-write** in the store (`toggleReminderDay`,
+> xor inside one DataStore edit) so quick taps can't lose an update. Full detail: `PROGRESS.md` →
+> `## Status: v0.36.0`. **Not device-tested (cloud-build only) — verified by reasoning + compile gate +
+> review.**
+
 Today = one daily EXACT alarm re-armed each night by `ReminderReceiver` (`reminder/ReminderScheduler.kt`,
 `SettingsStore.reminderHour/Minute`). Add:
 - `SettingsStore.reminderDays` (a Set<DayOfWeek> or 7-bit mask; device-local DataStore, NOT backed up —

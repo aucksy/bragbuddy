@@ -159,13 +159,22 @@ current code — that is the context, not chat history.
 - **Sequence: v0.32.0 transcript access → v0.33.0 deliverables (structure, manual) → v0.34.0 AI filing +
   per-deliverable summary → … → M3 last.**
 
-> **▶ WHERE WE ARE (2026-07-19): `v0.35.0` is SHIPPED, signed (`versionCode 42`), release APK+AAB live —
-> capture-review Phase 1 (bottom-bar truncation) is DONE.** The DELIVERABLES ARC (through v0.34.0) is also
-> complete. The owner's **5-request batch** (2026-07-19) is planned as **4 phases** — the durable spec + the
-> LOCKED owner decisions are in **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 2 — the
-> "which days" reminder weekday selector (item 1) — LOW–MED risk, device-local DataStore, no schema/prompt
-> change** (spec in `CAPTURE-REVIEW-PLAN.md` → Phase 2). Then Phase 3 (big-paste splitting, ⚠️ EVAL-GATED),
-> Phase 4 (capture→review flow, HIGH risk, retires fire-and-forget — mockup-gated, LAST).
+> **▶ WHERE WE ARE (2026-07-19): `v0.36.0` is SHIPPED, signed (`versionCode 43`), release APK+AAB live —
+> capture-review Phase 2 (which-days reminder selector) is DONE.** Phase 1 (bottom-bar truncation, v0.35.0)
+> and the DELIVERABLES ARC (through v0.34.0) are also complete. The owner's **5-request batch** (2026-07-19)
+> is planned as **4 phases** — the durable spec + the LOCKED owner decisions are in
+> **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 3 — extract every achievement from a
+> big paste (item 2) — ⚠️ EVAL-GATED, MED risk** (it's a categorizer PROMPT change: edit
+> `AiPrompts.CATEGORIZER_SYSTEM` + `eval/prompts/*.txt` + the `run.mjs` APP-MIRROR in the SAME commit;
+> budget ≥2 gate rounds; inherits the KNOWN-OPEN `inboxPrecision` red gate — never lower the threshold).
+> Spec in `CAPTURE-REVIEW-PLAN.md` → Phase 3. Then Phase 4 (capture→review flow, HIGH risk, retires
+> fire-and-forget — mockup-gated, LAST).
+> *(Phase 2 shipped as v0.36.0: `SettingsStore.reminderDays` = a 7-bit DataStore mask (device-local, NOT
+> backed up, absent → all days so existing installs unchanged); `ReminderScheduler.schedule(h,m,days)`
+> advances to the next enabled weekday and cancels+schedules-nothing on an empty set (paused, never a
+> never-firing alarm); `ReminderReceiver` gates `postReminder` on today∈days; a 7 weekday-chip row + a
+> plain-English summary in Settings; atomic `toggleReminderDay` (xor in one edit) so rapid taps can't lose
+> updates. No prompt/schema change → no eval gate. See `## Status: v0.36.0`.)*
 > *(Phase 1 shipped as v0.35.0: the Recategorize/ProjectRemap trailing inset spacer was an outer sibling
 > after a non-weighted `verticalScroll` child → greedily squeezed to ~0 when tall; moved it INSIDE the
 > scroll as the terminal child, and `PillarDetailScreen`'s `LazyColumn` got the real nav inset instead of a
@@ -262,6 +271,55 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
   produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
   ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
   went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
+
+---
+
+## Status: v0.36.0 — Capture-review Phase 2 · "which days" reminder selector ✅ SHIPPED (signed · `versionCode 43` · Room stays **v8** · compile + unit tests GREEN on the free debug gate before the tag · **no schema/prompt change → no eval gate**)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.36.0/BragBuddy-v0.36.0.apk` (`.aab` alongside). `versionCode 43`.
+
+**What & why.** The daily reminder was one exact `AlarmManager` alarm that fired **every day**, re-armed each
+night. The owner wanted to choose which weekdays it fires (e.g. weekdays only). Now they pick the days in
+Settings → Daily reminder.
+
+**The change (5 files + version bump):**
+- **`SettingsStore.reminderDays`** — persisted as a **7-bit mask `Int`** in DataStore (bit `day.value − 1`,
+  Monday = bit 0 … Sunday = bit 6). The in-memory shape is `Set<DayOfWeek>` (`daysToMask`/`maskToDays`
+  helpers; `ALL_WEEK_DAYS` = the default). **Device-local, deliberately NOT in `BackupCodec`/`BackupRepository`
+  — mirrors `weeklyRecapEnabled`** (confirmed also un-backed-up). **Absent key → `ALL_DAYS_MASK` (127) = every
+  day**, so existing installs and fresh installs behave exactly as before until the user narrows it. An
+  explicitly-emptied set persists as mask `0` and decodes back to empty (distinct from "absent").
+- **`ReminderScheduler.schedule(hour, minute, days)`** — `nextTriggerMillis` now **advances the trigger to the
+  next ENABLED weekday** (`while (next.dayOfWeek !in days && hops < 7)`; the 7-hop bound is a belt-and-braces
+  guard). **Empty set = paused:** `schedule` cancels any pending alarm and schedules nothing — it never arms an
+  alarm that could only fire on no day. Every caller routes through here, so the empty guard covers boot
+  re-arm, the fire re-arm, and the Settings toggles alike. (`days` defaults to all-days for safety.)
+- **`ReminderReceiver.ACTION_FIRE`** — gates `Notifications.postReminder` on **today ∈ reminderDays** (so a
+  stale alarm from a since-narrowed schedule can't fire on a disabled day) and always re-arms to the next
+  enabled day. Boot/time-change branch passes `days` (cancels internally if empty). The **test-reminder**
+  (`ReliabilityViewModel.sendTestReminder`) is left ungated — it's an explicit user action.
+- **`ui/settings/SettingsScreen.kt`** — a **7 weekday-chip row** (Mon-first, single-letter `TextStyle.NARROW`,
+  equal `weight(1f)`) under the Time row inside `if (reminderEnabled)`, plus a **plain-English summary** line
+  (`reminderDaysSummary`: "Reminds you every day.", "…on weekdays (Mon–Fri).", "…on weekends (Sat & Sun).", a
+  comma list, or "No days picked — the reminder is paused." when empty). The summary is the mitigation for the
+  ambiguous single letters (Tue/Thu → "T", Sat/Sun → "S"), same convention as Google/iOS calendars.
+- **`SettingsViewModel.toggleReminderDay(day)`** + call sites in `MainActivity` and `ReliabilityViewModel`
+  updated to pass `days`.
+
+**Review (1 independent adversarial pass):** compile-clean by inspection (minSdk 26 → `java.time.getDisplayName`
+/`TextStyle.NARROW` native, no desugaring gap; all imports present; no stale 2-arg `schedule` call; no
+positional `AppSettings(...)` broken by the mid-class field). Day-advance math correct (no off-by-one, no
+infinite loop, worst case 6 hops). Empty-days = paused verified complete (cancels stale alarm + gates fire).
+Mask round-trip + existing-install default verified. **One MED fixed:** the chip `onToggle` originally computed
+the next set from Compose state that **lags the DataStore write**, so rapid taps on different days could lose an
+update → replaced with an **atomic `SettingsStore.toggleReminderDay` (bit `xor` inside a single `store.edit`)**,
+which DataStore serialises. Two LOWs accepted as-is (ambiguous single-letter chips → mitigated by the summary
+line; the master Switch reads ON while all-days-off shows "paused" → explained by the summary, matches the
+locked spec).
+
+**Not device-tested** — this machine has no local Android toolchain (cloud build only). Verified by reasoning +
+the free compile+unit-test debug gate (green) + the adversarial review. Owner should eyeball the chip row and
+try turning a couple of days off.
 
 ---
 
