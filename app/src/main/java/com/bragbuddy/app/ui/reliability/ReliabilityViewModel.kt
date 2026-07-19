@@ -44,7 +44,7 @@ class ReliabilityViewModel @Inject constructor(
         _health.value = ReliabilityCheck.check(appContext)
         viewModelScope.launch {
             val s = settingsStore.settings.first()
-            if (s.reminderEnabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute)
+            if (s.reminderEnabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute, s.reminderDays)
         }
     }
 

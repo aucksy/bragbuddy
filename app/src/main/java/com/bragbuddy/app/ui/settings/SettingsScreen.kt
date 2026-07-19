@@ -160,6 +160,21 @@ fun SettingsScreen(
                             color = palette.primary,
                         )
                     }
+
+                    Spacer(Modifier.height(Spacing.s3))
+                    Text("Which days", style = MaterialTheme.typography.bodyMedium, color = palette.text2)
+                    Spacer(Modifier.height(Spacing.s2))
+                    WeekdayChips(
+                        selected = settings.reminderDays,
+                        palette = palette,
+                        onToggle = { day -> viewModel.toggleReminderDay(day) },
+                    )
+                    Spacer(Modifier.height(Spacing.s2))
+                    Text(
+                        reminderDaysSummary(settings.reminderDays),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = palette.text3,
+                    )
                 }
             }
 
@@ -757,3 +772,63 @@ private fun InfoRow(label: String, value: String, palette: BragPalette) {
 private fun formatTime(hour: Int, minute: Int): String =
     java.time.LocalTime.of(hour.coerceIn(0, 23), minute.coerceIn(0, 59))
         .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))
+
+/** Monday-first order for the day chips + the summary line (the conventional week layout). */
+private val WEEK_ORDER = listOf(
+    java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.TUESDAY, java.time.DayOfWeek.WEDNESDAY,
+    java.time.DayOfWeek.THURSDAY, java.time.DayOfWeek.FRIDAY, java.time.DayOfWeek.SATURDAY,
+    java.time.DayOfWeek.SUNDAY,
+)
+
+/** A row of seven equal-width toggle chips (Mon-first). Tapping one adds/removes that day. */
+@Composable
+private fun WeekdayChips(
+    selected: Set<java.time.DayOfWeek>,
+    palette: BragPalette,
+    onToggle: (java.time.DayOfWeek) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+    ) {
+        WEEK_ORDER.forEach { day ->
+            val on = day in selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(Radii.md))
+                    .background(if (on) palette.primary else palette.surface2)
+                    .clickable { onToggle(day) }
+                    .padding(vertical = Spacing.s3),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    day.getDisplayName(java.time.format.TextStyle.NARROW, java.util.Locale.getDefault()),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (on) Color.White else palette.text2,
+                    fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                )
+            }
+        }
+    }
+}
+
+/** Plain-English one-liner under the chips — so the choice is never cryptic. */
+private fun reminderDaysSummary(days: Set<java.time.DayOfWeek>): String {
+    val weekdays = setOf(
+        java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.TUESDAY, java.time.DayOfWeek.WEDNESDAY,
+        java.time.DayOfWeek.THURSDAY, java.time.DayOfWeek.FRIDAY,
+    )
+    val weekend = setOf(java.time.DayOfWeek.SATURDAY, java.time.DayOfWeek.SUNDAY)
+    return when {
+        days.isEmpty() -> "No days picked — the reminder is paused."
+        days.size == 7 -> "Reminds you every day."
+        days == weekdays -> "Reminds you on weekdays (Mon–Fri)."
+        days == weekend -> "Reminds you on weekends (Sat & Sun)."
+        else -> {
+            val names = WEEK_ORDER.filter { it in days }
+                .map { it.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault()) }
+            "Reminds you on ${names.joinToString(", ")}."
+        }
+    }
+}

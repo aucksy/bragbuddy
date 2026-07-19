@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
         // Keep the daily reminder + weekly recap alarms in sync with saved settings on every launch.
         lifecycleScope.launch {
             val s = settingsStore.settings.first()
-            if (s.reminderEnabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute)
+            if (s.reminderEnabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute, s.reminderDays)
             else reminderScheduler.cancel()
             if (s.weeklyRecapEnabled) reminderScheduler.scheduleWeekly()
             else reminderScheduler.cancelWeekly()

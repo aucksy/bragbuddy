@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.time.ZonedDateTime
 
 /**
  * Fires the daily reminder + the weekly recap and keeps both exact alarms alive.
@@ -54,9 +55,14 @@ class ReminderReceiver : BroadcastReceiver() {
                 val s = settingsStore.settings.first()
                 when (intent.action) {
                     ACTION_FIRE -> {
-                        if (!s.reminderEnabled) return@launch
-                        Notifications.postReminder(app)
-                        scheduler.schedule(s.reminderHour, s.reminderMinute) // re-arm tomorrow
+                        if (!s.reminderEnabled || s.reminderDays.isEmpty()) return@launch
+                        // Only nudge on an enabled weekday. The alarm is armed to land on enabled days
+                        // only, but gate anyway so a stale alarm from a since-narrowed schedule can't
+                        // fire on a disabled day. Always re-arm to the next enabled day.
+                        if (ZonedDateTime.now().dayOfWeek in s.reminderDays) {
+                            Notifications.postReminder(app)
+                        }
+                        scheduler.schedule(s.reminderHour, s.reminderMinute, s.reminderDays)
                     }
                     ACTION_FIRE_WEEKLY -> {
                         if (!s.weeklyRecapEnabled) return@launch
@@ -71,7 +77,8 @@ class ReminderReceiver : BroadcastReceiver() {
                     }
                     else -> {
                         // Boot / time change: re-arm whichever alarms are enabled (independent).
-                        if (s.reminderEnabled) scheduler.schedule(s.reminderHour, s.reminderMinute)
+                        // schedule() no-ops (cancels) internally when reminderDays is empty.
+                        if (s.reminderEnabled) scheduler.schedule(s.reminderHour, s.reminderMinute, s.reminderDays)
                         if (s.weeklyRecapEnabled) scheduler.scheduleWeekly()
                     }
                 }

@@ -14,6 +14,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.time.DayOfWeek
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -43,6 +44,11 @@ data class AppSettings(
     val reminderEnabled: Boolean = true,
     val reminderHour: Int = 18,      // 24h
     val reminderMinute: Int = 0,
+    /** Which weekdays the daily reminder fires on. Device-local, deliberately NOT backed up — mirrors
+     *  [weeklyRecapEnabled] (a per-device preference). Default = all seven days, preserving the
+     *  pre-existing "every day" behaviour. **Empty = no day chosen = treated as reminder off** (never
+     *  schedule a never-firing alarm). */
+    val reminderDays: Set<DayOfWeek> = ALL_WEEK_DAYS,
     val lastCaptureMode: CaptureMode = CaptureMode.SPEAK,
     /** What the notification / daily-nudge open to (Voice by default, preserving today's behaviour).
      *  "Ask each time" ([DefaultCaptureMethod.ASK]) opens the 3-choice chooser instead. */
@@ -117,6 +123,19 @@ data class AppSettings(
  *  `aiEnabled` can never disagree with the actual route usability. */
 private val managedAiAvailable: Boolean get() = BuildConfig.PROXY_BASE_URL.trim().trimEnd('/').isNotEmpty()
 
+/** All seven days — the default reminder-days set (fire every day). */
+val ALL_WEEK_DAYS: Set<DayOfWeek> = DayOfWeek.values().toSet()
+
+/** 7-bit mask for the persisted [AppSettings.reminderDays]: bit (day.value − 1), Monday = bit 0 …
+ *  Sunday = bit 6. Storing a single Int keeps DataStore simple; the Set is the in-memory shape. */
+private const val ALL_DAYS_MASK = 0b111_1111  // 127 — every day (the default)
+
+private fun daysToMask(days: Set<DayOfWeek>): Int =
+    days.fold(0) { acc, d -> acc or (1 shl (d.value - 1)) }
+
+private fun maskToDays(mask: Int): Set<DayOfWeek> =
+    DayOfWeek.values().filterTo(LinkedHashSet()) { (mask and (1 shl (it.value - 1))) != 0 }
+
 @Singleton
 class SettingsStore @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -128,6 +147,9 @@ class SettingsStore @Inject constructor(
             reminderEnabled = p[KEY_REMINDER_ENABLED] ?: true,
             reminderHour = p[KEY_REMINDER_HOUR] ?: 18,
             reminderMinute = p[KEY_REMINDER_MINUTE] ?: 0,
+            // Absent key (existing installs / fresh) → all days, so behaviour is unchanged until the
+            // user narrows it. An explicitly-emptied set persists as mask 0 → decodes back to empty.
+            reminderDays = maskToDays(p[KEY_REMINDER_DAYS] ?: ALL_DAYS_MASK),
             lastCaptureMode = runCatching { CaptureMode.valueOf(p[KEY_LAST_MODE] ?: "SPEAK") }
                 .getOrDefault(CaptureMode.SPEAK),
             defaultCaptureMethod = runCatching { DefaultCaptureMethod.valueOf(p[KEY_DEFAULT_CAPTURE] ?: "SPEAK") }
@@ -164,6 +186,19 @@ class SettingsStore @Inject constructor(
             it[KEY_REMINDER_MINUTE] = minute.coerceIn(0, 59)
         }
     }
+
+    /** Persist which weekdays the reminder fires on (an empty set is allowed → reminder paused). */
+    suspend fun setReminderDays(days: Set<DayOfWeek>) =
+        store.edit { it[KEY_REMINDER_DAYS] = daysToMask(days) }
+
+    /** Flip one weekday on/off **atomically** — the read-modify-write happens inside a single DataStore
+     *  edit (which serialises writers), so several quick chip taps can't lose an update by racing the
+     *  flow round-trip that refreshes the UI state. */
+    suspend fun toggleReminderDay(day: DayOfWeek) =
+        store.edit { p ->
+            val mask = p[KEY_REMINDER_DAYS] ?: ALL_DAYS_MASK
+            p[KEY_REMINDER_DAYS] = mask xor (1 shl (day.value - 1))
+        }
 
     suspend fun setLastCaptureMode(mode: CaptureMode) =
         store.edit { it[KEY_LAST_MODE] = mode.name }
@@ -274,6 +309,7 @@ class SettingsStore @Inject constructor(
         val KEY_REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
         val KEY_REMINDER_HOUR = intPreferencesKey("reminder_hour")
         val KEY_REMINDER_MINUTE = intPreferencesKey("reminder_minute")
+        val KEY_REMINDER_DAYS = intPreferencesKey("reminder_days")
         val KEY_LAST_MODE = stringPreferencesKey("last_capture_mode")
         val KEY_DEFAULT_CAPTURE = stringPreferencesKey("default_capture_method")
         val KEY_GROQ_KEY = stringPreferencesKey("groq_api_key")

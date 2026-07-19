@@ -36,13 +36,22 @@ class ReminderScheduler @Inject constructor(
 ) {
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
 
-    fun schedule(hour: Int, minute: Int) {
+    /**
+     * Arm (or re-arm) the daily reminder for the next enabled weekday at [hour]:[minute].
+     *
+     * [days] = the weekdays the reminder may fire on (default every day). An **empty** set means the
+     * user turned every day off → treat it as the reminder being off: cancel any pending alarm and
+     * schedule nothing (never arm an alarm that could only fire on no day). Every caller routes through
+     * here, so the empty-days guard covers boot re-arm, the fire re-arm, and the Settings toggles alike.
+     */
+    fun schedule(hour: Int, minute: Int, days: Set<DayOfWeek> = DayOfWeek.values().toSet()) {
         // Migration: remove the legacy WorkManager periodic reminder from older installs so it can't
         // also fire (double reminders / the old drift). No-op if it was never enqueued.
         runCatching { WorkManager.getInstance(context).cancelUniqueWork(LEGACY_WORK_NAME) }
 
         val am = alarmManager ?: return
-        val triggerAt = nextTriggerMillis(hour, minute)
+        if (days.isEmpty()) { runCatching { am.cancel(firePendingIntent()) }; return }
+        val triggerAt = nextTriggerMillis(hour, minute, days)
         val pending = firePendingIntent()
         val canExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.canScheduleExactAlarms() else true
         runCatching {
@@ -105,11 +114,20 @@ class ReminderScheduler @Inject constructor(
         return next.toInstant().toEpochMilli()
     }
 
-    /** Epoch-millis of the next occurrence of hour:minute (today if still ahead, else tomorrow). */
-    private fun nextTriggerMillis(hour: Int, minute: Int): Long {
+    /**
+     * Epoch-millis of the next occurrence of hour:minute **on an enabled weekday** (today if still
+     * ahead and enabled, else the soonest following enabled day). Callers guarantee [days] is non-empty
+     * (see [schedule]); the 7-hop bound is a belt-and-braces guard so a stray empty set can't loop.
+     */
+    private fun nextTriggerMillis(hour: Int, minute: Int, days: Set<DayOfWeek>): Long {
         val now = ZonedDateTime.now()
         var next = now.withHour(hour.coerceIn(0, 23)).withMinute(minute.coerceIn(0, 59)).withSecond(0).withNano(0)
         if (!next.isAfter(now)) next = next.plusDays(1)
+        var hops = 0
+        while (next.dayOfWeek !in days && hops < 7) {
+            next = next.plusDays(1)
+            hops++
+        }
         return next.toInstant().toEpochMilli()
     }
 

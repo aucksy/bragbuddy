@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.DayOfWeek
 import javax.inject.Inject
 
 @HiltViewModel
@@ -53,13 +54,22 @@ class SettingsViewModel @Inject constructor(
     fun setReminderEnabled(enabled: Boolean) = viewModelScope.launch {
         settingsStore.setReminderEnabled(enabled)
         val s = settingsStore.settings.first()
-        if (enabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute) else reminderScheduler.cancel()
+        if (enabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute, s.reminderDays) else reminderScheduler.cancel()
     }
 
     fun setReminderTime(hour: Int, minute: Int) = viewModelScope.launch {
         settingsStore.setReminderTime(hour, minute)
         val s = settingsStore.settings.first()
-        if (s.reminderEnabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute)
+        if (s.reminderEnabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute, s.reminderDays)
+    }
+
+    /** Toggle one weekday for the reminder, then re-arm. The flip is atomic in the store (rapid taps
+     *  can't lose updates); re-reading `settings.first()` here gets the freshest persisted set. When the
+     *  reminder is on, [schedule] cancels internally if the set is now empty (all days off = paused). */
+    fun toggleReminderDay(day: DayOfWeek) = viewModelScope.launch {
+        settingsStore.toggleReminderDay(day)
+        val s = settingsStore.settings.first()
+        if (s.reminderEnabled) reminderScheduler.schedule(s.reminderHour, s.reminderMinute, s.reminderDays)
     }
 
     /** Debounces the recovery kick while the key is being typed/edited — one pass per settle. */
