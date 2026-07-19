@@ -159,17 +159,21 @@ current code — that is the context, not chat history.
 - **Sequence: v0.32.0 transcript access → v0.33.0 deliverables (structure, manual) → v0.34.0 AI filing +
   per-deliverable summary → … → M3 last.**
 
-> **▶ WHERE WE ARE (2026-07-19): `v0.34.0` is SHIPPED, signed (`versionCode 41`), release APK+AAB live.
-> The DELIVERABLES ARC IS COMPLETE.** The owner then filed a **5-request batch** (2026-07-19), now
-> planned as **4 phases** — the durable spec + the LOCKED owner decisions are in
-> **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 1 (bottom-bar truncation audit +
-> fix, items 3+4) — LOW risk, independent of every open question, root cause already found (the
-> Recategorize sheet's inset spacer is a sibling AFTER a non-weighted scroll → squeezed to 0 when
-> tall).** Then Phase 2 (reminder weekday selector), Phase 3 (big-paste splitting, ⚠️ EVAL-GATED),
+> **▶ WHERE WE ARE (2026-07-19): `v0.35.0` is SHIPPED, signed (`versionCode 42`), release APK+AAB live —
+> capture-review Phase 1 (bottom-bar truncation) is DONE.** The DELIVERABLES ARC (through v0.34.0) is also
+> complete. The owner's **5-request batch** (2026-07-19) is planned as **4 phases** — the durable spec + the
+> LOCKED owner decisions are in **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 2 — the
+> "which days" reminder weekday selector (item 1) — LOW–MED risk, device-local DataStore, no schema/prompt
+> change** (spec in `CAPTURE-REVIEW-PLAN.md` → Phase 2). Then Phase 3 (big-paste splitting, ⚠️ EVAL-GATED),
 > Phase 4 (capture→review flow, HIGH risk, retires fire-and-forget — mockup-gated, LAST).
-> **M3 (Play Store + Billing) stays DEFERRED to the very end.** Read `## Status: v0.34.0` for the
-> shipped detail, the KNOWN-OPEN `inboxPrecision` gap (every future prompt phase inherits it — never
-> lower the threshold), and the **"already refuted — do NOT re-fix"** list.
+> *(Phase 1 shipped as v0.35.0: the Recategorize/ProjectRemap trailing inset spacer was an outer sibling
+> after a non-weighted `verticalScroll` child → greedily squeezed to ~0 when tall; moved it INSIDE the
+> scroll as the terminal child, and `PillarDetailScreen`'s `LazyColumn` got the real nav inset instead of a
+> hardcoded 48dp. Whole-app audit found NO other fragile surface. UI-only, no eval gate. See
+> `## Status: v0.35.0`.)*
+> **M3 (Play Store + Billing) stays DEFERRED to the very end.** Read `## Status: v0.34.0` for the deliverables
+> detail, the KNOWN-OPEN `inboxPrecision` gap (every future prompt phase inherits it — never lower the
+> threshold), and the **"already refuted — do NOT re-fix"** list.
 >
 > Carry these forward into whatever comes next:
 > - **Room is v8** (unchanged by v0.34.0 — this phase added no column).
@@ -258,6 +262,50 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
   produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
   ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
   went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
+
+---
+
+## Status: v0.35.0 — Capture-review Phase 1 · bottom-bar truncation (whole-app audit + fix) ✅ SHIPPED (signed · `versionCode 42` · Room stays **v8** · compile + unit tests GREEN on the free debug gate before the tag · **UI-only, no schema/prompt → no eval gate**)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.35.0/BragBuddy-v0.35.0.apk` (`.aab` alongside). `versionCode 42`.
+
+> First phase of the 2026-07-19 owner batch (`docs/CAPTURE-REVIEW-PLAN.md`, items 3+4). The owner reported —
+> **repeatedly** — that content, especially the **Recategorize sheet's Apply/Delete**, hides behind the bottom
+> bar/FAB, and was frustrated it keeps coming back. Root cause found, not guessed.
+
+**Why it recurred (the key insight).** v0.30.1 fixed the inset **value** (added the ~74dp `LocalBottomBarInset`
+term to every sheet) but left a fragile **placement**: on `EntryDetailSheet` (Recategorize) and
+`ProjectRemapSheet` the trailing inset `Spacer` was an **outer sibling placed AFTER a non-weighted
+`verticalScroll` child**. In a Compose `Column` the scroll child is measured first and greedily takes the
+remaining height, so once the content overflows (Recategorize picker open = the tallest content in the app) the
+sibling spacer is squeezed to **~0** and the scrolled Apply/Delete land under the bar. Short sheets look fine →
+the bug "comes back" only when tall. So the value was right since v0.30.1; the **structure** wasn't.
+
+**Fix (3 surfaces — the plan's exact inventory).**
+- **`EntryDetailSheet.kt` (Recategorize, primary) + `ProjectRemapSheet.kt`:** moved the inset `Spacer` to be the
+  **terminal child INSIDE the `verticalScroll` column** (was an outer sibling). Now it's part of the scrollable
+  content, so the scroll child can't squeeze it — the last control always clears the bar by scrolling. This is
+  the **robust pattern the app already uses** in `AddImpactSheet` and all three `SummaryScreen` sheets
+  (scroll-on-the-column / inset-as-terminal-child). Chose this over "pin the button + `weight(1f)`" because a
+  weight child forces the bottom **sheet full-height always** (ugly empty gap in the common closed state), and
+  matching the app's proven sheets is lower-risk on a fix that must not recur. Grabber stays pinned at top.
+- **`PillarDetailScreen.kt` (pillar + folder routes):** the `LazyColumn` hardcoded `Spacing.s12` (48dp) bottom.
+  It's a pushed edge-to-edge route with no `navigationBarsPadding`, so on a device with a taller nav bar the
+  last "Add…" row sat under the bar. Now `Spacing.s6 + WindowInsets.navigationBars + LocalBottomBarInset.current`
+  (the standing rule verbatim; the bar term is 0 on a pushed route but future-proofs an embed).
+
+**Whole-app audit (owner asked to check everywhere) — the plan's 3 were the ONLY fragile surfaces.** Verified
+robust and left alone: `AddImpactSheet` + all 3 `SummaryScreen` sheets (scroll-on-column + terminal inset);
+Home/Inbox lists + `FrameworkScreen` + Summary doc (bar-inclusive `contentBottomPadding` from `MainScaffold`);
+`NotificationPrimerSheet` (rendered **topmost over** the bar+FAB, so `navigationBars`-only is correct);
+`CaptureScreen` (separate activity, no app bar); `SettingsScreen` month-picker (Material `AlertDialog`,
+self-insetting); `BackupScreen` (Material `Scaffold` `padding(inner)`).
+
+**Self-verify note:** cannot run the app on a device here (cloud-build only). Verified by (a) the free debug
+compile+unit-test gate GREEN, (b) reasoning the Compose measurement against the robust reference screens, and
+(c) an adversarial layout pass (imePadding, short-vs-tall content, pushed-vs-tab routes, brace/scope, audit
+completeness) → **0 findings**. Not rendered on hardware — the owner should eyeball the Recategorize sheet with
+the picker open on-device.
 
 ---
 

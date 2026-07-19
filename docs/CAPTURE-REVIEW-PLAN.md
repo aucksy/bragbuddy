@@ -24,7 +24,15 @@ fallback"). Until Phase 4 ships, the old invariant still governs the code.
 
 ---
 
-## Phase 1 — Bottom-bar truncation, whole-app audit + fix (items 3 + 4) · LOW risk · FIRST
+## Phase 1 — Bottom-bar truncation, whole-app audit + fix (items 3 + 4) · LOW risk · ✅ SHIPPED v0.35.0 (2026-07-19)
+> **DONE.** `versionCode 42`; compile+unit-test gate GREEN; adversarial layout pass (0 findings); UI-only → no
+> eval gate. Fixed the 3 fragile surfaces below by moving the inset `Spacer` to be the **terminal child inside
+> the `verticalScroll`** on `EntryDetailSheet` + `ProjectRemapSheet` (was an outer sibling after a non-weighted
+> scroll → squeezed to ~0 when tall), and giving `PillarDetailScreen`'s `LazyColumn` the real nav inset. The
+> whole-app audit confirmed these three were the ONLY fragile surfaces. Full detail: `PROGRESS.md` →
+> `## Status: v0.35.0`. **Not device-tested (cloud-build only) — owner should eyeball the Recategorize sheet
+> with the picker open.**
+
 **Root cause (found, not guessed):** the standing rule (`ui/common/BottomBarInset.kt`) is right, but the
 **Recategorize sheet** (`ui/entry/EntryDetailSheet.kt`) applies it with a FRAGILE pattern — the reserved
 trailing `Spacer` is a **sibling placed AFTER a non-weighted `verticalScroll` column**. In a Compose
