@@ -86,7 +86,23 @@ Today = one daily EXACT alarm re-armed each night by `ReminderReceiver` (`remind
   inside `if (reminderEnabled)`), + `SettingsViewModel.setReminderDays` that persists and re-schedules.
 - Edge: all days off = treat as reminder off (don't schedule a never-firing alarm).
 
-## Phase 3 — Extract every achievement from a big paste (item 2) · ⚠️ EVAL-GATED · MED risk
+## Phase 3 — Extract every achievement from a big paste (item 2) · ⚠️ EVAL-GATED · MED risk · ✅ SHIPPED v0.37.0 (2026-07-19)
+> **DONE.** `versionCode 44`; compile+PromptSyncTest GREEN on the free debug gate; adversarial review (0 blocking);
+> EVAL-GATED, 2 rounds. Categorizer rule 2 rewritten and SCOPED (a SHORT note = one entry, strengthened
+> "task + its own detail/method/result/follow-up = same entry"; a LONG/LISTED paste = one entry PER distinct
+> achievement, 20-40 normal) + calibrated **Example 5** (a numbered self-appraisal → 4 entries) + golden
+> `paste-appraisal-split` (long multi-project paste, robust-minimum placements, over-split tolerated, no
+> exact `entryCount`). Edited `AiPrompts.CATEGORIZER_SYSTEM` + `eval/prompts/categorizer-system.txt`
+> (byte-equal) + the golden in the SAME commit. **Eval verdict: splitting PROVEN** (`SPLIT-CASE
+> paste-appraisal-split placements:✓`, published via new `run.mjs` `::notice::` diagnostics);
+> **placementAccuracy 97.1%, entryCountAccuracy 92.9% (UP — no over-split regression), no below-baseline
+> regression**; RED only on the two PRE-EXISTING known-reds (`inboxPrecision` 22/26 = a one-case,
+> within-tolerance nudge, deliberately NOT chased — out-of-scope calibration, never lower the threshold;
+> `summaryChecks` = gpt-oss-120b flake, ≥ baseline, summary path untouched). **No `max_completion_tokens`
+> needed** — a ~7-9-entry paste parsed cleanly (unset = model-max = no truncation). Full detail: `PROGRESS.md`
+> → `## Status: v0.37.0`. **Not device-tested (cloud-build only) — the on-device proof of "big paste → many
+> entries" is for the owner; the eval locks the behaviour + guards against over-splitting.**
+
 **Confirmed:** the transcript is passed UNCAPPED end-to-end (only descriptions are capped via `TextCaps`);
 there is NO app-side entry-count cap (`CategorizedNormalizer` + `processEntry` keep every entry); a plain
 paste does NOT hit COMBINE mode. So the under-splitting is **purely the model's judgment** on prompt rules

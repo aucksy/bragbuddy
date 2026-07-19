@@ -159,16 +159,22 @@ current code — that is the context, not chat history.
 - **Sequence: v0.32.0 transcript access → v0.33.0 deliverables (structure, manual) → v0.34.0 AI filing +
   per-deliverable summary → … → M3 last.**
 
-> **▶ WHERE WE ARE (2026-07-19): `v0.36.0` is SHIPPED, signed (`versionCode 43`), release APK+AAB live —
-> capture-review Phase 2 (which-days reminder selector) is DONE.** Phase 1 (bottom-bar truncation, v0.35.0)
-> and the DELIVERABLES ARC (through v0.34.0) are also complete. The owner's **5-request batch** (2026-07-19)
-> is planned as **4 phases** — the durable spec + the LOCKED owner decisions are in
-> **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 3 — extract every achievement from a
-> big paste (item 2) — ⚠️ EVAL-GATED, MED risk** (it's a categorizer PROMPT change: edit
-> `AiPrompts.CATEGORIZER_SYSTEM` + `eval/prompts/*.txt` + the `run.mjs` APP-MIRROR in the SAME commit;
-> budget ≥2 gate rounds; inherits the KNOWN-OPEN `inboxPrecision` red gate — never lower the threshold).
-> Spec in `CAPTURE-REVIEW-PLAN.md` → Phase 3. Then Phase 4 (capture→review flow, HIGH risk, retires
-> fire-and-forget — mockup-gated, LAST).
+> **▶ WHERE WE ARE (2026-07-19): `v0.37.0` is SHIPPED, signed (`versionCode 44`), release APK+AAB live —
+> capture-review Phase 3 (split a big paste into one entry per achievement) is DONE.** Phases 1 (bottom-bar,
+> v0.35.0) + 2 (which-days reminder, v0.36.0) and the DELIVERABLES ARC (through v0.34.0) are also complete.
+> The owner's **5-request batch** (2026-07-19) is planned as **4 phases** — durable spec + LOCKED owner
+> decisions in **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 4 — capture → open →
+> "AI is working" → review & confirm placement (item 5) — HIGH risk, the CAPSTONE, LAST.** It **retires
+> fire-and-forget** and **rewrites `CONTEXT.md` §2** (keep "never lose an entry"; replace
+> "fire-and-forget → Inbox" with "review-at-capture; Inbox = offline/failure fallback"). **Design it in two
+> parts + a clickable mockup for owner sign-off BEFORE building** (the real Android screen can't be rendered
+> here — build the mockup as an Artifact). Full spec in `CAPTURE-REVIEW-PLAN.md` → Phase 4.
+> *(Phase 3 shipped as v0.37.0: categorizer rule 2 rewritten+scoped (short note = one entry; long/listed
+> paste = one per distinct achievement) + calibrated Example 5 + golden `paste-appraisal-split`; EVAL-GATED,
+> 2 rounds — splitting PROVEN (`paste-appraisal-split placements:✓`), entryCountAccuracy UP (no over-split),
+> no below-baseline regression; RED only on the two pre-existing known-reds (`inboxPrecision` 22/26 —
+> one-case within-tolerance nudge, NOT chased; `summaryChecks` summary-model flake). `run.mjs` gained
+> always-on public `::notice::METRICS`/`SPLIT-CASE` diagnostics. See `## Status: v0.37.0`.)*
 > *(Phase 2 shipped as v0.36.0: `SettingsStore.reminderDays` = a 7-bit DataStore mask (device-local, NOT
 > backed up, absent → all days so existing installs unchanged); `ReminderScheduler.schedule(h,m,days)`
 > advances to the next enabled weekday and cancels+schedules-nothing on an empty set (paused, never a
@@ -271,6 +277,40 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
   produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
   ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
   went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
+
+---
+
+## Status: v0.37.0 — Capture-review Phase 3 · split a big paste into one entry per achievement ✅ SHIPPED (signed · `versionCode 44` · Room stays **v8**, no schema change · compile + PromptSyncTest GREEN on the free debug gate before the tag · **PROMPT PHASE → EVAL-GATED, 2 rounds run — verdict below**)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.37.0/BragBuddy-v0.37.0.apk` (`.aab` alongside).
+
+**The problem (owner, capture-review batch item 2):** pasting a whole self-appraisal produced too FEW entries — the model compressed many distinct achievements into a handful. Scouting confirmed the transcript is passed **uncapped** end-to-end and there is **no app-side entry cap** (`CategorizedNormalizer` + `processEntry` keep every entry) and a plain paste does **not** hit COMBINE mode — so the under-splitting was **purely the model's judgment** on categorizer rules 1–2. This is therefore a **prompt change**, nothing else.
+
+### What changed (categorizer prompt — the FIRST prompt change since v0.34.0)
+- **Rule 2 rewritten and SCOPED** (`AiPrompts.CATEGORIZER_SYSTEM`, mirrored byte-for-byte in `eval/prompts/categorizer-system.txt` — `PromptSyncTest` enforces equality):
+  - A **SHORT note about one thing = ONE entry**; the never-split-hair-thin clause was *strengthened* — "a task and its own immediate **detail, method, result or follow-up** are the SAME entry" (was just "immediate detail").
+  - A **LONG or LISTED update** — a pasted status report, a bulleted/numbered list, or a whole self-appraisal — must **NOT be compressed**: one entry PER distinct achievement, however many (20–40 is normal for a full appraisal); each bullet/numbered point/separate accomplishment is its own entry; when unsure on a long paste, **prefer MORE entries**.
+- **New calibrated Example 5** — a 4-item numbered self-appraisal paste → 4 entries — which also reinforces the deliverable-omit-when-spans-project (rule 5), routine-label reuse (rule 10) and isExtra/leadership conventions, so it teaches splitting *without* re-teaching over-tagging.
+- **Golden `paste-appraisal-split`** (eval, same commit): a long multi-project self-appraisal paste (reusing the real owner framework/projects) with a **robust-minimum** placement set (4 Intake + 2 Raven + 1 Platform, over-split TOLERATED). Deliberately **no `entryCount`** (so over-splitting isn't penalised here — the existing exact-count goldens guard that direction) and **no `inboxExpected`/`metric`** (so the fragile `inboxPrecision`/`metricPreserved` metrics are untouched; `placements` already implies non-parking).
+- **`eval/run.mjs` — always-on public diagnostics** (NOT a scoring/APP-MIRROR change): a `::notice::METRICS …` line + a `::notice::SPLIT-CASE <id>` line for every `paste-*` golden. Reason: the check-runs annotations API is the only auth-free window into a gate run, but its `::warning::` case list is GitHub-capped at ~10 and hid this late-in-file golden — so the phase's headline result couldn't be verified publicly. Now it can. **This is why r2 exists** (see below), not a bare re-run.
+
+### The eval verdict (read before re-running anything)
+Two rounds (`eval-run-v0.37.0`, `eval-run-v0.37.0-r2`). **The phase's own deliverable PASSED, verified publicly:** `SPLIT-CASE paste-appraisal-split — placements:✓` (the long multi-project paste split into ≥4 Intake + ≥2 Raven + ≥1 Platform, all placed right). No regression to the split-guard cases:
+- **placementAccuracy 97.1%** (33/34) ≥ baseline 96.3%.
+- **entryCountAccuracy 92.9%** (39/42) — **UP** from baseline 91.7%: the strengthened short-note clause held, so the exact-count goldens (`eng-split-three`=3, `po-split-two`=2, the COMBINE cases=1, etc.) did **not** over-split.
+- **jsonValidity held** — a ~7–9-entry paste parsed cleanly both rounds, so **no `max_completion_tokens` was needed** (app + eval leave it unset = model-default = model-max = the safest, no-truncation setting; the plan's "measure first" caveat was measured and cleared).
+- **No `::error::below baseline` in either round** → the harness's own ≥-baseline non-regression gate PASSES.
+
+**The job is RED (`gatesPassed=false`), on the two PRE-EXISTING known-red absolute gates** — the committed baseline itself fails both, so every prompt phase inherits them:
+- **`inboxPrecision` 84.6% (22/26)** — bar is 90%. This is **one case below** the baseline's 23/26: under this prompt a single routine-ticket note (`eng-routine-tickets`) stably parks (reproduced identically r1=r2; the harness sends a fixed seed). It still **passes the ≥-baseline gate within the harness's 1-case noise tolerance** (0.8462 ≥ 0.8461). ⚠️ It was NOT chased: per `## Status: v0.34.0` this is out-of-scope prompt-CALIBRATION that risks destabilising the green gates (the loop trap), and the golden `po-metric-30-percent` vs prompt Example 3 conflict is the real root. **Any prompt edit reshuffles which borderline cases land where** — this one-case collateral is inherent to the 88.5%-fragile regime. **Never lower the threshold.**
+- **`summaryChecks` 96.7%** (r1 got a lucky 100%) — bar is 100%. Pure gpt-oss-120b nondeterminism on the small summary set; **≥ baseline 96.3%**, and the summary path was not touched this phase.
+
+**Owner call needed only if you dislike the 23→22 inbox-precision nudge** — but note it passes the non-regression gate and the phase goal is met. Do NOT reopen it as a review loop.
+
+### 🚫 Do NOT re-fix / re-litigate
+- Carry the full `## Status: v0.34.0` and `v0.33.1` "do-NOT-re-fix" lists forward.
+- **"inboxPrecision dropped, re-run to recover it"** → NO. Seed is fixed; r1=r2 gave identical 22/26. A bare re-run reproduces. If you must move it, it's a *dedicated* calibration phase (several paid rounds; resolve the Example-3-vs-golden conflict), not a Phase-3 side-quest.
+- **"add `max_completion_tokens` defensively"** → NOT needed and RISKY: unset = model-max = no truncation; setting it too low is the only way to *introduce* truncation. Measured clear both rounds.
 
 ---
 
