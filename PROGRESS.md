@@ -167,22 +167,23 @@ current code — that is the context, not chat history.
 > Before that: capture-review Phase 3 (big-paste splitting, v0.37.0), Phases 1 (bottom-bar,
 > v0.35.0) + 2 (which-days reminder, v0.36.0) and the DELIVERABLES ARC (through v0.34.0) are complete.
 >
-> **▶ THE EXACT NEXT STEP (owner-redirected later on 2026-07-21) = the VISION-FIT ASSESSMENT — a
-> product-level research + assessment phase, NO building.** The owner restated the vision verbatim:
-> *"a flexible framework that can work for any company / employee for their high-quality mid-year and
-> year-end assessments — the employee only needs to add what was done in a day, guided to add in
-> better quality, and the high-quality documentation is ready as per their company's framework
-> whenever it's needed."* The job: research how real appraisal frameworks vary across companies,
-> assess the WHOLE app (framework model · guided daily capture · output/doc quality · ease of use)
-> against that vision, fold in every open item (**`docs/COMPETENCY-TAGGING-PROPOSAL.md`** — arc
-> approved 2026-07-21, its ⭐locked decisions stand, but its SEQUENCING is now subject to this
-> assessment; the F2/F3 prompt calibration + F5/F6 calls in `docs/AI-SYSTEM-ASSESSMENT.md`;
-> capture-review Phase 4 in `docs/CAPTURE-REVIEW-PLAN.md`), and produce ONE prioritised roadmap the
-> owner picks from. Deliverable = `docs/VISION-FIT-ASSESSMENT.md`, committed. ⚠️ Note one tension the
-> assessment must surface honestly: "easy for any company" pulls toward scan-your-review-form →
-> structured framework (the unused `refineFramework` seam F6 recommends deleting), while the
-> owner's standing rule is NO AI reshapes the framework — that trade-off is the owner's call, made
-> with evidence, in that chat.
+> **✅ THE VISION-FIT ASSESSMENT IS DONE (2026-07-21) — `docs/VISION-FIT-ASSESSMENT.md`, committed.**
+> Research (3 cited briefs: format taxonomy · quality-evidence canon · real employee behaviour) +
+> per-axis verdicts + the ONE prioritised roadmap (its §7). Headlines: the vision's bottleneck is
+> **framework SETUP EASE** (no presets — the PRD promised them; hand-build skippable → most users
+> would stay on the generic default, silently breaking "as per their company's framework");
+> a **concrete Year-end window defect** (`ReviewPeriods.windowFor` anchors to the review year you're
+> currently IN, so an April-cycle year-end review written in April summarises the wrong, empty year —
+> fix = a "Previous year" period option, small + code-only); and **coach breadth** (guidance only ever
+> asks for a number; research says the perishable evidence details are number + before/after +
+> who-for). Proposed order (owner picks): **V1 window fix → V2 setup ease (presets B2; scan-to-draft
+> B3 = owner call) → V3 capture-review Phase 4 → V4 F2/F3 calibration → V5 competency arc K1–K3 →
+> V6 coach breadth**; F5 rides along; **F6 (delete `refineFramework`) is ON HOLD until the B3
+> decision**; M3 stays last.
+> **▶ THE EXACT NEXT STEP = the OWNER'S PICK on the roadmap's 3 decisions** (doc §7): (1) setup ease
+> B2-only vs B2+B3 (B3 requires explicitly re-scoping the 2026-07-07 no-AI-reshapes rule); (2)
+> sequencing sign-off (V3-before-V4 recommended vs the AI-assessment's F2-first); (3) F5. The
+> competency arc's ⭐locked decisions stand unchanged. NO build until the owner picks.
 > The owner's **5-request batch** (2026-07-19) is planned as **4 phases** — durable spec + LOCKED owner
 > decisions in **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 4 — capture → open →
 > "AI is working" → review & confirm placement (item 5) — HIGH risk, the CAPSTONE, LAST.** It **retires
