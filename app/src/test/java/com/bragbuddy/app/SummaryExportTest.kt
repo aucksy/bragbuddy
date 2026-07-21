@@ -8,13 +8,15 @@ import com.bragbuddy.app.data.ai.SummaryCompetency
 import com.bragbuddy.app.data.ai.SummaryGoalArea
 import com.bragbuddy.app.data.ai.SummaryResult
 import com.bragbuddy.app.data.ai.SummaryRolledUp
+import com.bragbuddy.app.data.rollup.DeliverableFact
 import com.bragbuddy.app.ui.summary.exportBehaviour
 import com.bragbuddy.app.ui.summary.exportGoalArea
 import com.bragbuddy.app.ui.summary.exportSummary
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
-/** Unit tests for the summary copy-out serialiser. */
+/** Unit tests for the summary copy-out serialiser — since S1, the user's own hierarchy
+ *  (`AREA → project → deliverable → pointers`) as real indented headers. */
 class SummaryExportTest {
 
     private val result = SummaryResult(
@@ -36,12 +38,17 @@ class SummaryExportTest {
     )
 
     @Test
-    fun `whole summary exports headings, bullets, metrics, project and counts`() {
+    fun `whole summary exports headings, a project header, loose bullets, metrics and counts`() {
         val text = exportSummary(result, "Year-end summary")
         assertThat(text).contains("YEAR-END SUMMARY")
         assertThat(text).contains("PERFORMANCE GOALS")
-        assertThat(text).contains("  • Led the Atlas redesign — drop-off down 18%  [Atlas]")
-        assertThat(text).contains("  • Migrated billing to the new API")
+        // The named project is a REAL indented header (S1), not a [tag] on the line...
+        assertThat(text).contains("\n  Atlas\n")
+        assertThat(text).contains("    • Led the Atlas redesign — drop-off down 18%")
+        assertThat(text).doesNotContain("[Atlas]")
+        // ...and the no-project win lists plainly under the goal area, after the named project.
+        assertThat(text).contains("\n  • Migrated billing to the new API")
+        assertThat(text.indexOf("Atlas")).isLessThan(text.indexOf("Migrated billing"))
         assertThat(text).contains("×42")
         assertThat(text).contains("LEADERSHIP & BEHAVIOURS")
         assertThat(text).contains("  • Mentored two interns")
@@ -59,6 +66,123 @@ class SummaryExportTest {
         assertThat(block).startsWith("PERFORMANCE GOALS")
         assertThat(block).contains("×42")
     }
+
+    // ---- S1 · the full hierarchy: AREA → project → deliverable → pointers ----
+
+    private val hierarchyArea = SummaryGoalArea(
+        name = "Performance Goals",
+        achievements = listOf(
+            SummaryAchievement(
+                "Resolved 145+ tech questions across the phase", project = "Intake Hub",
+                deliverable = "Tech Questions", count = 4,
+            ),
+            SummaryAchievement("Translated the vision into a build-ready product", project = "Intake Hub"),
+            SummaryAchievement(
+                "Owned the ORE end-to-end", project = "Raven Migration",
+                deliverable = "Truncated forms ORE", count = 7,
+            ),
+        ),
+    )
+
+    private val facts = listOf(
+        DeliverableFact("Tech Questions", "Intake Hub", "Performance Goals", done = false),
+        DeliverableFact("Truncated forms ORE", "Raven Migration", "Performance Goals", done = true),
+    )
+
+    @Test
+    fun `deliverables export as indented sub-headings with Done state and from-N-logs counts`() {
+        val text = exportGoalArea(hierarchyArea, facts)
+        assertThat(text).isEqualTo(
+            """
+            PERFORMANCE GOALS
+              Intake Hub
+                Tech Questions
+                  • Resolved 145+ tech questions across the phase  (from 4 logs)
+                • Translated the vision into a build-ready product
+              Raven Migration
+                Truncated forms ORE (Done)
+                  • Owned the ORE end-to-end  (from 7 logs)
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `a Done mark is scoped by the full identity — a same-named deliverable elsewhere stays active`() {
+        val sameNameElsewhere = listOf(
+            // Done under ANOTHER project: must not mark Intake Hub's group.
+            DeliverableFact("Tech Questions", "Raven Migration", "Performance Goals", done = true),
+        )
+        val text = exportGoalArea(hierarchyArea, sameNameElsewhere)
+        assertThat(text).contains("    Tech Questions\n")
+        assertThat(text).doesNotContain("Tech Questions (Done)")
+    }
+
+    @Test
+    fun `a single-project area still draws the project and deliverable headers (S1)`() {
+        // The most common record shape: one project per area, one condensed story per deliverable.
+        val area = SummaryGoalArea(
+            name = "Performance Goals",
+            achievements = listOf(
+                SummaryAchievement("Owned the ORE end-to-end", project = "Raven Migration", deliverable = "Truncated forms ORE"),
+            ),
+        )
+        val text = exportGoalArea(area, facts)
+        assertThat(text).contains("\n  Raven Migration\n")
+        assertThat(text).contains("    Truncated forms ORE (Done)")
+        assertThat(text).contains("      • Owned the ORE end-to-end")
+        assertThat(text).doesNotContain("[")
+    }
+
+    @Test
+    fun `an all-loose area exports plainly with no headers`() {
+        val area = SummaryGoalArea(
+            name = "Learning & Growth",
+            achievements = listOf(
+                SummaryAchievement("Selected for the AI Studio cohort"),
+                SummaryAchievement("Learned the platform-health process", project = "Outside-project"),
+            ),
+        )
+        val text = exportGoalArea(area)
+        assertThat(text).isEqualTo(
+            """
+            LEARNING & GROWTH
+              • Selected for the AI Studio cohort
+              • Learned the platform-health process
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `from-N-logs appears only when a pointer really merged several logs`() {
+        val area = SummaryGoalArea(
+            name = "Performance Goals",
+            achievements = listOf(SummaryAchievement("Shipped the checkout redesign", count = 1)),
+        )
+        assertThat(exportGoalArea(area)).doesNotContain("from 1 log")
+        assertThat(exportGoalArea(area)).doesNotContain("(from")
+    }
+
+    @Test
+    fun `every pointer survives the grouping — nothing is dropped by the hierarchy`() {
+        val text = exportGoalArea(hierarchyArea, facts)
+        assertThat(text.lines().count { it.contains("•") }).isEqualTo(3)
+    }
+
+    @Test
+    fun `a deliverable whose pointers are all blank is not exported as a bare heading`() {
+        val area = SummaryGoalArea(
+            name = "Performance Goals",
+            achievements = listOf(
+                SummaryAchievement("  ", project = "Intake Hub", deliverable = "Empty Thread"),
+                SummaryAchievement("A real win", project = "Intake Hub"),
+            ),
+        )
+        val text = exportGoalArea(area)
+        assertThat(text).doesNotContain("Empty Thread")
+        assertThat(text).contains("    • A real win")
+    }
+
+    // ---- behaviours (unchanged in S1 — tags on evidence arrive with S3) ----
 
     @Test
     fun `a behaviour with nested competencies exports the category header then each competency sub-head with its bullets`() {

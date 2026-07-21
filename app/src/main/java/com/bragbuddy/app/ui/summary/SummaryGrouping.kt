@@ -4,6 +4,7 @@ import com.bragbuddy.app.data.ai.SummaryAchievement
 import com.bragbuddy.app.data.local.NO_PROJECT_LABEL
 import com.bragbuddy.app.data.local.isNamedProject
 import com.bragbuddy.app.data.rollup.AggDeliverable
+import com.bragbuddy.app.data.rollup.DeliverableFact
 
 /**
  * Groups a goal area's summary achievements into **project folders** (Summary phase · item 5),
@@ -31,10 +32,14 @@ data class SummaryDeliverableGroup(val name: String?, val items: List<IndexedAch
  * record (Category → Project → Deliverable), mirroring Home.
  *
  * Named deliverables keep first-appearance order; the folder's loose work (no deliverable) sinks to the
- * end as a single `name = null` group. Returns **null** when there is no structure worth drawing —
- * fewer than two groups — so a folder whose work is all one deliverable, or all loose, renders exactly
- * as it did before instead of gaining a header that says nothing. Same rule, and same reason, as
- * [groupAchievementsByProject].
+ * end as a single `name = null` group. Returns **null** only when there is nothing to name — all the
+ * work is loose — so an unstructured folder renders exactly as it always did.
+ *
+ * ⭐ S1 rule change: a SINGLE named deliverable now draws its header too (pre-S1 this required two
+ * groups). PART B rule 2 condenses a whole deliverable to ONE pointer, so one-group folders are the
+ * NORM, not an edge — and the header is no longer decoration: it carries the user's own structure and
+ * its Done state into the screen and the exported doc ("if the user manually creates organised folders,
+ * those must survive into the final summary" — the S-arc's owner ask).
  *
  * Grouping is by name alone, which is safe ONLY here: these achievements have already been bucketed
  * into one project by [groupAchievementsByProject], and this runs within a single goal area — so
@@ -56,12 +61,25 @@ fun groupFolderByDeliverable(items: List<IndexedAchievement>): List<SummaryDeliv
     val ordered = buckets.entries
         .map { (key, group) -> SummaryDeliverableGroup(display.getValue(key), group) }
         .sortedBy { it.name == null }
-    return if (ordered.size >= 2) ordered else null
+    return if (ordered.any { it.name != null }) ordered else null
 }
 
 /** Bucket key for "no deliverable". A real name can never collide with it: a blank one is treated as
  *  loose above, so every named key is non-empty by construction. */
 private const val LOOSE_KEY = ""
+
+/**
+ * Whether the deliverable [name] under ([areaName], [project]) is marked **Done** (S1) — looked up on
+ * the FULL identity triple (a name alone is not an identity, v0.33.1), normalized like every other
+ * identity comparison. [facts] are the live table rows the rollup's own `AggDeliverable.done` is built
+ * from; a deliverable with no fact (e.g. its row was deleted while entries stay tagged) reports active,
+ * which is the same answer the aggregate gives. Shared by the screen's sub-header and the export's
+ * `(Done)` mark so the two can never disagree.
+ */
+fun deliverableDone(facts: List<DeliverableFact>, areaName: String, project: String?, name: String): Boolean =
+    facts.firstOrNull {
+        norm(it.name) == norm(name) && norm(it.project) == norm(project) && norm(it.goalArea) == norm(areaName)
+    }?.done == true
 
 private val WS = Regex("\\s+")
 
@@ -106,9 +124,13 @@ fun resolveAchievementDeliverables(
  * single trailing [SUMMARY_OUTSIDE_LABEL] bucket. Each achievement keeps its flat index so the
  * caller can reorder within a folder by swapping the right slots.
  *
- * Returns **null** when there is no useful structure to show — fewer than two folders — so the caller
- * renders the area flat (as before) instead of wrapping a single-project or all-loose area in one
- * pointless folder.
+ * Returns **null** only when there is nothing to name — every achievement is loose — so an
+ * unstructured area renders flat, exactly as before.
+ *
+ * ⭐ S1 rule change: a SINGLE named project now draws its folder too (pre-S1 this required two). A
+ * one-project-per-area record is a very common shape, and the S-arc's target layout is the user's own
+ * `Category → Project → Deliverable` hierarchy — on screen AND in the copied doc, which now renders the
+ * folder as a real indented header instead of a per-line `[Project]` tag.
  */
 fun groupAchievementsByProject(achievements: List<SummaryAchievement>): List<SummaryFolder>? {
     if (achievements.isEmpty()) return null
@@ -125,5 +147,5 @@ fun groupAchievementsByProject(achievements: List<SummaryAchievement>): List<Sum
     val ordered = buckets.entries
         .map { (key, items) -> SummaryFolder(display.getValue(key), isOutside = key == SUMMARY_OUTSIDE_LABEL, items = items) }
         .sortedBy { it.isOutside }
-    return if (ordered.size >= 2) ordered else null
+    return if (ordered.any { !it.isOutside }) ordered else null
 }

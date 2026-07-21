@@ -2,8 +2,10 @@ package com.bragbuddy.app
 
 import com.bragbuddy.app.data.ai.SummaryAchievement
 import com.bragbuddy.app.data.rollup.AggDeliverable
+import com.bragbuddy.app.data.rollup.DeliverableFact
 import com.bragbuddy.app.ui.summary.IndexedAchievement
 import com.bragbuddy.app.ui.summary.SUMMARY_OUTSIDE_LABEL
+import com.bragbuddy.app.ui.summary.deliverableDone
 import com.bragbuddy.app.ui.summary.groupAchievementsByProject
 import com.bragbuddy.app.ui.summary.groupFolderByDeliverable
 import com.bragbuddy.app.ui.summary.resolveAchievementDeliverables
@@ -46,9 +48,11 @@ class SummaryGroupingTest {
     }
 
     @Test
-    fun `a single-project area returns null so the caller renders flat`() {
+    fun `a single-project area draws its folder — the user's structure survives (S1)`() {
         val list = listOf(ach("a", "Atlas"), ach("b", "Atlas"))
-        assertThat(groupAchievementsByProject(list)).isNull()
+        val folders = groupAchievementsByProject(list)!!
+        assertThat(folders.single().name).isEqualTo("Atlas")
+        assertThat(folders.single().items.map { it.flatIndex }).containsExactly(0, 1).inOrder()
     }
 
     @Test
@@ -102,10 +106,12 @@ class SummaryGroupingTest {
     }
 
     @Test
-    fun `no structure worth drawing returns null — the folder renders exactly as before`() {
-        // All one deliverable...
-        assertThat(groupFolderByDeliverable(idx(del("a", "Market rollout"), del("b", "Market rollout")))).isNull()
-        // ...all loose...
+    fun `a single named deliverable draws its header (S1) — only the all-loose folder renders flat`() {
+        // PART B rule 2 condenses a deliverable to ONE pointer, so a one-group folder is the NORM —
+        // and the header carries the user's own structure + its Done state into screen and doc.
+        val single = groupFolderByDeliverable(idx(del("a", "Market rollout"), del("b", "Market rollout")))!!
+        assertThat(single.single().name).isEqualTo("Market rollout")
+        // All loose → nothing to name → flat, as always...
         assertThat(groupFolderByDeliverable(idx(del("a", null), del("b", null)))).isNull()
         // ...and nothing at all.
         assertThat(groupFolderByDeliverable(emptyList())).isNull()
@@ -158,5 +164,23 @@ class SummaryGroupingTest {
         val input = listOf(SummaryAchievement(bullet = "a", project = "Raven Migration"))
         assertThat(resolveAchievementDeliverables(input, agg)).isEqualTo(input)
         assertThat(resolveAchievementDeliverables(input, emptyList())).isEqualTo(input)
+    }
+
+    // ---- S1 · the Done lookup behind the sub-header's tag and the export's (Done) mark ----
+
+    @Test
+    fun `deliverableDone matches on the FULL identity triple, normalized`() {
+        val facts = listOf(
+            DeliverableFact("Market rollout", "Raven Migration", "Performance Goals", done = true),
+            // The trap: a same-named deliverable in another project must never answer for this one.
+            DeliverableFact("Market rollout", "Payments", "Performance Goals", done = false),
+        )
+        assertThat(deliverableDone(facts, "Performance Goals", "Raven Migration", "Market rollout")).isTrue()
+        assertThat(deliverableDone(facts, "Performance Goals", "Payments", "Market rollout")).isFalse()
+        // Normalized like every other identity comparison (trim + case + whitespace).
+        assertThat(deliverableDone(facts, "performance goals", "raven  migration", "MARKET ROLLOUT")).isTrue()
+        // No fact (deleted row, entries still tagged) reports active — same answer the aggregate gives.
+        assertThat(deliverableDone(facts, "Performance Goals", "Raven Migration", "Ghost")).isFalse()
+        assertThat(deliverableDone(emptyList(), "Performance Goals", "Raven Migration", "Market rollout")).isFalse()
     }
 }

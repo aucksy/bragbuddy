@@ -98,6 +98,13 @@ class SummaryViewModel @Inject constructor(
          * check-ins") with nothing behind them, so they can explain but never be restored faithfully.
          */
         val setAsideItems: List<SetAsideItem> = emptyList(),
+        /**
+         * Every deliverable's live identity + Done state (S1) — what the rendered sub-headers and the
+         * export's `(Done)` marks read. The same truth `AggDeliverable.done` is built from
+         * ([compute] feeds the identical rows in as [DeliverableFact]s), read off the table rather than
+         * the aggregate so it needs no per-area digging at the render sites.
+         */
+        val deliverableFacts: List<DeliverableFact> = emptyList(),
     )
 
     /** A project folder: its name and the category it lives under. */
@@ -213,6 +220,8 @@ class SummaryViewModel @Inject constructor(
         val pinnedBullets: List<String>,
         val pinnedForPrompt: List<String>,
         val signature: String,
+        /** The live per-deliverable facts fed to the aggregator — surfaced to the screen too (S1). */
+        val facts: List<DeliverableFact>,
     )
 
     private fun compute(inp: Inputs, period: SummaryPeriod, length: SummaryLength): Computed {
@@ -255,7 +264,7 @@ class SummaryViewModel @Inject constructor(
             rollupString, pinnedForPrompt.joinToString("\n"), frameworkBlock, inp.role, period.name, length.name,
             AiPrompts.summaryTemplateFingerprint,
         )
-        return Computed(window, agg, aggFull, rollupString, frameworkBlock, pinnedInWindow, pinnedBullets, pinnedForPrompt, signature)
+        return Computed(window, agg, aggFull, rollupString, frameworkBlock, pinnedInWindow, pinnedBullets, pinnedForPrompt, signature, facts)
     }
 
     private fun build(
@@ -317,6 +326,7 @@ class SummaryViewModel @Inject constructor(
             // entries as "set aside" and offer to restore what was never left out. Blank until the user
             // regenerates against the fresh rollup.
             setAsideItems = if (isStale) emptyList() else deriveSetAside(c.aggFull, cached),
+            deliverableFacts = c.facts,
         )
     }
 

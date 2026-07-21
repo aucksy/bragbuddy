@@ -405,7 +405,7 @@ private fun ReadyBlock(
                 modifier = Modifier.weight(1f),
             )
             HeaderPill("Copy", palette.primarySoft, palette.primary) {
-                onCopyText(exportSummary(result, "${state.period.label} summary"), "Copied summary")
+                onCopyText(exportSummary(result, "${state.period.label} summary", state.deliverableFacts), "Copied summary")
             }
         }
         Spacer(Modifier.height(Spacing.s2))
@@ -426,7 +426,7 @@ private fun ReadyBlock(
                         palette = palette,
                         expanded = !collapsed.contains(key),
                         onToggle = { toggle(key) },
-                        onCopy = { onCopyText(exportGoalArea(area), "Copied section") },
+                        onCopy = { onCopyText(exportGoalArea(area, state.deliverableFacts), "Copied section") },
                         onSwap = onSwap,
                         onLongPress = onLongPressPointer,
                         onEdit = onEditPointer,
@@ -573,7 +573,8 @@ private fun GoalAreaSection(
         Column {
             Spacer(Modifier.height(Spacing.s3))
             // Item 5: group the area's wins into collapsible project folders (mirrors Home). Falls back
-            // to a flat list when there's no structure to show (single project / all loose).
+            // to a flat list only when nothing is named (all loose) — S1: a single named project now
+            // draws its folder, so the screen and the exported doc share the user's real hierarchy.
             val folders = groupAchievementsByProject(area.achievements)
             if (folders != null) {
                 folders.forEach { folder ->
@@ -581,12 +582,13 @@ private fun GoalAreaSection(
                     Spacer(Modifier.height(Spacing.s2))
                 }
             } else {
-                // No project structure worth drawing — but the DELIVERABLE level still applies here
-                // (v0.34.0), and this is the branch a one-project-per-area user always lands in.
-                // The project rides inline on each row, as it did before, since no folder header shows it.
+                // Nothing named to draw (S1: a single named project now DOES get its folder — this
+                // branch is only ever the all-loose area). The deliverable level still runs for safety,
+                // and any stray non-named project text stays off the rows: only a real named project is
+                // worth a tag, and none exists here by construction.
                 DeliverableGroups(
                     area.achievements.mapIndexed { i, a -> IndexedAchievement(i, a) },
-                    area.name, hue, state, palette, onSwap, onLongPress, onEdit, onDelete, onRetag,
+                    area.name, null, hue, state, palette, onSwap, onLongPress, onEdit, onDelete, onRetag,
                     showProjectInline = true,
                 )
             }
@@ -650,23 +652,28 @@ private fun ProjectFolder(
         ) {
             Column(Modifier.padding(start = Spacing.s3)) {
                 Spacer(Modifier.height(Spacing.s2))
-                DeliverableGroups(folder.items, areaName, hue, state, palette, onSwap, onLongPress, onEdit, onDelete, onRetag)
+                DeliverableGroups(
+                    folder.items, areaName, if (folder.isOutside) null else folder.name,
+                    hue, state, palette, onSwap, onLongPress, onEdit, onDelete, onRetag,
+                )
             }
         }
     }
 }
 
 /**
- * v0.34.0 · the third level — [items] sub-grouped by deliverable, or rendered flat when there is no
- * structure worth drawing (all one deliverable / all loose). Used at BOTH render sites, because the
- * export tags every line `[Project ▸ Deliverable]` unconditionally: when only the folder branch grouped,
- * a user with one project per goal area (a very common shape — the area then renders flat) saw no
- * deliverable headings at all, yet copying the doc produced structure the screen never showed.
+ * v0.34.0 · the third level — [items] sub-grouped by deliverable, or rendered flat when nothing is
+ * named (all loose; S1 — a single named deliverable now draws its header, carrying the name + Done
+ * state). Used at BOTH render sites so the screen and the export (which renders the same groups as
+ * real indented headings since S1) always agree on the shape.
  */
 @Composable
 private fun DeliverableGroups(
     items: List<IndexedAchievement>,
     areaName: String,
+    /** The folder's named project, or null for the Outside bucket / the all-loose flat branch — the
+     *  second leg of the identity the Done lookup needs (a deliverable name alone is not an identity). */
+    projectName: String?,
     hue: PillarColor,
     state: SummaryViewModel.ScreenState,
     palette: BragPalette,
@@ -699,7 +706,11 @@ private fun DeliverableGroups(
             // mis-attribution this level exists to prevent, and the screen then disagreed with the
             // export, which tags every line individually and got it right.
             if (g.name != null) {
-                DeliverableSubHeader(g.name, hue, palette)
+                val done = deliverableDone(
+                    state.deliverableFacts, areaName,
+                    projectName ?: g.items.first().achievement.project, g.name,
+                )
+                DeliverableSubHeader(g.name, done, hue, palette)
                 rows(g.items)
             } else {
                 Spacer(Modifier.height(Spacing.s2))
@@ -746,7 +757,9 @@ private fun AchievementRows(
         val prevFlat = if (at > 0) scope[at - 1].flatIndex else null
         val nextFlat = if (at >= 0 && at < scope.lastIndex) scope[at + 1].flatIndex else null
         AchievementRow(
-            text = achievementDisplay(ach.bullet, ach.metric, if (showProjectInline) ach.project else null),
+            // Inline project only when it's a real NAMED one — the flat branch is the all-loose area
+            // (S1), so a sentinel like "Outside-project" must not leak onto a row as if it were a name.
+            text = achievementDisplay(ach.bullet, ach.metric, if (showProjectInline) ach.project?.takeIf { it.isNamedProject() } else null),
             hue = hue,
             palette = palette,
             pinned = isPinned(state.pinnedBullets, ach.bullet),
@@ -773,7 +786,7 @@ private fun AchievementRows(
  * vocabulary — the small hue square — so the two levels still read as one record.
  */
 @Composable
-private fun DeliverableSubHeader(name: String, hue: PillarColor, palette: BragPalette) {
+private fun DeliverableSubHeader(name: String, done: Boolean, hue: PillarColor, palette: BragPalette) {
     Row(
         Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -787,7 +800,20 @@ private fun DeliverableSubHeader(name: String, hue: PillarColor, palette: BragPa
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
         )
+        if (done) {
+            // S1 · the lifecycle state, read live from the deliverable table ("a Done deliverable reads
+            // as a completed story and shows its state"). Muted — a fact, not a call to action.
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "Done",
+                style = MaterialTheme.typography.labelSmall,
+                color = palette.text3,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(Radii.sm)).background(palette.surface2).padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
     }
     Spacer(Modifier.height(Spacing.s1))
 }
@@ -984,10 +1010,12 @@ private fun AchievementRow(
         Spacer(Modifier.width(Spacing.s3))
         Text(text, style = MaterialTheme.typography.bodyMedium, color = palette.text1, modifier = Modifier.weight(1f))
         if (count > 1) {
-            // A repeated notable win — emphasized "×N" chip (distinct from the muted routine roll-up).
+            // A merged pointer — several log entries condensed into this one line (S1: "from N logs",
+            // matching the export; plain words, not the old cryptic "×N"). Distinct from the routine
+            // roll-up's ×N, which counts times DONE, not logs merged.
             Spacer(Modifier.width(6.dp))
             Text(
-                "×$count",
+                "from $count logs",
                 style = MaterialTheme.typography.labelSmall,
                 color = hue.ink,
                 fontWeight = FontWeight.Bold,
