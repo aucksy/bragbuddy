@@ -149,3 +149,33 @@ uncapped scripted client could otherwise burn ~₹0.2/request.
 *Method note: token counts = measured characters ÷ 3.6–4.2 (BPE range for English+structured
 text); outputs estimated from eval-observed behaviour (gpt-oss-120b writes conservatively short).
 All figures are managed-key marginal costs; Play's 15% cut applied on revenue; ₹88/USD.*
+
+---
+
+## 7. RECOMMENDED LAUNCH QUOTA CARD (owner-aligned 2026-07-21 — the M3 implementation target)
+
+**Principle (owner's requirement made concrete): the HABIT is free, the HARVEST is paid.** The
+main purpose — a polished, paste-ready review document — must not be fulfillable free. The daily
+loop must be free so the user's whole year accumulates inside the app; the record itself is what
+converts them at review season.
+
+| | FREE — "Build your record" | PRO — ₹149/mo · ₹999/yr (locked) |
+|---|---|---|
+| Typed capture | **Unlimited, always saved** (trust floor) | Unlimited |
+| AI filing | **~40 notes/mo** (≈2/workday; overflow → Inbox manual tap-filing, never lost) | Unlimited (fair-use) |
+| Voice notes | 3/day (turbo Whisper) | Unlimited |
+| Photo scans | 5/mo | Unlimited |
+| Summary | **1 Brief per review season**, ending in a locked teaser ("+ N more wins in your record — unlock your full document") | **One page + Detailed (Pro-only)**, unlimited gens (50/mo soft cap stays), regenerate freely |
+| Review Pack (M4) | — | The season hero: gap-filling interview, first-person prose per goal area, tone control |
+| Backup / restore / copy RAW record | **Always free** (never hostage the user's own words — sell the craftsmanship, not the data) | Same |
+
+**Conversion mechanics:** review-season countdown campaign (M6) + every free Brief ends in the
+locked teaser + optional **7-day Pro trial granted ONCE, triggered at the user's first review
+season** (not at install — pre-habit, the payoff means nothing). **Push annual over monthly**
+(reviews are twice a year; monthly churns post-season; ₹999 matches the product's rhythm).
+
+**Why the free tier can't fulfil the main purpose:** Brief = 3 bullets/category — a trailer, not
+a submittable self-assessment; real forms need the per-goal detail that lives in One page/
+Detailed/Review Pack. Free copy-out exports the user's OWN raw words unpolished — the paid
+artifact is the AI-written document. Economics per §5: free user ₹1.5–2.5/mo; one annual payer
+carries ~33 free users; break-even ≈ 3% conversion.
