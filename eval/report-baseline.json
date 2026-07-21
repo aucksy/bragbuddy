@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-16T08:30:57.956Z",
+  "generatedAt": "2026-07-21T05:05:50.396Z",
   "models": {
     "baseUrl": "https://openrouter.ai/api/v1/chat/completions",
     "categorizer": [
@@ -26,41 +26,44 @@
     "routineReuse": 1,
     "impactBand": 0.8,
     "coachPass": 0.9,
+    "deliverableAccuracy": 0.8,
     "summaryChecks": 1
   },
   "counts": {
-    "categorizer": 47,
+    "categorizer": 54,
     "coach": 12,
-    "summary": 6
+    "summary": 7
   },
   "limited": false,
   "metrics": {
-    "placementAccuracy": 0.9629629629629629,
+    "placementAccuracy": 0.9705882352941176,
     "inboxRecall": 0.8,
     "inboxPrecision": 0.8846153846153846,
     "jsonValidity": 1,
     "primaryParseFailRate": 0,
     "routineReuse": 1,
-    "impactBand": 0.9230769230769231,
+    "impactBand": 1,
     "coachPass": 0.9166666666666666,
     "coachNoInventedNumbers": 1,
-    "summaryChecks": 0.9629629629629629,
-    "entryCountAccuracy": 0.9166666666666666,
-    "demonstratesAccuracy": 0.14285714285714285,
+    "deliverableAccuracy": 0.8333333333333334,
+    "summaryChecks": 0.9666666666666667,
+    "entryCountAccuracy": 0.975,
+    "demonstratesAccuracy": 1,
     "metricPreserved": 0.6,
     "dateMentionedAccuracy": 1,
     "routineFalsePositiveFree": 1
   },
   "denominators": {
-    "placementAccuracy": 27,
+    "placementAccuracy": 34,
     "inboxRecall": 5,
     "inboxPrecision": 26,
-    "primaryParseFailRate": 195,
+    "primaryParseFailRate": 219,
     "routineReuse": 7,
     "impactBand": 13,
     "coachPass": 12,
-    "summaryChecks": 27,
-    "entryCountAccuracy": 36,
+    "deliverableAccuracy": 6,
+    "summaryChecks": 30,
+    "entryCountAccuracy": 40,
     "demonstratesAccuracy": 7,
     "metricPreserved": 5,
     "dateMentionedAccuracy": 1,
@@ -69,7 +72,7 @@
   "gates": [
     {
       "name": "placementAccuracy",
-      "value": 0.9629629629629629,
+      "value": 0.9705882352941176,
       "threshold": 0.85,
       "pass": true,
       "extra": ""
@@ -104,7 +107,7 @@
     },
     {
       "name": "impactBand",
-      "value": 0.9230769230769231,
+      "value": 1,
       "threshold": 0.8,
       "pass": true,
       "extra": ""
@@ -124,8 +127,15 @@
       "extra": ""
     },
     {
+      "name": "deliverableAccuracy",
+      "value": 0.8333333333333334,
+      "threshold": 0.8,
+      "pass": true,
+      "extra": ""
+    },
+    {
       "name": "summaryChecks",
-      "value": 0.9629629629629629,
+      "value": 0.9666666666666667,
       "threshold": 1,
       "pass": false,
       "extra": ""
@@ -136,7 +146,7 @@
     {
       "id": "detailed-length",
       "failed": {
-        "lengthHonoured": "too few achievements: Delivery 4<5 (passed 0/3)"
+        "lengthHonoured": "too few achievements: Delivery 3<5; Quality & Craft 1<3 (passed 0/3)"
       },
       "advisory": {},
       "model": "openai/gpt-oss-120b",
@@ -145,7 +155,7 @@
     {
       "id": "coach-eng-flaky",
       "failed": {
-        "grounded": "no content-word overlap with the project detail/bullet (passed 1/3)"
+        "grounded": "no content-word overlap with the project detail/bullet (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -163,25 +173,7 @@
     {
       "id": "po-metric-30-percent",
       "failed": {
-        "inbox": "expected NOT parked; got [{\"project\":\"Inbox\",\"goalCategory\":\"Inbox\",\"confidence\":0.5}] (passed 0/3)"
-      },
-      "advisory": {},
-      "model": "meta-llama/llama-3.3-70b-instruct",
-      "error": null
-    },
-    {
-      "id": "po-extra-mentoring",
-      "failed": {
-        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"ownership\",\"collaboration\"] (passed 0/3)"
-      },
-      "advisory": {},
-      "model": "meta-llama/llama-3.3-70b-instruct",
-      "error": null
-    },
-    {
-      "id": "eng-development-cert",
-      "failed": {
-        "impactBand": "expected [0.2,0.6], got 0.8 (passed 0/3)"
+        "inbox": "expected NOT parked; got [{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.5}] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -190,8 +182,8 @@
     {
       "id": "real-002",
       "failed": {
-        "placements": "missing [{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\"},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\"},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\"}]; got [{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\"},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\"},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\"}] (passed 1/3)",
-        "inbox": "expected NOT parked; got [{\"project\":\"Raven Migration\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Raven Migration\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Raven Migration\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9}] (passed 1/3)"
+        "placements": "missing [{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\"},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\"},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\"}]; got [{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\"},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\"},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\"},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\"}] (passed 0/3)",
+        "inbox": "expected NOT parked; got [{\"project\":\"Raven Migration\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Raven Migration\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Raven Migration\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Raven Migration\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9}] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -200,8 +192,8 @@
     {
       "id": "real-003",
       "failed": {
-        "entryCount": "expected 1, got 2 (passed 1/3)",
-        "metric": "expected metric containing \"20 days\", got [null] (passed 0/3)"
+        "entryCount": "expected 1, got 2 (passed 0/3)",
+        "metric": "expected metric containing \"20 days\", got [null,null] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -210,25 +202,7 @@
     {
       "id": "real-005",
       "failed": {
-        "metric": "expected metric containing \"76 stories\", got [null,null,null,null,null,null] (passed 0/3)"
-      },
-      "advisory": {},
-      "model": "meta-llama/llama-3.3-70b-instruct",
-      "error": null
-    },
-    {
-      "id": "real-006",
-      "failed": {
-        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"bring others with you\",\"do it the right way\"] (passed 0/3)"
-      },
-      "advisory": {},
-      "model": "meta-llama/llama-3.3-70b-instruct",
-      "error": null
-    },
-    {
-      "id": "real-007",
-      "failed": {
-        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"do it the right way\",\"bring others with you\"] (passed 0/3)"
+        "metric": "expected metric containing \"76 stories\", got [null,null,null,null,null,null,null] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
@@ -237,36 +211,16 @@
     {
       "id": "real-008",
       "failed": {
-        "inbox": "expected NOT parked; got [{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7},{\"project\":\"Inbox\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.7}] (passed 0/3)",
-        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"bring others with you\",\"do it the right way\"] (passed 0/3)"
+        "inbox": "expected NOT parked; got [{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Inbox\",\"goalCategory\":\"Inbox\",\"confidence\":0.7},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Platform Health\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Inbox\",\"goalCategory\":\"Inbox\",\"confidence\":0.7},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9},{\"project\":\"Raven Migration CCP Portals\",\"goalCategory\":\"Performance Goals\",\"confidence\":0.9}] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
       "error": null
     },
     {
-      "id": "real-009",
+      "id": "del-anchored-project-no-ai-guess",
       "failed": {
-        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"bring others with you\",\"do it the right way\"] (passed 0/3)"
-      },
-      "advisory": {},
-      "model": "meta-llama/llama-3.3-70b-instruct",
-      "error": null
-    },
-    {
-      "id": "real-010",
-      "failed": {
-        "entryCount": "expected 1, got 4 (passed 0/3)"
-      },
-      "advisory": {},
-      "model": "meta-llama/llama-3.3-70b-instruct",
-      "error": null
-    },
-    {
-      "id": "real-011",
-      "failed": {
-        "entryCount": "expected 1, got 4 (passed 0/3)",
-        "demonstrates": "missing required tag(s) [\"Leadership & Behaviours\"], got [\"set the agenda\",\"communicate frequently, candidly and clearly\",\"lead with an external perspective\",\"make decisions quickly and effectively\",\"build a diverse and inclusive team\",\"seek and provide coaching and feedback\",\"demonstrate courageous and authentic leadership\",\"live the blue box values\"] (passed 0/3)"
+        "deliverables": "[{\"expected\":null,\"got\":\"Market rollout\"}] (passed 0/3)"
       },
       "advisory": {},
       "model": "meta-llama/llama-3.3-70b-instruct",
