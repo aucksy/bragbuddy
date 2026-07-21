@@ -1,198 +1,356 @@
-# BragBuddy — AI System Assessment: making the categorizer, summary, and impact coach actually magical
+# BragBuddy — AI System Prompt Assessment (2026-07-21 refresh)
 
-*Date: 2026-07-11 · Scope: the three AI jobs that ARE the product — daily categorization ("inputs land in the right folders"), summary generation ("the write-up just works"), and the impact-coaching loop (the USP) — plus token efficiency ("users never consume more than they pay for"). Assessed against the SHIPPED prompts (`AiPrompts.kt`, v0.25.0) and the exact runtime context they receive, not the PRD spec. Companion doc: `PRODUCT-ASSESSMENT.md` (strategy). BYOK remains the test-mode setup until launch; managed key at launch — confirmed by the creator 2026-07-11.*
+*Scope: EVERY prompt in `AiPrompts.kt` as shipped in **v0.37.0** — PART A categorizer (+ COMBINE
+mode), PART B summary, PART C framework-refine, image extract, document scan, impact coach — assessed
+against the PRD's intended purpose, the eval goldens, the committed baseline
+(`eval/report-baseline.json`, 2026-07-16) and the v0.37.0 gate rounds. **This SUPERSEDES the
+2026-07-11 assessment** (git history keeps it): that one predates v0.31.0 (length fix), v0.34.0
+(deliverables) and v0.37.0 (big-paste splitting), and its recommendation list has since largely
+SHIPPED (examples, rubrics, routine-label reuse, behaviour blurbs, output validator, cache-first
+restructure, coach-at-capture, the eval harness itself). This is a read/analysis pass — **no eval was
+run** (fixed-seed lore: a bare re-run reproduces; the committed numbers are the evidence).*
+
+*Measured state assessed against (v0.37.0, 2 gate rounds — do not re-measure):
+placementAccuracy 97.1% · entryCountAccuracy 92.9% · deliverableAccuracy 83.3% · coachPass 91.7% ·
+inboxPrecision 84.6% (22/26, RED, bar 90%) · summaryChecks 96.7% (RED, bar 100%) ·
+demonstratesAccuracy ~14% (1/7) · metricPreserved ~60% (3/5).*
 
 ---
 
 ## 0. Executive verdict
 
-The architecture is right and the prompts are *good* — grounded, invent-nothing, JSON-disciplined, with the anchor/Inbox/COMBINE mechanics correctly specified. But "good" is not "magical," and the gap is closable with **cheap, surgical changes**: the shipped categorizer has **no worked examples** (the PRD wrote three; they were never baked in), its **impact/confidence numbers are unanchored** (and those numbers silently decide what the summary is even allowed to see), the model **never sees the routine labels it already created** (so tallies fragment), behaviour pillars lost their definitions in the B2b change, **nothing validates the model's returned names** against the real project/category lists, and Whisper is never told the user's project vocabulary. On efficiency: the prompt's mutable CONTEXT block sits at the **top**, which defeats Groq's 50%-off prompt caching — restructuring is the single biggest cost lever and it's free.
+The system is in far better shape than the last assessment found it — the 2026-07-11 fix list
+shipped and the gated metrics show it (placement 97%, routine reuse 100%, zero invented coach
+numbers, JSON validity 100%). What remains is **not architecture and mostly not even prompt
+quality — it is three localized defects and two stale-artifact conflicts**, each now diagnosed to a
+root cause:
 
-**The one meta-gap above all others: there is no evaluation harness.** Magic isn't written, it's *measured into existence*. Until placement accuracy, routine-grouping stability, and question quality are scored against a golden set on every prompt/model change, every tweak is a guess. Build the eval first; everything else follows.
+| # | Finding | Severity (user impact) | Root cause | Fix type |
+|---|---|---|---|---|
+| F1 | **Behaviour evidence is silently destroyed** for real-world frameworks (demonstratesAccuracy 14%) | **HIGH — the "how" half of the appraisal doc starves** | Prompt invites competency names; normalizer drops them | **Code-only** (no prompt edit, no cache loss) |
+| F2 | **Inbox↔Outside-project boundary is mis-taught** (inboxPrecision 84.6% RED) — prompt Example 3 teaches the model to fail golden `po-metric-30-percent` | HIGH — real wins park in Inbox instead of filing | Example 3's surface pattern collides with desired behaviour; the boundary has no positive example | **Prompt edit** (dedicated calibration phase) |
+| F3 | Stated numbers don't land in `metric` (metricPreserved 60%) | MED — rollup metric lines thin out; number survives only in the bullet | Rule 11 says "optional"; no long-form example shows metric extraction | Prompt edit (batch with F2) |
+| F4 | Goldens `real-010`/`real-011` (entryCount=1) now contradict v0.37.0's rule 2 by construction | LOW-MED (eval hygiene; masks real entryCount signal) | Goldens written 2026-07-11 encode the pre-split policy the owner has since reversed | **Golden-only edit** |
+| F5 | `summaryChecks` RED = ONE stable case (`detailed-length` wants ≥5 Delivery achievements, gpt-oss-120b reliably writes 4) | LOW-MED — cosmetic red gate every phase | Aspirational golden floor vs the model's stable behaviour (the exact v0.31.0 `lengthHonoured` lesson, recorded then repeated) | Owner decision (golden recalibration vs known-red) |
+| F6 | PART C framework-refine: built, byte-maintained, **zero callers since 2026-07-07** | LOW (dead weight + drift risk) | Owner locked "no AI reshapes the framework"; the seam was never removed | **Delete** (recommended) |
 
-| AI job | Today | Verdict |
+**Schema drift (axis 3): CLEAN** — every prompt's promised JSON maps 1:1 onto its Kotlin serializer
+(§5). No silent field drops in either direction. The one "drop" that exists is deliberate and is F1's
+mechanism.
+
+**Purpose fit (axis 1): PASS with the three defects above.** The categorizer files right and never
+loses (fail-safe → Inbox verified end-to-end); the summary is manager-ready and deliverable-aware;
+the coach asks and provably never invents a number (hard-gated at 1.0). The gap between "good" and
+"right" is concentrated in F1–F3.
+
+---
+
+## 1. What changed since the 2026-07-11 assessment (context for why this doc supersedes it)
+
+Shipped and verified through eval gates: AI-1 (examples ×5, impact/confidence rubrics, routine-label
+reuse via `{{ROUTINE_TYPES}}`, cache-first two-part restructure, `CategorizedNormalizer`, description
+caps, 8B-fallback confidence cap), AI-2 (coach-at-capture — the USP move the old doc called C1),
+v0.30.0 (competency nesting), v0.31.0 (length-target fix F3, development placement F4), v0.34.0
+(deliverables in `{{PROJECTS}}` + PART B rule 2 + `DeliverableGuess`), v0.37.0 (rule 2 split-scoping
++ Example 5 + `paste-appraisal-split`). The old doc's grades (categorizer B, no examples, no eval)
+no longer describe the shipped system.
+
+---
+
+## 2. Contradiction (a) ADJUDICATED — prompt Example 3 vs golden `po-metric-30-percent`
+
+**The evidence.**
+- Prompt Example 3 ([AiPrompts.kt:160-169](../app/src/main/java/com/bragbuddy/app/data/ai/AiPrompts.kt#L160-L169)):
+  *"Built that new leadership dashboard, cut reporting time by about 30 percent."* →
+  `project: "Inbox", confidence: 0.5`. Its illustrative setup lists Raven Migration + SharePoint
+  Request System — the **same two projects** the golden uses.
+- Golden `po-metric-30-percent` (`eval/golden/categorizer.jsonl:29`): *"Built the **migration status
+  dashboard** for leadership, cut the weekly reporting effort by about 30 percent."* →
+  `inboxExpected: false` (must NOT park). Baseline failure: parked 0/3, `confidence 0.5` — the model
+  reproduces Example 3's answer verbatim (`report-baseline.json:164-171`).
+- Example 3 itself is inherited from the PRD (`PRD/BragBuddy-System-Prompt.md` §A4 Example C,
+  "metric, no matching project → Inbox") — it predates the loose-mention matching rule.
+
+**Verdict: the PROMPT EXAMPLE is the wrong one. The golden stands.** Three reasons:
+
+1. **The golden encodes shipped product policy; the example predates it.** Rule 4
+   ([AiPrompts.kt:47-54](../app/src/main/java/com/bragbuddy/app/data/ai/AiPrompts.kt#L47-L54), AI-1's
+   loose-mention rule) says a loose mention that "clearly fits exactly one listed project" must file.
+   *"The **migration** status dashboard"* carries a real cue toward the only migration project
+   (Raven, whose description is literally "servicing-comms migration across markets… measured by
+   markets migrated"). The example's sentence (*"that new leadership dashboard"*) carries **no** cue.
+   The intended lesson differs on exactly the feature the model must learn to discriminate — but the
+   two sentences share their entire surface pattern (built + dashboard + ~30% + reporting), so the
+   example functions as a **memorised answer** for the golden's sentence. A few-shot example must
+   never sit within pattern-matching distance of a case that requires the opposite output.
+2. **The example teaches a lesson the product doesn't want.** What a 70B model generalises from it is
+   "a standalone win with a metric → park at 0.5". That directly contradicts the appraisal-record
+   purpose (a clear win with a stated metric is the *most* appraisal-worthy capture there is) and
+   feeds the same failure in `real-008` (below). Parking is friction; with capture-review Phase 4
+   coming (user confirms placement at capture), a confident Outside-project/goal-area filing is
+   strictly better than an Inbox park for real work.
+3. **Example 3's legitimate teaching goals survive a rewrite.** It exists to teach (i) metric
+   extraction verbatim, (ii) park-when-genuinely-unplaceable, (iii) empty `suggestedProjects`. All
+   three survive with a transcript that shares no vocabulary with plausible project work — e.g. a
+   vendor-onboarding tracker for an ops team, in a setup whose projects are clearly unrelated.
+
+**The fix is NOT just the example.** `real-008` (`categorizer.jsonl:44`, 9 entries all parked at 0.7)
+and the v0.37.0 one-case nudge `eng-routine-tickets` (`categorizer.jsonl:10`) fail on the same
+boundary with no example collision — the prompt **under-teaches Inbox vs Outside-project**. Only
+Example 4 (Hinglish) shows a confident Outside-project filing; no plain-English "real work, no
+project → Outside-project + best goal area, confidence ≥0.6" example exists, and rule 4's Inbox
+definition ("can't place it / maybe new / unsure") reads as the safe default. So the calibration
+phase = **rework Example 3 + sharpen the rule-4/rule-6 boundary ("Inbox is for work you cannot even
+categorise — real work that simply belongs to no listed project is Outside-project with its best
+goal area") ± one positive Outside-project example.**
+
+**Risk (must be priced in):** `inboxRecall` sits **exactly on its 0.8 floor** (4/5 — the miss is
+`eng-inbox-near-duplicate-projects`, a recall-side case). Pushing the boundary toward filing risks
+tipping park-side cases; every static-block edit also reshuffles borderline cases (the 23→22 lesson)
+and invalidates the Groq prefix cache for all users. This is the **dedicated, several-round, paid
+calibration phase** `## Status: v0.34.0` predicted — not a side-quest. Budget 2–3 rounds (~₹25–75).
+
+---
+
+## 3. Contradiction (b) ADJUDICATED — goldens `real-010`/`real-011` vs v0.37.0 rule 2
+
+**The evidence.** Both transcripts open *"3. Development Goals Progress"* followed by four
+distinct em-dash bullets (requirement definition · AI-enabled knowledge · stakeholder collaboration ·
+…) — a numbered/listed self-appraisal section. Both goldens expect `entryCount: 1`
+(`categorizer.jsonl:46-47`, creator-verified **2026-07-11**). Rule 2 as rewritten in v0.37.0
+([AiPrompts.kt:35-42](../app/src/main/java/com/bragbuddy/app/data/ai/AiPrompts.kt#L35-L42)) says a
+pasted, listed update "must NOT be compressed: produce a SEPARATE entry for EACH distinct
+achievement". The model now returns 4 (`report-baseline.json:257-269` — already 4 at baseline, 0/3,
+so no gated metric moves), i.e. **the model is obeying the current prompt and the goldens are
+penalising it for that.**
+
+**Verdict: the GOLDENS are stale. Rule 2 stands.** The goldens encode the pre-2026-07-19 policy the
+owner explicitly reversed in the capture-review batch (item 2: "pasting a whole self-appraisal
+produced too FEW entries"). A development-goals section with four distinct progress items is
+precisely the "listed update" the owner wanted split — under the old expectation, three of the four
+achievements were buried inside one entry, which is the exact loss v0.37.0 was built to stop.
+
+**Fix (golden-only, no prompt edit, no cache impact):** re-spec both cases the way
+`paste-appraisal-split` was deliberately designed (`## Status: v0.37.0`): drop the exact
+`entryCount: 1`, assert a **robust minimum** instead. For `real-011` keep the anchor assertion
+(every split entry must still land on `Raven Migration CCP Portals` — rule 4 applies the anchor "for
+every entry", so splitting doesn't weaken the anchor test; that is worth asserting explicitly).
+`real-010`'s placement stays deliberately unscored as its note already records. Side benefit:
+removes 2 stable entryCountAccuracy misses that currently mask real over-split regressions.
+
+---
+
+## 4. The two dire report-only metrics — diagnosed to root cause
+
+### 4.1 `demonstratesAccuracy` 14% (1/7) — **a real, user-facing bug, and the top finding of this assessment (F1)**
+
+**What the numbers say.** Six of seven expectation-carrying cases fail the same way
+(`report-baseline.json:172-179, 219-274`): the golden wants the category name
+`"Leadership & Behaviours"`; the model returns the **competency names inside that category's
+description** — `"ownership", "collaboration"` (po-extra-mentoring) and `"set the agenda", "bring
+others with you", "do it the right way"…` (real-006/007/008/009/011, whose framework blurb is the
+owner's real Amex-style "Leadership Behaviors Demonstrated…" text enumerating eight pillars).
+
+**Why the model does it — the prompt invites it.** Rule 7 says *"list the **behaviours/competencies**
+from the framework"* ([AiPrompts.kt:68-71](../app/src/main/java/com/bragbuddy/app/data/ai/AiPrompts.kt#L68-L71))
+and the CONTEXT header labels the section *"BEHAVIOURS / **COMPETENCIES**"* — while AI-1
+deliberately injects each behaviour's full blurb ([FrameworkPrompt.kt:42-43](../app/src/main/java/com/bragbuddy/app/data/entry/FrameworkPrompt.kt#L42-L43))
+so the model can judge against it. Given a blurb that *names* eight competencies, answering with the
+competency it matched is the **more precise reading of the instruction**, not a model failure.
+
+**Why it's not just an eval artifact — the app destroys the data.** `CategorizedNormalizer`
+snaps `demonstrates` to canonical BEHAVIOUR pillar names and **drops everything else**
+([CategorizedNormalizer.kt:91-94](../app/src/main/java/com/bragbuddy/app/data/entry/CategorizedNormalizer.kt#L91-L94)),
+and behaviour evidence exists in the rollup ONLY where an entry's `demonstrates` equals the pillar
+name ([RollupAggregator.kt:173-176](../app/src/main/java/com/bragbuddy/app/data/rollup/RollupAggregator.kt#L173-L176)).
+So for any user whose framework looks like the owner's own (one behaviour category, a blurb listing
+its pillars — the realistic corporate shape), **nearly every behaviour tag the model produces is
+thrown away**, the rollup's behaviour-evidence section starves, and the summary's "how" half — the
+v0.30.0 competency-nesting feature included — has little or nothing to work with. This is a silent
+degradation of the appraisal document itself.
+
+**Verdict: prompt ambiguity + normalizer blind spot, NOT a golden bug and NOT a defensible modelling
+choice.** Two fix routes, in preference order:
+1. **Code-only (recommended): teach the normalizer to map, not drop.** A returned tag that
+   case-insensitively matches a competency **named in exactly one** BEHAVIOUR pillar's blurb snaps to
+   that pillar's name (dedupe after). Deterministic, pure, unit-testable, mirrors into `run.mjs`'s
+   `demonstrates` scorer (`run.mjs:694-700` currently compares raw model tags) — **no prompt edit, so
+   no cache invalidation and no borderline-case reshuffle risk.** It also *preserves* the model's
+   finer-grained signal for any future per-competency feature. Needs one eval round only because the
+   scorer mirror + metric move require a fresh baseline.
+2. Prompt route (fold into F2's calibration batch if preferred): rule 7 gains *"always answer with
+   the CATEGORY's name (the name before the colon), never a competency named inside its
+   description"*. Costs cache; touches the fragile static block.
+   Route 1 first; route 2 only if route 1's mapping proves too fuzzy on real blurbs.
+
+Matching in route 1 must be conservative: match whole competency phrases as listed in the blurb
+(split on the blurb's own separators), require a unique owning pillar, and leave genuinely unknown
+tags dropped as today (the ghost-tag guard must survive).
+
+### 4.2 `metricPreserved` 60% (3/5) — prompt under-asks; the number survives in the bullet but not the field (F3)
+
+**What the numbers say.** The two stable failures are the two REAL long-form cases:
+`real-003` (*"…complete the report within the span of documented **20 days**"* → `metric: null`,
+0/3) and `real-005` (6-bullet paste containing *"**18 features / 76 stories**"* → all six entries
+`metric: null`, 0/3) — `report-baseline.json:200-218`. The three passes are all short transcripts
+where the metric is the sentence's headline ("cut reporting time by about 30 percent").
+
+**Root cause.** Rule 11 frames the field as an afterthought — *"**Optional**, only when explicitly
+stated"* ([AiPrompts.kt:87-90](../app/src/main/java/com/bragbuddy/app/data/ai/AiPrompts.kt#L87-L90)) —
+and **no example demonstrates extraction from long-form text**: Example 3 (the only metric example)
+is a one-liner whose metric is the whole point, and Example 5 (the long-paste example) contains no
+numbers at all. So on a long transcript the model treats a mid-story number as narrative detail, not
+a result to lift out.
+
+**Impact — real but bounded.** The number is not *lost* (rule 3 preserves wording, so it stays in the
+bullet, and `ImpactCheck.hasMeasurable` reads the bullet, so no false coaching nudges). What thins
+out is everything keyed on the **field**: highlight `(metric: …)` annotations, per-area cumulative
+metrics and routine-tally metrics ([RollupAggregator.kt:156-216](../app/src/main/java/com/bragbuddy/app/data/rollup/RollupAggregator.kt#L156-L216)) —
+i.e. the summary model gets a weaker signal about which highlights carry numbers, on exactly the
+richest captures. MED, not HIGH.
+
+**Fix (prompt; batch into the F2 calibration release — same static block, one cache invalidation):**
+reframe rule 11's metric half as an obligation — *"when the transcript states a number or measurable
+result for a piece of work, ALWAYS copy it into that entry's 'metric' (verbatim-ish), wherever in the
+sentence it appears"* — and give ONE of Example 5's items a mid-sentence number that lands in
+`metric`, so the long-paste example models extraction too. Note the eval's check
+(`run.mjs:703-707`) reads only the field — correct as-is once the prompt asks for the right thing;
+do not weaken it to accept bullet-text matches.
+
+---
+
+## 5. Schema drift audit (axis 3) — CLEAN
+
+Checked every prompt's OUTPUT contract against its serializer and the parse path
+(`AiJson` is lenient: `ignoreUnknownKeys`, `coerceInputValues`, object-slice extraction —
+[AiJson.kt:11-31](../app/src/main/java/com/bragbuddy/app/data/ai/AiJson.kt#L11-L31)):
+
+| Prompt | Serializer | Verdict |
 |---|---|---|
-| Daily categorizer (PART A) | B | Right skeleton; unanchored scores, no examples, label drift, no output validation |
-| Summary generator (PART B) | B+ | Strong dedup/arc rules; DEVELOPMENT routing ambiguity; inherits categorizer's score noise |
-| Impact coach (USP) | B− for what it is, **D for where it is** | The prompt is well-constrained — but the AI question never appears during/after capture, only later on a Home card |
-| Token efficiency | C+ | Sound two-model routing; caching defeated by prompt layout; unbounded project details ride every call |
-| Evaluation / feedback loop | **F (absent)** | No golden set, no scoring, no regression gate |
+| CATEGORIZER OUTPUT ([AiPrompts.kt:102-122](../app/src/main/java/com/bragbuddy/app/data/ai/AiPrompts.kt#L102-L122)) | `CategorizedEntry` / `CategorizeResult` ([AiModels.kt:41-74](../app/src/main/java/com/bragbuddy/app/data/ai/AiModels.kt#L41-L74)) | 1:1 — all 12 fields present both sides; defaults route an omission to Inbox, never a parse failure |
+| SUMMARY OUTPUT ([AiPrompts.kt:399-411](../app/src/main/java/com/bragbuddy/app/data/ai/AiPrompts.kt#L399-L411)) | `SummaryResult` tree ([AiModels.kt:92-177](../app/src/main/java/com/bragbuddy/app/data/ai/AiModels.kt#L92-L177)) | 1:1 incl. `deliverable`, `count`, nested `competencies`; every addition since v0.30.0 correctly **defaulted** so old cached summaries decode |
+| FRAMEWORK OUTPUT | `FrameworkRefineResult` | 1:1 (moot if F6 deletes it) |
+| IMAGE_EXTRACT / DOCUMENT_SCAN | `ImageExtractResult` | 1:1 (`{"text"}`) |
+| IMPACT_COACH | `ImpactSuggestion` | 1:1 (`{"question"}`) |
+
+The only place model output is intentionally discarded is the normalizer's `demonstrates` unknown-tag
+drop — which is F1, a policy gap rather than drift. The eval mirrors (`run.mjs` APP-MIRROR blocks +
+`PromptSyncTest` byte-equality) were spot-checked against the Kotlin and match, including the
+v0.34.0 nested-deliverable lines and the v0.31.0 `!= BEHAVIOUR` placement universe.
 
 ---
 
-## 1. What each prompt actually receives at runtime (the reality map)
+## 6. Model routing + token/cache efficiency (axis 5) — sound; two watch-items
 
-This is what ships — it differs from the PRD's prompt doc in ways that matter:
-
-- **Categorizer** (`AiPrompts.categorizer`, built in `EntryProcessor.prepare`, `EntryProcessor.kt:456-490`):
-  - `{{APPRAISAL_FRAMEWORK}}` = **category NAMES + sub-folder names only — no blurbs** (`FrameworkPrompt.categorizerBlock`; the B2b change routed category details to the summary only).
-  - `{{PROJECTS}}` = only GOAL_AREA placement folders, as `- Name [GoalArea] — description` — **descriptions ride in full, unbounded**.
-  - `{{ROLE}}`, `{{TODAY}}` (changes daily), `{{PROJECT_ANCHOR}}`, transcript as the user message; `COMBINE_MODE` appended for merges.
-  - Model: `llama-3.3-70b-versatile` → fallback `llama-3.1-8b-instant`, temp 0.2, JSON mode.
-- **Summary** (`AiPrompts.summary`): framework **with blurbs** (`Framework.toPromptBlock`), pinned list, role, period, length cap, and the serialized rollup — impact-ranked highlights (`[impact 0.71] bullet (project:) (metric:) (logged N×) (standout) (evidences:)`), routine tallies, cumulative metrics, behaviour evidence (`RollupAggregator.serialize`, caps: 15 highlights/area — 8 Brief / 60 Detailed, 6 evidence/behaviour, 12 metrics). Model: `openai/gpt-oss-120b` → fallback 70B.
-- **Impact coach** (`AiPrompts.impactCoach`): role, goal area, project, **the project's user-written detail**, and the bullet. Model: the cheap categorizer chain.
-- **Whisper** (`GroqTranscriber`): audio + model + `response_format=text`. **Nothing else — no vocabulary prompt.**
-
-Two structural truths to keep front-of-mind:
-1. **The categorizer's numbers are load-bearing.** `impact` ranks the highlight shortlist that gets *trimmed at the cap* — a miscalibrated 0.5 vs 0.7 decides whether a win **ever reaches the summary model at all**. `confidence` gates the 0.6 Inbox floor (`EntryProcessor.kt:575-586`). These aren't cosmetic scores; they're the routing fabric.
-2. **Nothing checks the model's homework.** `applyCategorized` (`EntryProcessor.kt:557-562`) stores `c.project` and `c.goalCategory` **verbatim**. The prompt says "exact name," but LLMs drift ("Raven migration" for "Raven Migration", a plausible-but-unlisted name). A drifted goal area is caught by the Uncategorized catch-all; a drifted project name files the entry under its goal area but **outside any real folder** — silently mis-shelved, PROCESSED, never flagged.
-
----
-
-## 2. Daily categorizer — failure modes, ranked, each with the fix
-
-### A1 · HIGH — No few-shot examples shipped
-The PRD's system-prompt doc (§A4) contains three worked examples that anchor split granularity, routine detection, behaviour restraint, and impact levels. The shipped `CATEGORIZER` const has **none**. For a 70B model doing subjective judgments (what's routine? what's 0.7 impact? when to tag Leadership?), examples are the highest-leverage consistency lever that exists.
-**Fix:** bake 3–4 examples into the static prompt (the PRD's three, plus one Hinglish + one anchored capture). ~450 tokens — and after the E1 cache restructure they live in the cached prefix, so their marginal cost per call rounds to ~zero.
-
-### A2 · HIGH — `impact` and `confidence` are unanchored scales
-"a number 0.0-1.0 estimating how appraisal-worthy" gives the model no bands; scores will cluster and wobble across days/sessions — and (see §1.1) they decide the shortlist and the Inbox floor. The 0.6 floor is only meaningful if the model's 0.6 means something stable.
-**Fix — add rubric bands to the prompt:**
-```
-"impact" anchors: 0.2 = routine task done well · 0.4 = useful contribution, limited reach
-· 0.6 = solid deliverable milestone · 0.75 = shipped outcome with a visible result or metric
-· 0.9+ = major outcome — metric moved, cross-team/leadership visibility. Most days are 0.3-0.6;
-reserve 0.8+ for genuinely standout work.
-"confidence" anchors: 0.9+ = the transcript names a listed project (or clearly matches its
-description) · 0.7 = strong contextual match · below 0.6 = do not guess — use "Inbox".
-```
-Reinforce both in the A1 examples. Verify against the eval set (§5).
-
-### A3 · HIGH — `routineType` label drift fragments the tallies
-The model invents a label each time ("access requests" / "SharePoint requests" / "servicing requests") and `RollupAggregator` groups by exact string (`:102`) — so one year of the same chore becomes three weak tallies instead of one strong "Resolved 200+ requests" line. The model **never sees the labels it already created.**
-**Fix:** inject the existing labels — add `{{ROUTINE_TYPES}}` (the current tally labels for that user, a dozen tokens) with the rule *"When this work matches an existing routine type below, reuse that exact label; only coin a new label for a genuinely new kind of routine work."* Cheap, deterministic payoff at summary time. (Belt-and-braces: case-insensitive tally grouping in `RollupAggregator`.)
-
-### A4 · MED-HIGH — Behaviour pillars lost their definitions (B2b overshoot)
-`categorizerBlock` sends **names only**. "Leadership & Behaviours" self-describes; a real company pillar like "Enterprise Mindset" or "Courageous Authenticity" does not — the model is guessing what to tag from a 2-word name, which is exactly where over/under-tagging comes from. The B2b rationale (category detail = summary-only, so edits don't disturb filing) is right for **goal areas**; for **behaviours** the blurb *is the tagging definition*.
-**Fix:** reinstate blurbs for BEHAVIOUR (and DEVELOPMENT) pillars in `categorizerBlock`; keep goal areas names-only. One-line change in `FrameworkPrompt.kt`; the B2b principle survives where it matters.
-
-### A5 · MED — No output validation / snap-to-known-names
-See §1.2. The cheapest robustness win in the whole pipeline is a deterministic post-parse validator in `EntryProcessor`:
-- `project`: case-insensitive exact match against the placement list → snap to canonical casing; no match → try trimmed/whitespace-normalized; still no match → treat as Inbox **with the model's string preserved in `suggestedProjects`** (the Inbox chip then offers it — nothing lost, nothing phantom).
-- `goalCategory`: same against pillar names (Uncategorized already backstops, but snapping keeps Home clean).
-- `demonstrates`: drop names not in the framework (prevents ghost behaviours in the rollup).
-No AI, no tokens, kills a whole class of silent mis-filings.
-
-### A6 · MED — `dateMentioned` date math shifts review windows
-"last Tuesday" → the model computes an ISO date from `{{TODAY}}`; models get relative-date math wrong routinely, and the result writes `occurredAt` (`applyCategorized:559`) which drives **period windowing** — a botched year boundary silently drops the entry from the review period.
-**Fix:** prompt-side, restrict it: *"only when the transcript states an explicit date or an unambiguous relative day (yesterday, last Friday); if in doubt, omit."* Code-side: reject `dateMentioned` more than ~370 days from today or in the future.
-
-### A7 · MED — Loose/alias project mentions aren't addressed
-Users say "the migration," "raven," "that dashboard thing." Nothing tells the model shorthand is expected and the folder descriptions are there to resolve it.
-**Fix:** one rule line: *"Users refer to projects loosely — by shorthand, partial names, or what the project does. Match against each project's name AND description; when a loose mention clearly fits exactly one listed project, use it (confidence ≥0.7). If it could fit more than one, prefer Inbox with suggestedProjects."*
-
-### A8 · MED — Unbounded project descriptions ride on every call
-A user who **Scans a job description into a project detail** (the B2a feature!) can push a 2,000-token blob into `{{PROJECTS}}` — on *every* categorize call, forever, while also drowning the signal.
-**Fix:** truncate per-project description to ~300 chars in `prepare()` (first sentence(s) — descriptions front-load what a project is), and cap the field length in the editor UI with a "keep it to a line or two — this rides on every filing" hint. Same cap for `{{PROJECT_DETAIL}}` in the impact coach.
-
-### A9 · MED-HIGH (quality, not prompt) — Whisper gets no vocabulary
-`GroqTranscriber` sends audio only. Whisper's `prompt` parameter (~224 tokens, supported on Groq's OpenAI-compatible endpoint) biases recognition toward given spellings — the difference between "Raven migration" and "raven my gration", between colleagues' names spelled right and mangled. Transcription errors poison everything downstream and *the user sees them in the review step* — it's the first "is this thing smart?" impression.
-**Fix:** pass `prompt` = project names + role + a few framework terms (already in memory at call time). Zero extra cost, direct accuracy gain, biggest on the Hinglish/jargon reality the PRD itself flags.
+- **Routing fits the tasks.** Categorizer/coach on `llama-3.3-70b-versatile` → `llama-3.1-8b-instant`
+  with the fallback's confidence capped at 0.75 so a weak 8B placement leans Inbox
+  ([GroqAiProvider.kt:55-59](../app/src/main/java/com/bragbuddy/app/data/ai/GroqAiProvider.kt#L55-L59)) —
+  right models, right guard. Summary on `openai/gpt-oss-120b` → 70B: right strength for the rare,
+  high-stakes call; its **nondeterminism even under the eval's fixed seed** is the sole source of the
+  `summaryChecks` 96.7%-vs-100% flake (F5) — a harness reality, not a routing error.
+- **The cache-first restructure shipped correctly.** Static rules + examples first, user CONTEXT
+  after, volatiles (`{{TODAY}}`/anchor/transcript) in the user message, COMBINE appended at the very
+  end (cache-neutral) ([AiPrompts.kt:11-17, 229-245](../app/src/main/java/com/bragbuddy/app/data/ai/AiPrompts.kt#L11-L17)).
+  Consequence to keep honouring: **`CATEGORIZER_SYSTEM` is byte-load-bearing** — any edit invalidates
+  the prefix cache for every user *and* historically reshuffles borderline goldens. So F2+F3 (the
+  only prompt-text edits proposed here) must ship as **one batched edit in one eval-gated release**,
+  and F1/F4 deliberately avoid the static block entirely.
+- Watch-item: `visionFallback` is a deprecated preview slug (`meta-llama/llama-4-scout…`,
+  [AiConfig.kt:50-53](../app/src/main/java/com/bragbuddy/app/data/ai/AiConfig.kt#L50-L53)) — fine as
+  a safety net, but re-verify both vision slugs at the next phase; the vision prompts also have
+  **zero eval coverage** (no golden exercises image extract / document scan — acceptable gap, noted).
 
 ---
 
-## 3. Summary generator — failure modes, ranked
+## 7. Rule-numbering + vocabulary traps (axis 6)
 
-### B1 · MED — DEVELOPMENT content routing is ambiguous
-`RollupAggregator.aggregate` treats every non-BEHAVIOUR pillar as a goal area (`:88`), so Learning & Growth arrives in `{{ROLLUP}}` as `GOAL AREA: Learning & Growth` — but the output schema wants development material in a separate `development: []` array, and rule 5 just says "fill DEVELOPMENT if there is real material." The model must *infer* that one of the "goal areas" it was handed is actually the development pillar and re-route it. Sometimes it will; sometimes it'll appear under `goalAreas` (or both), and the rendered doc changes shape between regenerations.
-**Fix:** serialize development pillars under their own header (`DEVELOPMENT AREA: …`) in `RollupAggregator.serialize`, and make rule 5 explicit: *"Items under a DEVELOPMENT AREA belong in `development`, never in `goalAreas`."*
-
-### B2 · HIGH (inherited) — Score noise decides what the model can see
-The Brief preset shows the model only the **top 8 highlights per area by `impact`**. With unanchored daily scores (A2), a genuinely strong win scored 0.55 on a stingy day is *invisible* to the summary — the user reads the output, notices their best work missing, and trust dies exactly at the payoff moment. Fixing A2 is therefore a **summary-quality** fix. (The ★ Standout flag and Pin are the manual overrides — they already bypass ranking; good.)
-
-### B3 · LOW-MED — Pinned items can duplicate shortlist highlights
-Pinned bullets ride in `{{PINNED}}` *and* usually also appear in the rollup highlights. Rule 1's dedup is about repeated logging, rule 3 says "always include every pinned item" — nothing says *include it once*.
-**Fix:** append to rule 3: *"A pinned item may also appear among the highlights — include it once, in its strongest phrasing."*
-
-### B4 · LOW — Metric preservation isn't explicit
-"Never invent numbers" is there; "never *drop* the user's numbers" isn't. Models trimming for a length cap sometimes sacrifice the metric clause — the single most valuable part of a bullet.
-**Fix:** add: *"When a selected achievement carries a metric, keep the number verbatim in the bullet — a line with its number beats two lines without."*
-
-### B5 · LOW — Cross-area arc duplication
-Rule 1's arc-merging ("started X" → "shipped X") operates within a goal area; if daily filing ever placed stages of one deliverable under two areas, both survive. Rare, and Recategorize is the user fix. Note only.
-
-### What's already strong (don't touch)
-The bounded-rollup design; deterministic pre-dedup with counts *before* the cap; the `(logged N×)`/count contract; `setAside` transparency; behaviour-evidence-or-omit; pinned always-include; role-shapes-emphasis-not-facts; overrides persisting across regenerations. This is a genuinely well-engineered summarization system — the fixes above are calibration and routing, not redesign.
+- **`COMBINE_MODE` hard-references "rule 2"** ([AiPrompts.kt:231](../app/src/main/java/com/bragbuddy/app/data/ai/AiPrompts.kt#L231)) —
+  correct today; any renumbering in the F2 calibration phase must update it (and
+  `eval/prompts/categorizer-combine.txt`) in the same commit.
+- **"deliverable" (the defined term) is clean inside PART A/PART B** since v0.34.0's sweep. It still
+  appears loosely in IMAGE_EXTRACT ("names of deliverables/projects",
+  [AiPrompts.kt:451](../app/src/main/java/com/bragbuddy/app/data/ai/AiPrompts.kt#L451)) and
+  IMPACT_COACH ("the deliverable, system or outcome",
+  [AiPrompts.kt:521](../app/src/main/java/com/bragbuddy/app/data/ai/AiPrompts.kt#L521)) — harmless
+  today because those prompts are separate calls that never define the term, but they're the two
+  places to sweep if either prompt ever learns about the deliverables axis.
+- **"Outside-project" (prompt sentinel) vs "No specific project" (UI label)** — an intentional split
+  since v0.31.0; fine, but any future prompt edit must keep using the sentinel spelling.
+- New defined-term risk to watch: F1's fix makes **"competency"** semi-load-bearing (a thing named
+  inside a BEHAVIOUR blurb). If route 2 (prompt wording) is ever taken, define it explicitly rather
+  than using it loosely — the "deliverable" lesson.
 
 ---
 
-## 4. The impact coach — the USP is built, but standing in the wrong room
+## 8. Per-prompt purpose-fit verdicts (axis 1)
 
-The prompt itself (`IMPACT_COACH`) is well-constrained: ONE ≤18-word question, names the *kind* of measure, grounded in the project's own notes, hard "never state/guess/invent a number" rule, graceful generic fallback. Verified wiring: project-aware via `ProjectEntity.description`, stale-suggestion cancellation, non-destructive COMBINE merge that can never demote a win (`EntryProcessor.addImpact`). Good.
-
-**C1 · HIGH — The AI question never appears during or after capture.** The USP as stated — *"AI intelligently understands the work input and, considering the existing project details, asks easy-to-understand correct questions during/after the daily record"* — is not what ships. At capture time the user gets the **static regex nudge** ("Add numbers & impact / %, time saved, ₹, people, before → after") — the same canned text for shipping a redesign and unblocking a team. The intelligent, project-aware question exists **only** on the Home "Add impact" card, which the user meets later, *if* they scroll, *if* they expand it. The magic moment is misplaced: the highest-yield instant to ask "how much did drop-off fall?" is **the moment the work is still in their head — right after Add.**
-**Fix — move the brain to the moment (without violating "never block capture"):**
-1. On Add (voice/image review or typed save), fire `suggestImpact` on the **raw transcript** (the prompt takes "the achievement" — it doesn't need the filed bullet) *in parallel with* filing.
-2. The existing nudge surface (`NumberNudge` / `SavedNudgeSheet`) shows the static text immediately, then **swaps in the AI question when it lands** (~1s on Groq). No new UI, no blocking, static fallback intact on no-key/offline/slow.
-3. The anchored project's detail rides along when the capture came from a folder; otherwise role + goal area still beat the generic line.
-4. Keep the Home card as the *catch-up* surface (its real job: wins that slipped through).
-This one change is the difference between "an app with a tips label" and "it asked me exactly the right question." It's also cheap: ~500 tokens on the 70B chain per no-number capture (~10-15/mo/user ≈ **₹0.4/mo**).
-
-**C2 · MED — The coach degrades silently when project details are empty** — and most users won't write them. Rule 2 already falls back, but the *magic* is the grounding. Mitigations in order of leverage: (a) onboarding/framework-editor copy that sells the detail field as "this is how the AI asks you smarter questions" (it's currently pitched as metadata); (b) when the coach fires ungrounded, occasionally append a one-tap hint — "Add a line about how this project is measured and I'll ask sharper questions"; (c) *never* auto-write the detail (the creator's no-AI-reshapes-framework rule stands).
-
-**C3 · LOW-MED — No answer-quality loop.** The user answers "made it much faster" — still no number; the COMBINE merge happens; the win re-qualifies as a candidate later (correct but slow). A local `ImpactCheck.hasMeasurable` on the reply could catch it *before* merging with one gentle re-ask ("Can you put a rough number on 'much faster' — even ~20% helps?"), max once, never blocking. Ship after C1.
-
----
-
-## 5. The missing engine: an evaluation harness (build this FIRST)
-
-Every fix above is a hypothesis until scored. The PRD set the bar (≥85% correct placement); nothing measures it. Before touching the prompts, build the measuring stick — the same discipline as the app's unit tests, applied to the AI:
-
-1. **Golden set.** Export the creator's real history (rawTranscript + human-verified placement/routine/impact-band per entry — the Recategorize log is literally a labeled-corrections dataset). Target ~60-80 cases; add synthetic edge cases: Hinglish, multi-item, shorthand project mentions, praise screenshots, routine bursts, relative dates, empty/no-work notes.
-2. **Harness.** A small Node script (the ForgeAI harness pattern) that imports the exact prompt text (or a JSON dump of `AiPrompts` builders), calls Groq with the production model chain + JSON mode, and scores: placement accuracy, Inbox precision/recall (things that *should* park vs shouldn't), routineType stability across paraphrases, impact-band agreement, JSON validity, split granularity. Cost per full run: ~$0.02.
-3. **Summary eval.** Feed 3-4 synthetic year-rollups (dense / sparse / routine-heavy / dev-heavy) and check: no duplicate accomplishments, arcs merged, metrics preserved verbatim, development routed correctly, pinned included once, setAside speaks in categories.
-4. **Coach eval.** 20 bullets × grade each question: ≤18 words, names a measure kind, grounded when detail exists, zero invented numbers.
-5. **Gate.** Run on every prompt/slug change (locally or a manual-dispatch GitHub Action with a secret key). Prompt changes get the same rule code changes have: **no ship without green.**
-
-This also future-proofs the launch decisions: when the managed proxy arrives, the same harness answers "can the free tier run the 8B categorizer?" with data instead of vibes.
-
----
-
-## 6. Token efficiency — "never consume more than they pay for"
-
-### E1 · The big one: the prompt layout defeats Groq's prompt caching (50% off cached input)
-Caching discounts the **longest unchanged prefix**. The shipped `CATEGORIZER` puts the CONTEXT block — `{{TODAY}}` (changes daily), role, framework, projects, anchor — at the **top**, before all the static rules. Effective cached prefix: ~100 tokens out of ~1,400+. The file's own comment says "static instruction text stays first so prompt caching can discount it" — the template just doesn't do it.
-**Fix:** restructure to *static-first, volatile-last*: role-line + all rules + output schema + few-shot examples first (fully static, ~1,600 tokens with examples), then the CONTEXT block at the end of the system message (framework/projects/role — changes only when the user edits them), with `{{TODAY}}` + anchor + transcript in the **user message** (always fresh). Result: on a typical day every call after the first hits a ~1,600-token cached prefix → **roughly 40-45% off categorize input cost**, which is the dominant spend. This also makes the A1 examples effectively free.
-
-### E2-E7 · The rest of the levers
-- **E2 — Cap what rides along** (= A8): truncated project descriptions bound `{{PROJECTS}}`; framework blocks are already tight post-B2b.
-- **E3 — Whisper tiering:** `whisper-large-v3` today (~$0.111/hr); `v3-turbo` is ~64% cheaper. **Don't switch blind** — large-v3 is stronger multilingual, and Hinglish is the stated reality. Eval both on real clips (§5 harness); if turbo holds, take the saving; if not, transcription is the *last* place to cheap out (it's the user-visible first impression).
-- **E4 — Keep the summary model strong.** It runs a handful of times a year on a bounded input; its cost is noise (~½¢/generation). This is the "spend where the stakes are" spot — at launch, per the PRD, consider an even stronger paid writer here.
-- **E5 — Finish the metering** (`recordTranscriptionSeconds` has zero callers; categorize calls aren't counted at all). The managed proxy needs per-device budgets: count categorize calls + transcription seconds + summary generations on-device *and* enforce server-side quotas at the proxy. The fair-use caps from `PRODUCT-ASSESSMENT.md` §4 then have real teeth.
-- **E6 — Silent-fallback quality flag:** when the 8B fallback files an entry (rate-limit days), quality drops invisibly. Cheap guard: cap fallback-filed confidence at 0.75 so borderline 8B placements lean Inbox rather than silently mis-filing. Optional polish.
-- **E7 — What NOT to do:** don't route "short" transcripts to the 8B to save money (placement trust is the product; the eval can revisit); don't batch (latency is the UX); don't trim the review-before-Add step to save a call (it's a trust feature, and it costs nothing — filing happens once either way).
-
-### The per-user budget after E1/E2 (managed-key math)
-| Item | Today | After fixes |
-|---|---|---|
-| Categorize (30/mo) | ~51k tok ≈ ₹2.6 | ~33k effective (cached) ≈ **₹1.6** — *with* examples added |
-| Whisper (~10 min) | ₹1.6 (large-v3) | ₹1.6 (or ~₹0.6 on turbo if eval passes) |
-| Impact coach at capture (new, ~12/mo) | — | **₹0.4** |
-| Summary (seasonal avg) | ~₹0.4 | ~₹0.4 |
-| **Total / active user / month** | **~₹4.6** | **~₹4.0 (₹3.0 w/ turbo)** — *more* AI features for *less* money |
-
-The USP upgrade (C1) is paid for twice over by the cache restructure alone. A capped free tier stays under ~₹2/user/mo; the ₹149 Pro price carries a >95% AI-cost margin.
+- **PART A categorizer — B+.** Files right (97.1%), never loses (fail-safe → Inbox + phantom-project
+  normalizer verified), splits correctly since v0.37.0, deliverable-aware with a correctly paranoid
+  decline-by-default rule 5 (83.3% ≥ its 0.8 floor). Its two real faults are F1 and F2 above.
+  `impactBand` 12/13 (one over-rating: `eng-development-cert` scored 0.8 vs band [0.2,0.6]) — within
+  gate, note only.
+- **COMBINE mode — A.** Tight contract (exactly one entry, merge don't append), correctly
+  cache-neutral, correctly referenced; both combine goldens pass.
+- **PART B summary — A−.** Manager-ready by construction (bounded rollup, dedup + arc rules,
+  deliverable-as-thread rule 2, pinned-verbatim rule 4, competency nesting rule 5, development
+  routing rule 6, metric-verbatim rule 7, setAside honesty). Sole open item is F5's one stable
+  length case; inherits F1 (thin behaviour evidence in) and F3 (thin metric annotations in) — both
+  are upstream fixes, not PART B edits. Don't touch this prompt.
+- **PART C framework-refine — DELETE (F6).** Zero call sites outside the seam
+  (`AiProvider.kt:37`, `GroqAiProvider.kt:63`, `StubAiProvider.kt:32`); the owner's 2026-07-07
+  "the user builds the framework by hand, NO AI reshapes it" decision is recorded in
+  `CONTEXT.md` §4 and it has stayed unused through 15+ releases. Its prompt text also drifts from
+  current product rules (e.g. "keep at least one GOAL_AREA and one BEHAVIOUR" was never re-examined
+  after B2). Dead code on a seam invites accidental wiring. Recommend removing `refineFramework` from
+  the interface + both providers + `FrameworkRefineRequest/Result` + the FRAMEWORK prompt
+  (~150 lines; not eval-gated — nothing measured touches it; a normal compile-gated cleanup).
+  Alternative if the owner wants to keep the option: leave it, cost is ~zero at runtime — but then
+  mark the prompt text `// PARKED — unused by owner decision 2026-07-07` so no future session
+  "fixes" it.
+- **Image extract — A− (unmeasured).** Faithful-extraction contract is right (first-person,
+  invent-nothing, empty-string escape); no eval coverage (noted §6).
+- **Document scan — A (unmeasured).** The reference-material-not-achievement distinction is exactly
+  the right guard against B2a scans polluting the record; no eval coverage.
+- **Impact coach — A.** The USP holds where it matters: ONE short grounded question, **never states
+  or invents a number** — hard-gated (`coachNoInventedNumbers` 1.0) and clean at baseline. 91.7%
+  coachPass ≥ 90% bar; the single miss (`coach-eng-flaky`) fails the harness's own content-word
+  `grounded` heuristic 1/3, not a product rule — scorer strictness, not a coach defect. No change.
 
 ---
 
-## 7. Recommended prompt-change set (concrete, in ship order)
+## 9. What to change, in what order (each step eval-gated where marked; **never lower a threshold**)
 
-Each is small; together they're the "magic" release. All gated on §5's eval showing green (build the eval first — Phase AI-0).
+| Order | Change | Files | Eval cost | Risk |
+|---|---|---|---|---|
+| **1. F1 + F4 together** — normalizer maps blurb-competency→category (mirror in `run.mjs` scorer) + re-spec `real-010`/`real-011` to robust-minimum splits | `CategorizedNormalizer.kt` + test, `run.mjs`, `categorizer.jsonl` | **1 round** (baseline must move: demonstratesAccuracy ~14%→expect ≥80%; entryCount up) | LOW — no prompt byte changes, so no cache loss, no borderline reshuffle; the mapping needs the uniqueness guard |
+| **2. F2 + F3 batched** — the dedicated Inbox-boundary calibration: rework Example 3, sharpen rule 4/6 boundary (± one Outside-project example), strengthen rule 11 metric extraction + a number in Example 5 | `AiPrompts.kt` + `eval/prompts/*` + `run.mjs` if shapes move, same commit (PromptSyncTest) | **2–3 rounds** | **HIGH** — static-block edit: global cache invalidation + known reshuffle behaviour; `inboxRecall` sits on its 0.8 floor; this is the phase `## Status: v0.34.0` said to budget properly |
+| **3. F5 decision** (owner) — either recalibrate `detailed-length` `minAchievements.Delivery` 5→4 (the v0.31.0 "set floors to what the model RELIABLY does" lesson — a golden calibration, argued distinct from lowering the `summaryChecks` 100% threshold, but it brushes the rule, hence owner-only) or accept the known-red | `eval/golden/summary/detailed-length.json` | rides on any round | LOW either way; the honest framing is the point |
+| **4. F6** — delete framework-refine | `AiProvider.kt`, `GroqAiProvider.kt`, `StubAiProvider.kt`, `AiModels.kt`, `AiPrompts.kt` | none (not a measured prompt; compile+unit gate) | LOW |
 
-1. **Restructure both prompts static-first** (E1) + move `{{TODAY}}`/anchor/transcript to the user message. *(Efficiency + enables #2 free.)*
-2. **Bake in 4 few-shot examples** (A1) — the PRD's three + one Hinglish/shorthand case, each showing calibrated impact/confidence and routine labeling.
-3. **Add the impact & confidence rubrics** (A2) — the band definitions from §2.
-4. **Inject `{{ROUTINE_TYPES}}` + reuse rule** (A3).
-5. **Behaviour blurbs back in the categorizer block** (A4) — one line in `FrameworkPrompt.kt`.
-6. **Alias-matching rule** (A7) + **date restraint rule** (A6).
-7. **Code, not prompt:** post-parse validator (A5), description caps (A8), Whisper `prompt` vocabulary (A9), date sanity bound (A6).
-8. **Summary prompt:** development routing (B1, with the serializer header change), pinned-once (B3), metric-verbatim (B4).
-9. **Impact coach at capture** (C1) — the USP move; then the empty-detail nudge (C2) and the one-shot re-ask (C3).
+Expected end-state if 1–2 land: demonstratesAccuracy from 14% → 80%+ (behaviour evidence actually
+flows for real frameworks), metricPreserved from 60% → 80%+, `inboxPrecision` finally has a fair
+shot at its 90% bar (3 of its 4 stable misses are addressed: `po-metric-30-percent` + `real-008` via
+the boundary work, `real-002` partially — see the note below), and the eval stops carrying two
+by-construction-failing split goldens.
 
-Suggested phasing in the house rhythm: **Phase AI-0** = eval harness + golden set (no app change, no release) → **Phase AI-1** = categorizer + efficiency set (#1-7, one release, eval-gated) → **Phase AI-2** = summary set + coach-at-capture (#8-9, one release, eval-gated). AI-1/AI-2 slot naturally before or alongside the managed-proxy phase (M1 in `PRODUCT-ASSESSMENT.md`) — same seam, and the proxy inherits an already-cheap, already-measured brain.
+**Deliberately NOT recommended:** touching PART B; adding `max_completion_tokens` (refuted
+v0.37.0); re-running the eval as a remedy (fixed seed — reproduces); lowering any threshold;
+re-fixing anything on the v0.33.1/v0.34.0 do-NOT-re-fix lists. **`real-002` note:** the model
+answers "Raven Migration" for a project named "Raven Migration CCP Portals" — the phantom rule then
+parks it. A unique-containment snap in the normalizer could fix it code-only, but it interacts with
+the near-duplicate-projects park policy (`eng-inbox-near-duplicate-projects` *wants* ambiguity to
+park); park this idea unless step 2's rounds leave `real-002` as the last miss, then decide with
+fresh evidence.
 
 ---
 
-## 8. Bottom line
+## 10. Bottom line
 
-Nothing here requires new architecture — the two-prompt design, the rollup, the seam, and the invariants all hold. The distance to "it just works, magically" is: **anchor the numbers, show the model examples, let it see its own labels, validate its answers, teach Whisper the user's words, ask the smart question at the moment it matters — and measure all of it before shipping.** Every one of those is days, not weeks, and the efficiency restructure pays for the entire upgrade.
+The 2026-07-11 assessment asked for an eval harness and a magic release; both exist and the gated
+numbers prove it. What this refresh found is narrower and better-defined: **one silent data-loss bug
+dressed up as a bad metric (F1 — fix in code, cheap, this week), one genuine calibration debt with a
+named culprit (F2 — Example 3 loses the adjudication; a real phase with a real budget), two stale
+goldens (F4 — delete the contradiction v0.37.0 created), one metric the prompt never actually asked
+the model to fill (F3 — batch with F2), one owner decision (F5), and one piece of dead code (F6).**
+Nothing here touches the architecture, PART B, or the coach — the parts of the system that carry the
+product's promises are holding them.
