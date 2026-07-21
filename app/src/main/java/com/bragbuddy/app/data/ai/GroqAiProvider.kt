@@ -149,6 +149,10 @@ class GroqAiProvider @Inject constructor(
         if (!route.usable) return Result.failure(IllegalStateException("No Groq key set"))
 
         var last: Throwable = IllegalStateException("No model responded")
+        // The server's own answer (an HTTP code) from ANY attempt is worth more to the surface that
+        // reports this failure than a generic parse error from the later fallback — keep the first
+        // one seen so "rate limited on the primary, garbled on the fallback" still says "rate limited".
+        var firstHttp: AiHttpException? = null
         for ((index, model) in models.withIndex()) {
             val parsed = callChat(model, system, user, route).mapCatching(parse)
             if (parsed.isSuccess) {
@@ -156,9 +160,12 @@ class GroqAiProvider @Inject constructor(
                 // categorizer's confidence, since the small model is less reliable at placement).
                 return if (index == 0) parsed else parsed.map(onFallbackUsed)
             }
-            parsed.exceptionOrNull()?.let { last = it }
+            parsed.exceptionOrNull()?.let {
+                last = it
+                if (firstHttp == null && it is AiHttpException) firstHttp = it
+            }
         }
-        return Result.failure(last)
+        return Result.failure(if (last is AiHttpException) last else firstHttp ?: last)
     }
 
     /** One Groq chat completion → the assistant message content string. */
@@ -192,7 +199,7 @@ class GroqAiProvider @Inject constructor(
             client.newCall(request).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
-                    error("Groq ${resp.code}${if (raw.isNotBlank()) ": ${raw.take(160)}" else ""}")
+                    throw AiHttpException(resp.code, raw.take(160))
                 }
                 val content = AiJson.json.decodeFromString(ChatResponse.serializer(), raw)
                     .choices.firstOrNull()?.message?.content
@@ -242,7 +249,7 @@ class GroqAiProvider @Inject constructor(
             client.newCall(request).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
-                    error("Groq ${resp.code}${if (raw.isNotBlank()) ": ${raw.take(160)}" else ""}")
+                    throw AiHttpException(resp.code, raw.take(160))
                 }
                 val content = AiJson.json.decodeFromString(ChatResponse.serializer(), raw)
                     .choices.firstOrNull()?.message?.content

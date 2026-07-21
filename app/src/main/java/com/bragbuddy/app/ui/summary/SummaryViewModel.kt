@@ -443,7 +443,9 @@ class SummaryViewModel @Inject constructor(
                         maybeWarnSoftCap()
                     },
                     onFailure = {
-                        _message.value = "Couldn't generate the summary — check your connection and try again."
+                        // Say what actually happened (timeout / rate limit / key / offline) — the old
+                        // blanket "check your connection" misdiagnosed every non-network failure.
+                        _message.value = GenerateFailureCopy.messageFor(it)
                     },
                 )
             } finally {
