@@ -166,6 +166,14 @@ current code — that is the context, not chat history.
 > real frameworks) + 4 stale goldens re-specced; fresh eval baseline `b33041e`. See `## Status: v0.38.0`.**
 > Before that: capture-review Phase 3 (big-paste splitting, v0.37.0), Phases 1 (bottom-bar,
 > v0.35.0) + 2 (which-days reminder, v0.36.0) and the DELIVERABLES ARC (through v0.34.0) are complete.
+>
+> **▶ THE EXACT NEXT STEP (owner-chosen 2026-07-21) = COMPETENCY ARC Phase K1** — durable spec +
+> ⭐LOCKED owner decisions in **`docs/COMPETENCY-TAGGING-PROPOSAL.md`** (READ IT FIRST: the AI never
+> assumes/invents a competency or its details — user-defined only, with define-nudges; K1 = structure
+> + manual tagging + nudges, NO change to anything the AI receives, no eval round; K2 = the AI/summary
+> phase, eval-gated; K3 = coverage nudge). **Capture-review Phase 4 (the capstone, mockup-gated) is
+> QUEUED AFTER the competency arc** — unchanged in `docs/CAPTURE-REVIEW-PLAN.md`. The F2/F3 prompt
+> calibration + F5/F6 decisions from `docs/AI-SYSTEM-ASSESSMENT.md` also remain open.
 > The owner's **5-request batch** (2026-07-19) is planned as **4 phases** — durable spec + LOCKED owner
 > decisions in **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 4 — capture → open →
 > "AI is working" → review & confirm placement (item 5) — HIGH risk, the CAPSTONE, LAST.** It **retires

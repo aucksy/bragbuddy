@@ -1,4 +1,17 @@
-# Competency tagging — proposal (2026-07-21, owner-requested research; NOT yet approved to build)
+# Competency tagging — proposal (2026-07-21) · ✅ APPROVED same day — build starts at Phase K1
+
+> **⭐ OWNER DECISIONS LOCKED 2026-07-21 (carry into every phase, never violate):**
+> 1. **The AI never assumes, invents, or fills in a competency ("pillar") or its details — anywhere,
+>    ever.** Competencies exist ONLY when the user defines them (name + detail), by hand, in the
+>    framework editor. This extends the standing "no AI reshapes the framework" rule (2026-07-07) to
+>    the new level. The AI may only *tag against* the user's defined list; unknown names still drop.
+> 2. **The app NUDGES the user to define competencies + details** — that is the adoption mechanism:
+>    editor/onboarding copy that sells the detail box ("this is how daily filing tags each pillar
+>    correctly"), plus a gentle, dismissible hint when behaviour evidence accumulates against a
+>    category with no defined competencies (reuse the M2 one-slot Home nudge queue — never a nag,
+>    never blocking capture).
+> 3. Everything in §5's conditions stands: optional/default-empty · tagging-only, never placement ·
+>    "Competencies" is the one name everywhere.
 
 *The owner's question: Amex has named leadership pillars ("Set the Agenda", "Bring Others With You"…)
 and employees are expected to tag work under specific ones. If that's true of most companies, should
