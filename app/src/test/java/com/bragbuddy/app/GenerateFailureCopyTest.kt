@@ -54,12 +54,18 @@ class GenerateFailureCopyTest {
 
     @Test
     fun `Groq's JSON-validation failure reads as a retryable garbled reply`() {
-        val msg = GenerateFailureCopy.messageFor(
-            AiHttpException(400, """{"error":{"code":"json_validate_failed"}}"""),
-        )
+        // Groq's REAL body shape, run through the provider's own 300-char truncation — the reason
+        // code sits past char 150, so a shorter snippet cap silently kills this branch (the review
+        // catch on the first cut of this fix, which took 160).
+        val realBody = """{"error":{"message":"Failed to generate JSON. Please adjust your prompt. """ +
+            """See 'failed_generation' for more details.","type":"invalid_request_error",""" +
+            """"code":"json_validate_failed","failed_generation":"{\"summary\": {\"goalAreas\""" +
+            """: [{\"name\": \"Performance Goals\", \"achievements\": [..."}}"""
+        val msg = GenerateFailureCopy.messageFor(AiHttpException(400, realBody.take(300)))
         assertThat(msg).contains("try again")
         assertThat(msg).contains("(Groq 400)")
         assertThat(msg).doesNotContain("connection")
+        assertThat(msg).doesNotContain("Groq returned an error")
     }
 
     @Test

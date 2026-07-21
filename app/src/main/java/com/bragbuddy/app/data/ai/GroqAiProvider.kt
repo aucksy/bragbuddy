@@ -150,8 +150,10 @@ class GroqAiProvider @Inject constructor(
 
         var last: Throwable = IllegalStateException("No model responded")
         // The server's own answer (an HTTP code) from ANY attempt is worth more to the surface that
-        // reports this failure than a generic parse error from the later fallback — keep the first
-        // one seen so "rate limited on the primary, garbled on the fallback" still says "rate limited".
+        // reports this failure than a generic parse error from the later fallback — remember one as
+        // a stand-in for when the LAST error isn't an HTTP one, so "rate limited on the primary,
+        // garbled on the fallback" still says "rate limited". When both fail with HTTP errors the
+        // last (fallback's) is reported.
         var firstHttp: AiHttpException? = null
         for ((index, model) in models.withIndex()) {
             val parsed = callChat(model, system, user, route).mapCatching(parse)
@@ -199,7 +201,9 @@ class GroqAiProvider @Inject constructor(
             client.newCall(request).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
-                    throw AiHttpException(resp.code, raw.take(160))
+                    // 300, not less: Groq's json_validate_failed body puts its reason code past
+                    // char 150, and the snippet must keep it for the failure copy to name the cause.
+                    throw AiHttpException(resp.code, raw.take(300))
                 }
                 val content = AiJson.json.decodeFromString(ChatResponse.serializer(), raw)
                     .choices.firstOrNull()?.message?.content
@@ -249,7 +253,9 @@ class GroqAiProvider @Inject constructor(
             client.newCall(request).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
-                    throw AiHttpException(resp.code, raw.take(160))
+                    // 300, not less: Groq's json_validate_failed body puts its reason code past
+                    // char 150, and the snippet must keep it for the failure copy to name the cause.
+                    throw AiHttpException(resp.code, raw.take(300))
                 }
                 val content = AiJson.json.decodeFromString(ChatResponse.serializer(), raw)
                     .choices.firstOrNull()?.message?.content

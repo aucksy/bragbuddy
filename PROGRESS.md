@@ -236,6 +236,11 @@ current code — that is the context, not chat history.
 > + K3 coverage (EVAL-GATED; consider batching with F2/F3 to pay the cache invalidation once)**.
 > **✅ S1 SHIPPED as v0.40.0 (2026-07-21, `versionCode 48`)** — deterministic hierarchy on screen +
 > in the export, `(from N logs)` counts, `(Done)` state; detail in `## Status: v0.40.0`.
+> **✅ v0.40.1 HOTFIX (2026-07-21, `versionCode 49`, owner-reported, NOT a phase)** — Detailed summary
+> generation always failed with a bogus "check your connection": the shared OkHttpClient never set a
+> READ timeout, so OkHttp's 10s default hung up on any non-streaming generation longer than 10s (both
+> models, every time; One page squeaked under). Timeouts fixed + every generate failure now says what
+> actually happened, typed via `AiHttpException`. Detail in `## Status: v0.40.1`.
 > **▶ THE EXACT NEXT STEP = S2 (K1 competency structure, Room v8→v9, NO eval), fresh chat.**
 > After the arc: V6 coach breadth → capture-review
 > Phase 4 → F2/F3 (if not batched) → M3 last. Open owner items unchanged: B3 yes/no (gates F6) · F5.
@@ -354,6 +359,60 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
   produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
   ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
   went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
+
+---
+
+## Status: v0.40.1 — Detailed-summary generation fix (timeouts + honest errors) ✅ SHIPPED (signed · `versionCode 49` · Room stays **v8** · compile + unit tests GREEN on the free debug gate before the tag · ONE adversarial 5-lens review, its 1 MED fixed pre-tag · **NO prompt bytes changed → no eval gate** · NOT a phase — an owner-reported fix session)
+
+**The bug (owner screenshot, 2026-07-21):** generating a **Detailed** summary always failed with
+*"Couldn't generate the summary — check your connection and try again"* on a working connection.
+
+**Root cause (reproduced by code-reading; deterministic):** `di/NetworkModule.kt` set
+`connectTimeout(15s)` + `callTimeout(60s)` but never a **read timeout**, so OkHttp's **10-second
+default** applied. The Groq chat completions are **non-streaming** — the server sends nothing until
+the whole reply is generated, then delivers it at once — so any generation whose thinking time
+exceeded 10s got hung up on mid-reply (`SocketTimeoutException`, an `IOException`). A Detailed
+summary (highlightCap 60 in, "every strong achievement" out) reliably crosses 10s on BOTH the
+primary (`openai/gpt-oss-120b`) and the slower fallback (`llama-3.3-70b-versatile`); One page
+finishes just under, which is why the owner's earlier one-page generate worked. The intended 60s
+call budget was **unreachable** — the tighter hidden read timeout always fired first. The eval
+harness never saw it (its transport allows 120s; `AbortSignal.timeout(120000)` in `run.mjs`).
+The generic catch-all toast then blamed the connection for every failure kind — a misdiagnosis
+baked into the UI.
+
+**The fix (no prompt bytes, no model params, no schema):**
+- `NetworkModule`: `readTimeout 90s` (covers silent generation), `writeTimeout 30s` (uploads),
+  `callTimeout 120s` ceiling. Same client serves categorizer/Whisper/vision — review verified
+  nothing relied on the old fail-fast (offline queueing keys off `ConnectivityMonitor`, not
+  exception latency; Drive backup uses its own `HttpURLConnection`, untouched).
+- **Typed HTTP failures:** new `data/ai/AiHttpException(code, bodySnippet)` thrown by
+  `GroqAiProvider` on non-2xx (message string byte-identical to the old `error("Groq NNN: …")`, so
+  the two surfaces that show `it.message` raw are unchanged). `completeAndParse` now propagates the
+  server's own answer over a later fallback parse error when both models fail.
+- **Honest failure copy:** pure `ui/summary/GenerateFailureCopy` maps each failure to plain English —
+  key rejected (401/403 → points at Settings → AI engine) · request too large (413 → try One
+  page/Brief) · rate limit (429 → wait; free plans have a daily cap) · Groq down (5xx) ·
+  `json_validate_failed` (retryable garbled reply) · **timeout → "The AI took too long"** ·
+  genuine `IOException` → the connection line (now the ONLY branch that blames the connection).
+  Each HTTP case carries a `(Groq NNN)` tail so any future report is an instant diagnosis.
+  13 unit tests (`GenerateFailureCopyTest`).
+
+**Review (ONE adversarial 5-lens pass per the standing rule):** compile 0 · logic 0 (OkHttp 4.12
+semantics verified: readTimeout governs the silent wait for a non-streaming response; callTimeout
+spans the body read; `InterruptedIOException` branch ordered before its `IOException` superclass) ·
+blast-radius 0 real (2 accepted NOTEs: capture spinner worst-case now ~120s on a stalled link;
+`EntryProcessor` mutex worst-case doubled on a pathological stall — both accepted, no code change) ·
+**1 MED fixed pre-tag:** the 160-char body snippet truncated Groq's real `json_validate_failed`
+body just before its reason code (~char 155-175), making that copy branch dead — snippet cap raised
+to 300 + the test fixture now uses Groq's real body shape run through the provider's own `take(300)`.
+1 LOW comment fix. NOTE for M1 later: the 401 copy says "your key" — right for BYOK, wrong for the
+managed relay; revisit when the proxy ships.
+
+**Verification:** free debug gate GREEN on the fix commit (`21844e5`) before the review; re-pushed
+with the MED fix + this handoff and gated again before tagging. ⭐ **Standing lesson: a "check your
+connection" style catch-all error is a misdiagnosis generator — every failure surface must say what
+actually happened, and any new non-streaming AI call must budget its read timeout for the model's
+full thinking time, not the transport's.**
 
 ---
 
