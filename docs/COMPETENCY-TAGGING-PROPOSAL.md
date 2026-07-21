@@ -1,4 +1,4 @@
-# Competency tagging — proposal (2026-07-21) · ✅ APPROVED same day — build starts at Phase K1
+# Competency tagging — proposal (2026-07-21) · ✅ APPROVED same day · ⏸ SEQUENCING now subject to the VISION-FIT ASSESSMENT (owner redirect, later 2026-07-21 — see PROGRESS.md ▶ WHERE WE ARE; the locked decisions below still stand)
 
 > **⭐ OWNER DECISIONS LOCKED 2026-07-21 (carry into every phase, never violate):**
 > 1. **The AI never assumes, invents, or fills in a competency ("pillar") or its details — anywhere,
