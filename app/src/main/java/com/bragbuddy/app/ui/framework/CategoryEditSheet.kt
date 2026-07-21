@@ -251,7 +251,9 @@ fun CategoryEditSheet(
             FieldLabel("CATEGORY DETAIL", palette)
             ScanField(
                 value = detail, onValueChange = { detail = it },
-                placeholder = "What this category covers — type it, or scan a job description / review form.",
+                placeholder = "What this category covers — name it after a section of your review form, " +
+                    "and include any target or weightage (e.g. 'Target: cut turnaround 20% · Weight: 30%'). " +
+                    "Type it, or scan a job description / review form.",
                 palette = palette, scanEnabled = scanEnabled,
                 reading = scanState == ScanState.READING && activeScanTarget == "category",
                 scanBusy = scanState != ScanState.IDLE,
@@ -293,7 +295,7 @@ fun CategoryEditSheet(
                         Spacer(Modifier.height(Spacing.s2))
                         ScanField(
                             value = row.summary, onValueChange = { row.summary = it },
-                            placeholder = "How is this project judged? e.g. faster processing, adoption %, fewer errors — type or scan.",
+                            placeholder = "How is this project judged? Include its target if it has one — e.g. 'cut processing time 20%', adoption %, fewer errors. Type or scan.",
                             palette = palette, scanEnabled = scanEnabled,
                             reading = scanState == ScanState.READING && activeScanTarget == target,
                             scanBusy = scanState != ScanState.IDLE,

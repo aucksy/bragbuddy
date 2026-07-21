@@ -8,6 +8,7 @@ import com.bragbuddy.app.data.ai.AiProvider
 import com.bragbuddy.app.data.ai.ImageExtractRequest
 import com.bragbuddy.app.data.entry.EntryRepository
 import com.bragbuddy.app.data.framework.Framework
+import com.bragbuddy.app.data.framework.FrameworkPreset
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
@@ -191,6 +192,28 @@ class FrameworkViewModel @Inject constructor(
     }
 
     private fun persist(pillars: List<Pillar>) = viewModelScope.launch { frameworkStore.save(pillars) }
+
+    // ---------------- Templates (VISION-FIT §4 B2 — static data, no AI) ----------------
+
+    /**
+     * Replace the whole framework with a template's pillars. Categories that disappear in the switch
+     * get exactly [remove]'s cascade (folders + deliverable tags + manual anchors), so the AI is never
+     * offered a folder under a category that no longer exists; categories whose NAME survives (e.g.
+     * "Performance Goals" in most templates) keep their folders untouched. Filed entries are never
+     * deleted — anything under a removed category surfaces via the "Uncategorized" catch-all.
+     */
+    fun applyTemplate(preset: FrameworkPreset) {
+        val old = framework.value.pillars
+        val surviving = preset.pillars.map { it.name.trim().lowercase() }.toSet()
+        viewModelScope.launch {
+            frameworkStore.save(preset.pillars)
+            old.filterNot { it.name.trim().lowercase() in surviving }.forEach { p ->
+                runCatching { projects.deleteByCategory(p.name) }
+                runCatching { entries.clearCategoryAnchor(p.name) }
+                runCatching { entries.clearCategoryDeliverables(p.name) }
+            }
+        }
+    }
 
     // ---------------- Category rename-remap (deterministic, no AI) ----------------
 

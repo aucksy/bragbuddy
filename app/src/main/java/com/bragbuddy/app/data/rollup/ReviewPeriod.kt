@@ -9,10 +9,16 @@ import java.time.format.DateTimeFormatter
  * cycles differ), so a period is a date window computed from that start month — Mid-year is the first
  * half of the current review year, Year-end is the whole review year. The window bounds which
  * [RollupItem]s a summary aggregates, so a mid-year write-up doesn't pull in later work.
+ *
+ * [LAST_YEAR] exists because the year-end form is usually filled **after** the cycle closes (an
+ * April–March review year is written up in April) — at that moment the "current" review year is the
+ * brand-new, nearly-empty one, and only the previous year's window holds the work being reviewed
+ * (VISION-FIT-ASSESSMENT §6.2).
  */
 enum class SummaryPeriod(val label: String, val promptLabel: String) {
     MID_YEAR("Mid-year", "mid-year check-in"),
     YEAR_END("Year-end", "full-year review"),
+    LAST_YEAR("Last year", "full-year review"),
 }
 
 /**
@@ -55,10 +61,12 @@ object ReviewPeriods {
         today: LocalDate = LocalDate.now(),
         zone: ZoneId = ZoneId.systemDefault(),
     ): PeriodWindow {
-        val start = currentReviewYearStart(startMonth, today)
+        val current = currentReviewYearStart(startMonth, today)
+        // LAST_YEAR anchors one review year back — the whole point of the period (see the enum doc).
+        val start = if (period == SummaryPeriod.LAST_YEAR) current.minusYears(1) else current
         val endExclusive = when (period) {
             SummaryPeriod.MID_YEAR -> start.plusMonths(6)
-            SummaryPeriod.YEAR_END -> start.plusYears(1)
+            SummaryPeriod.YEAR_END, SummaryPeriod.LAST_YEAR -> start.plusYears(1)
         }
         val startMillis = start.atStartOfDay(zone).toInstant().toEpochMilli()
         val endMillis = endExclusive.atStartOfDay(zone).toInstant().toEpochMilli()

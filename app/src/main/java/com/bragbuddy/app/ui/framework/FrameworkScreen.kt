@@ -9,9 +9,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -20,13 +23,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,9 +50,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bragbuddy.app.data.framework.Framework
+import com.bragbuddy.app.data.framework.FrameworkPreset
+import com.bragbuddy.app.data.framework.FrameworkPresets
 import com.bragbuddy.app.data.framework.Pillar
 import com.bragbuddy.app.data.framework.PillarKind
 import com.bragbuddy.app.data.local.ProjectEntity
+import com.bragbuddy.app.ui.common.LocalBottomBarInset
 import com.bragbuddy.app.ui.common.ProjectRemapSheet
 import com.bragbuddy.app.ui.theme.BragBuddyTheme
 import com.bragbuddy.app.ui.theme.BragPalette
@@ -75,14 +85,16 @@ fun FrameworkScreen(
     var editing by remember { mutableStateOf<Pillar?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     var removeTarget by remember { mutableStateOf<Pillar?>(null) }
+    var showTemplates by remember { mutableStateOf(false) }
+    var confirmTemplate by remember { mutableStateOf<FrameworkPreset?>(null) }
     val pendingRemap by viewModel.pendingCategoryRemap.collectAsStateWithLifecycle()
     val pendingProjectRemap by viewModel.pendingProjectRemap.collectAsStateWithLifecycle()
     val expanded = remember { mutableStateListOf<String>() } // expanded category ids; default = none
 
     // Report when any full-screen editor / custom-scrim sheet is open (used by onboarding to hide its
     // finish bar so it can't be tapped through the sheet). No-op for the Framework tab (default arg).
-    LaunchedEffect(editing, showAdd, pendingRemap, pendingProjectRemap) {
-        reportEditing(editing != null || showAdd || pendingRemap != null || pendingProjectRemap != null)
+    LaunchedEffect(editing, showAdd, showTemplates, pendingRemap, pendingProjectRemap) {
+        reportEditing(editing != null || showAdd || showTemplates || pendingRemap != null || pendingProjectRemap != null)
     }
 
     val hueOf: (Pillar) -> PillarColor = { p -> pillarColor(framework.pillars.indexOfFirst { it.id == p.id }) }
@@ -104,6 +116,25 @@ fun FrameworkScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = palette.text3,
             )
+            Spacer(Modifier.height(Spacing.s3))
+            // Templates (VISION-FIT §4 B2): a static starting shape the user picks and edits by hand.
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(palette.surface2)
+                    .clickable { showTemplates = true }
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.Layers, null, tint = palette.primary, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.size(6.dp))
+                Text(
+                    "Start from a template",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = palette.text2,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
             Spacer(Modifier.height(Spacing.s4))
 
             if (framework.goalAreas.isNotEmpty()) {
@@ -153,6 +184,48 @@ fun FrameworkScreen(
             takenNames = framework.pillars.map { it.name.trim().lowercase() }.toSet(),
             viewModel = viewModel,
             onClose = { showAdd = false },
+        )
+    }
+
+    if (showTemplates) {
+        TemplatePickerSheet(
+            onPick = { preset ->
+                // A pristine setup (untouched default, no folders) applies silently — there is nothing
+                // to lose. Anything else gets an explicit replace confirmation.
+                val pristine = framework.pillars == Framework.DEFAULT.pillars && folders.isEmpty()
+                if (pristine) {
+                    viewModel.applyTemplate(preset)
+                    showTemplates = false
+                } else {
+                    confirmTemplate = preset
+                }
+            },
+            onClose = { showTemplates = false },
+        )
+    }
+
+    confirmTemplate?.let { preset ->
+        AlertDialog(
+            onDismissRequest = { confirmTemplate = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.applyTemplate(preset)
+                    confirmTemplate = null
+                    showTemplates = false
+                }) { Text("Use template", color = palette.primary) }
+            },
+            dismissButton = { TextButton(onClick = { confirmTemplate = null }) { Text("Cancel") } },
+            title = { Text("Use “${preset.title}”?", color = palette.text1) },
+            text = {
+                Text(
+                    "Your current categories are replaced by this template, and folders under removed " +
+                        "categories are removed with them. Everything you've logged stays in your " +
+                        "record — anything filed under a removed category shows in “Uncategorized” " +
+                        "until you re-home it.",
+                    color = palette.text3,
+                )
+            },
+            containerColor = palette.surface,
         )
     }
 
@@ -222,6 +295,117 @@ private fun AxisLabel(text: String) {
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(start = 4.dp, bottom = Spacing.s2),
     )
+}
+
+/**
+ * Full-screen template picker (VISION-FIT §4 B2). Static, hand-authored starting shapes mirroring
+ * the common review-form patterns — generic wording only, never a company name. Picking one hands
+ * the choice back to the host, which confirms before replacing a non-pristine setup. Follows the
+ * CategoryEditSheet full-screen idiom; the trailing inset spacer is the scroll's terminal child
+ * (the v0.30.1/v0.35.0 standing rule).
+ */
+@Composable
+private fun TemplatePickerSheet(
+    onPick: (FrameworkPreset) -> Unit,
+    onClose: () -> Unit,
+) {
+    val palette = BragBuddyTheme.palette
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(palette.bg)
+            .statusBarsPadding(),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = Spacing.s3, vertical = Spacing.s2),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onClose) {
+                Icon(Icons.Outlined.Close, "Close", tint = palette.text2)
+            }
+            Text(
+                "Templates",
+                style = MaterialTheme.typography.titleMedium,
+                color = palette.text1,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Spacing.screen),
+        ) {
+            Text(
+                "Starting shapes that mirror common review forms — pick the one closest to yours, " +
+                    "then rename and edit everything to match your form exactly. The AI never " +
+                    "writes your framework.",
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.text3,
+            )
+            Spacer(Modifier.height(Spacing.s4))
+            FrameworkPresets.ALL.forEach { preset ->
+                TemplateCard(preset, palette, onClick = { onPick(preset) })
+                Spacer(Modifier.height(Spacing.s3))
+            }
+            Spacer(
+                Modifier.height(
+                    Spacing.s6 +
+                        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
+                        LocalBottomBarInset.current,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TemplateCard(preset: FrameworkPreset, palette: BragPalette, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(Radii.lg))
+            .clickable(onClick = onClick)
+            .padding(Spacing.card),
+    ) {
+        Text(
+            preset.title,
+            style = MaterialTheme.typography.titleSmall,
+            color = palette.text1,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(preset.tagline, style = MaterialTheme.typography.bodySmall, color = palette.text3)
+        Spacer(Modifier.height(Spacing.s3))
+        preset.pillars.forEachIndexed { i, p ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(9.dp).clip(RoundedCornerShape(3.dp)).background(pillarColor(i).solid))
+                Spacer(Modifier.size(Spacing.s2))
+                Text(
+                    p.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.text2,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.size(Spacing.s2))
+                Text(
+                    when (p.kind) {
+                        PillarKind.GOAL_AREA -> "goal"
+                        PillarKind.BEHAVIOUR -> "behaviour"
+                        PillarKind.DEVELOPMENT -> "growth"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.text3,
+                )
+            }
+            if (i != preset.pillars.lastIndex) Spacer(Modifier.height(Spacing.s1))
+        }
+    }
 }
 
 @Composable

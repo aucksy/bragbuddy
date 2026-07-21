@@ -321,7 +321,7 @@ private fun FrameworkStep(onNext: () -> Unit) {
                     PrimaryPill("Next", palette, onClick = onNext)
                     Spacer(Modifier.height(Spacing.s2))
                     Text(
-                        "Optional — refine this now or anytime in the Framework tab. The AI never rewrites it.",
+                        "Optional — start from a template or edit, now or anytime in the Framework tab. The AI never rewrites it.",
                         style = MaterialTheme.typography.bodySmall,
                         color = palette.text3,
                         textAlign = TextAlign.Center,
@@ -366,7 +366,7 @@ private fun RehearseStep(
                     Text("That's your record, started.", style = MaterialTheme.typography.displaySmall, color = palette.text1)
                     Spacer(Modifier.height(Spacing.s3))
                     Text(
-                        "Every win you log lands here, always review-ready. Do this a few seconds a day and review time takes care of itself.",
+                        "Every win you log lands here, always review-ready. A few seconds at a time — daily or just a few times a week — and review time takes care of itself.",
                         style = MaterialTheme.typography.bodyLarge, color = palette.text2,
                     )
                 }
