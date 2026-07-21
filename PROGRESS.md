@@ -241,6 +241,11 @@ current code — that is the context, not chat history.
 > READ timeout, so OkHttp's 10s default hung up on any non-streaming generation longer than 10s (both
 > models, every time; One page squeaked under). Timeouts fixed + every generate failure now says what
 > actually happened, typed via `AiHttpException`. Detail in `## Status: v0.40.1`.
+> **📊 `docs/COST-MODEL.md` (2026-07-21, owner question):** measured AI cost model — summary input
+> PLATEAUS at the rollup caps (worst Detailed ≈ ₹0.77/gen; the daily categorizer is the real cost
+> driver) — **plus §7 the RECOMMENDED LAUNCH QUOTA CARD ("habit free / harvest paid": One page +
+> Detailed are Pro-only, free = 1 Brief/season with a locked teaser, ~40 AI filings/mo). M3 MUST
+> read it** (it supersedes PRODUCT-ASSESSMENT Appendix A and refines its free-tier table).
 > **▶ THE EXACT NEXT STEP = S2 (K1 competency structure, Room v8→v9, NO eval), fresh chat.**
 > After the arc: V6 coach breadth → capture-review
 > Phase 4 → F2/F3 (if not batched) → M3 last. Open owner items unchanged: B3 yes/no (gates F6) · F5.
