@@ -215,8 +215,25 @@ fun SummaryScreen(
                         },
                         onSwap = { area, a, b -> viewModel.swapAchievements(area, a, b) },
                         onLongPressPointer = { raw -> pointerAction = raw },
-                        onRestoreItem = { item -> viewModel.restoreSetAside(item.bullet, item.area) },
-                        onRestoreAll = { viewModel.restoreAllSetAside() },
+                        onRestoreItem = { item ->
+                            viewModel.restoreSetAside(item.bullet, item.area, item.project, item.deliverable)
+                            // Say where it went — a silent one-tap restore reads as "something happened,
+                            // no idea what" (owner feedback, v0.39.1).
+                            val home = listOfNotNull(item.area, item.project).joinToString(" · ")
+                            snackbar.show("Restored ✓ → $home")
+                        },
+                        onRestoreAll = {
+                            val n = s.setAsideItems.size
+                            viewModel.restoreAllSetAside()
+                            snackbar.show(
+                                if (n == 1) "1 item restored to its category"
+                                else "$n items restored to their categories",
+                            )
+                        },
+                        onTryDetailed = {
+                            viewModel.selectLength(SummaryLength.DETAILED)
+                            showGenerate = true
+                        },
                         onEditPointer = { raw -> pointerEdit = raw },
                         onDeletePointer = { raw -> viewModel.deletePointer(raw) },
                         onRetagRequest = { target -> retagLine = target },
@@ -360,6 +377,7 @@ private fun ReadyBlock(
     onLongPressPointer: (String) -> Unit,
     onRestoreItem: (SummaryViewModel.SetAsideItem) -> Unit,
     onRestoreAll: () -> Unit,
+    onTryDetailed: () -> Unit,
     onEditPointer: (String) -> Unit,
     onDeletePointer: (String) -> Unit,
     onRetagRequest: (RetagTarget) -> Unit,
@@ -456,9 +474,12 @@ private fun ReadyBlock(
                     notes = result.setAside,
                     open = setAsideOpen,
                     palette = palette,
+                    lengthLabel = state.length.label,
+                    isDetailed = state.length == SummaryLength.DETAILED,
                     onToggle = { setAsideOpen = !setAsideOpen },
                     onRestoreItem = onRestoreItem,
                     onRestoreAll = onRestoreAll,
+                    onTryDetailed = onTryDetailed,
                 )
             }
             Spacer(Modifier.height(contentBottomPadding + 12.dp))
@@ -1092,9 +1113,12 @@ private fun SetAsidePanel(
     notes: List<com.bragbuddy.app.data.ai.SetAsideNote>,
     open: Boolean,
     palette: BragPalette,
+    lengthLabel: String,
+    isDetailed: Boolean,
     onToggle: () -> Unit,
     onRestoreItem: (SummaryViewModel.SetAsideItem) -> Unit,
     onRestoreAll: () -> Unit,
+    onTryDetailed: () -> Unit,
 ) {
     val count = items.size
     Column(
@@ -1117,16 +1141,42 @@ private fun SetAsidePanel(
         }
         AnimatedVisibility(visible = open) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                // The model's own reason, when it gave one; else the design's authoritative copy.
-                val why = notes.mapNotNull { n ->
-                    listOfNotNull(n.what.takeIf { it.isNotBlank() }, n.why.takeIf { it.isNotBlank() }).joinToString(" — ").takeIf { it.isNotBlank() }
-                }
+                // HOW the cut happens — the deterministic truth, before the model's own prose. "Why did
+                // it remove my wins?" is the panel's whole question (owner feedback, v0.39.1): the answer
+                // is the length pick, not a judgment that anything was wrong.
                 Text(
-                    if (why.isNotEmpty()) why.joinToString("  ·  ")
-                    else "Routine check-ins and duplicates were condensed to keep this to one page.",
+                    "“$lengthLabel” keeps only the strongest few per category, re-picked on every " +
+                        "Generate — being here doesn't mean a win was wrong or unfiled. Each item below " +
+                        "shows where it stays filed.",
                     style = MaterialTheme.typography.bodySmall,
                     color = palette.text3,
                 )
+                // The model's own reason for this particular run, when it gave one.
+                val why = notes.mapNotNull { n ->
+                    listOfNotNull(n.what.takeIf { it.isNotBlank() }, n.why.takeIf { it.isNotBlank() }).joinToString(" — ").takeIf { it.isNotBlank() }
+                }
+                if (why.isNotEmpty()) {
+                    Spacer(Modifier.height(Spacing.s2))
+                    Text(why.joinToString("  ·  "), style = MaterialTheme.typography.bodySmall, color = palette.text3)
+                }
+                if (!isDetailed) {
+                    Spacer(Modifier.height(Spacing.s2))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Want every strong win on the page?",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.text3,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            "Generate Detailed",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = palette.primary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clip(RoundedCornerShape(Radii.sm)).clickable(onClick = onTryDetailed).padding(horizontal = 8.dp, vertical = 6.dp),
+                        )
+                    }
+                }
                 Spacer(Modifier.height(Spacing.s2))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1158,7 +1208,16 @@ private fun SetAsidePanel(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = palette.text2,
                             )
-                            Text(item.area, style = MaterialTheme.typography.labelSmall, color = palette.text3)
+                            // Its real, still-filed home: Category · Project ▸ Deliverable — so a
+                            // set-aside win never reads as "removed from somewhere unknown".
+                            val home = buildString {
+                                append(item.area)
+                                item.project?.takeIf { it.isNotBlank() }?.let { p ->
+                                    append(" · ").append(p)
+                                    item.deliverable?.takeIf { it.isNotBlank() }?.let { d -> append(" ▸ ").append(d) }
+                                }
+                            }
+                            Text(home, style = MaterialTheme.typography.labelSmall, color = palette.text3)
                         }
                         Spacer(Modifier.width(Spacing.s2))
                         Text(

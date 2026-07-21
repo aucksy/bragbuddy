@@ -50,8 +50,15 @@ data class SummaryOverrides(
 @Serializable
 data class BulletEdit(val from: String, val to: String)
 
+/** [project]/[deliverable] (v0.39.1, defaulted so old JSON decodes): the restored win's real home,
+ *  carried so the re-injected line renders with its project tag instead of appearing homeless. */
 @Serializable
-data class RestoredNote(val text: String, val area: String)
+data class RestoredNote(
+    val text: String,
+    val area: String,
+    val project: String? = null,
+    val deliverable: String? = null,
+)
 
 /** A summary-only re-placement of one line: which goal area it should sit under, and its project
  *  (null = no specific project). [key] is the normalized bullet text at the time of the move. */
@@ -144,7 +151,14 @@ fun applyOverrides(
     // fuzzy de-dup only fires against those (the model's own output), never against a line injected
     // earlier in the same pass — otherwise "Restore all" of two genuinely-distinct-but-similar dropped
     // items would collapse them to one (the review's finding).
-    fun inject(areasMut: MutableList<SummaryGoalArea>, area: String, text: String, preExisting: Set<String>) {
+    fun inject(
+        areasMut: MutableList<SummaryGoalArea>,
+        area: String,
+        text: String,
+        preExisting: Set<String>,
+        project: String? = null,
+        deliverable: String? = null,
+    ) {
         val key = summaryKey(text)
         if (isDevArea(area)) {
             val already = development.any { summaryKey(it) == key } ||
@@ -157,10 +171,16 @@ fun applyOverrides(
             val already = areasMut[idx].achievements.any { summaryKey(it.bullet) == key } ||
                 preExisting.any { SummaryResolver.similar(it, text) }
             if (!already) areasMut[idx] = areasMut[idx].copy(
-                achievements = areasMut[idx].achievements + SummaryAchievement(bullet = text),
+                achievements = areasMut[idx].achievements +
+                    SummaryAchievement(bullet = text, project = project, deliverable = deliverable),
             )
         } else {
-            areasMut.add(SummaryGoalArea(name = area, achievements = listOf(SummaryAchievement(bullet = text))))
+            areasMut.add(
+                SummaryGoalArea(
+                    name = area,
+                    achievements = listOf(SummaryAchievement(bullet = text, project = project, deliverable = deliverable)),
+                ),
+            )
         }
     }
 
@@ -178,7 +198,7 @@ fun applyOverrides(
         overrides.restored.forEach { note ->
             val text = edit(note.text)
             if (dropped(text)) return@forEach
-            inject(areas, note.area, text, baselineFor(note.area))
+            inject(areas, note.area, text, baselineFor(note.area), note.project, note.deliverable)
         }
         goalAreas = areas
     }

@@ -85,6 +85,24 @@ class SummaryOverridesTest {
     }
 
     @Test
+    fun `restore carries the win's project and deliverable onto the injected line`() {
+        val ov = SummaryOverrides(
+            restored = listOf(RestoredNote("Mentored two juniors", "Performance Goals", "Intake Hub", "Tech Questions")),
+        )
+        val out = applyOverrides(result(achievements = listOf("Shipped X")), ov)
+        val injected = out.summary.goalAreas.single { it.name == "Performance Goals" }
+            .achievements.single { it.bullet == "Mentored two juniors" }
+        assertThat(injected.project).isEqualTo("Intake Hub")
+        assertThat(injected.deliverable).isEqualTo("Tech Questions")
+        // Idempotent re-apply keeps exactly one copy with the tag intact.
+        val again = applyOverrides(out, ov)
+        assertThat(
+            again.summary.goalAreas.single { it.name == "Performance Goals" }
+                .achievements.count { it.bullet == "Mentored two juniors" },
+        ).isEqualTo(1)
+    }
+
+    @Test
     fun `restore then edit the restored line does not duplicate it`() {
         val ov = SummaryOverrides(
             restored = listOf(RestoredNote("Mentored juniors", "Performance Goals")),

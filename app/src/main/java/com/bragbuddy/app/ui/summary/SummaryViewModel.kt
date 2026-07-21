@@ -103,12 +103,16 @@ class SummaryViewModel @Inject constructor(
     /** A project folder: its name and the category it lives under. */
     data class FolderRef(val name: String, val goalArea: String)
 
-    /** One genuinely-dropped rollup candidate, restorable as itself. */
+    /** One genuinely-dropped rollup candidate, restorable as itself. [project]/[deliverable] are its
+     *  real filed home (v0.39.1) — shown on the row so a set-aside win is never "homeless", and carried
+     *  through Restore so the re-injected line keeps its project tag. */
     data class SetAsideItem(
         val bullet: String,
         val area: String,
         val metric: String?,
         val entryIds: List<Long>,
+        val project: String? = null,
+        val deliverable: String? = null,
     )
 
     /** Snapshot of the model-call inputs for the current selection. */
@@ -197,6 +201,12 @@ class SummaryViewModel @Inject constructor(
     private data class Computed(
         val window: PeriodWindow,
         val agg: AggregatedRollup,
+        /** The SAME window aggregated with no highlight cap (v0.39.1) — the UI's truth. The capped
+         *  [agg] is what the model was fed; anything real that fell below the cap must still count in
+         *  [ScreenState.entryCount] and appear in the derived Set-aside, or the panel under-reports
+         *  what was left off the page ("9 set aside" while more real wins were silently outside the
+         *  model's shortlist too). Never serialized into the prompt. */
+        val aggFull: AggregatedRollup,
         val rollupString: String,
         val frameworkBlock: String,
         val pinnedInWindow: List<EntryEntity>,
@@ -207,15 +217,22 @@ class SummaryViewModel @Inject constructor(
 
     private fun compute(inp: Inputs, period: SummaryPeriod, length: SummaryLength): Computed {
         val window = ReviewPeriods.windowFor(period, inp.reviewStartMonth)
+        val facts = inp.deliverables.map {
+            // v0.34.0 · supplies each deliverable's live Done state, which the rollup items can't carry.
+            // It rides in the serialized rollup, so marking one Done correctly marks the summary stale.
+            DeliverableFact(name = it.name, project = it.project, goalArea = it.goalArea, done = it.done)
+        }
         // Length drives how many candidate highlights per area the model sees (Detailed = more).
         val agg = RollupAggregator.aggregate(
             inp.items, window.startMillis, window.endMillisExclusive, inp.framework,
-            // v0.34.0 · supplies each deliverable's live Done state, which the rollup items can't carry.
-            // It rides in the serialized rollup, so marking one Done correctly marks the summary stale.
-            deliverables = inp.deliverables.map {
-                DeliverableFact(name = it.name, project = it.project, goalArea = it.goalArea, done = it.done)
-            },
+            deliverables = facts,
             highlightCap = length.highlightCap,
+        )
+        // Uncapped twin for the UI (see [Computed.aggFull]) — cheap in-memory work, never in the prompt.
+        val aggFull = RollupAggregator.aggregate(
+            inp.items, window.startMillis, window.endMillisExclusive, inp.framework,
+            deliverables = facts,
+            highlightCap = Int.MAX_VALUE,
         )
         val rollupString = RollupAggregator.serialize(agg)
 
@@ -238,7 +255,7 @@ class SummaryViewModel @Inject constructor(
             rollupString, pinnedForPrompt.joinToString("\n"), frameworkBlock, inp.role, period.name, length.name,
             AiPrompts.summaryTemplateFingerprint,
         )
-        return Computed(window, agg, rollupString, frameworkBlock, pinnedInWindow, pinnedBullets, pinnedForPrompt, signature)
+        return Computed(window, agg, aggFull, rollupString, frameworkBlock, pinnedInWindow, pinnedBullets, pinnedForPrompt, signature)
     }
 
     private fun build(
@@ -287,7 +304,7 @@ class SummaryViewModel @Inject constructor(
             period = period,
             length = length,
             window = c.window,
-            entryCount = c.agg.entryCount,
+            entryCount = c.aggFull.entryCount,
             framework = inp.framework,
             pinnedBullets = c.pinnedBullets,
             cached = shown,
@@ -299,14 +316,15 @@ class SummaryViewModel @Inject constructor(
             // built from a different aggregate, so "candidates − rendered" would surface brand-new
             // entries as "set aside" and offer to restore what was never left out. Blank until the user
             // regenerates against the fresh rollup.
-            setAsideItems = if (isStale) emptyList() else deriveSetAside(c.agg, cached),
+            setAsideItems = if (isStale) emptyList() else deriveSetAside(c.aggFull, cached),
         )
     }
 
     /**
-     * The genuinely-dropped candidates: everything the aggregate offered the model, minus everything
-     * the rendered summary actually shows. This is what "see what was set aside, restore all or part of
-     * it" needs — real bullets with real areas and real entry ids.
+     * The genuinely-dropped candidates: every real windowed win (the UNCAPPED aggregate, v0.39.1 —
+     * including wins that fell below the model's shortlist cap and were never even offered), minus
+     * everything the rendered summary actually shows. This is what "see what was set aside, restore
+     * all or part of it" needs — real bullets with real areas, homes and entry ids.
      *
      * Why derive rather than read `result.setAside`: those notes are a CATEGORICAL explanation the model
      * writes ("Routine check-ins" / "condensed to keep to one page"). Restoring one literally injected a
@@ -340,7 +358,12 @@ class SummaryViewModel @Inject constructor(
         val used = renderedAnywhere + accountedFor
         return agg.goalAreas.flatMap { area ->
             SummaryResolver.dropped(area.highlights, used)
-                .map { SetAsideItem(it.bullet, area.name, it.metric, it.ids) }
+                .map {
+                    SetAsideItem(
+                        bullet = it.bullet, area = area.name, metric = it.metric, entryIds = it.ids,
+                        project = it.project, deliverable = it.deliverable,
+                    )
+                }
         }
     }
 
@@ -476,10 +499,15 @@ class SummaryViewModel @Inject constructor(
      * Restore a set-aside note into a chosen goal area (feature #5). Sticky across a Regenerate (the
      * note is re-injected and kept out of the Set-aside panel).
      */
-    fun restoreSetAside(noteWhat: String, areaName: String) = mutateCached { cached ->
+    fun restoreSetAside(
+        noteWhat: String,
+        areaName: String,
+        project: String? = null,
+        deliverable: String? = null,
+    ) = mutateCached { cached ->
         if (noteWhat.isBlank() || areaName.isBlank()) return@mutateCached null
         val overrides = cached.overrides.copy(
-            restored = (cached.overrides.restored + RestoredNote(noteWhat, areaName)).distinct(),
+            restored = (cached.overrides.restored + RestoredNote(noteWhat, areaName, project, deliverable)).distinct(),
         )
         cached.copy(result = applyOverrides(cached.result, overrides, currentDevAreas()), overrides = overrides)
     }
@@ -494,7 +522,7 @@ class SummaryViewModel @Inject constructor(
         if (items.isEmpty()) return
         mutateCached { cached ->
             val overrides = cached.overrides.copy(
-                restored = (cached.overrides.restored + items.map { RestoredNote(it.bullet, it.area) }).distinct(),
+                restored = (cached.overrides.restored + items.map { RestoredNote(it.bullet, it.area, it.project, it.deliverable) }).distinct(),
             )
             cached.copy(result = applyOverrides(cached.result, overrides, currentDevAreas()), overrides = overrides)
         }
