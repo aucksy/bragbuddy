@@ -234,7 +234,10 @@ current code — that is the context, not chat history.
 > arc K1–K3** (its ⭐locked rules stand). Phases: **S1 deterministic layout (no eval) → S2 = K1
 > structure (Room v9) → S3 = K2 + PART B rewrite (EVAL-GATED 2–3 rounds) → S4 L&G suggest+confirm
 > + K3 coverage (EVAL-GATED; consider batching with F2/F3 to pay the cache invalidation once)**.
-> **▶ THE EXACT NEXT STEP = S1, fresh chat.** After the arc: V6 coach breadth → capture-review
+> **✅ S1 SHIPPED as v0.40.0 (2026-07-21, `versionCode 48`)** — deterministic hierarchy on screen +
+> in the export, `(from N logs)` counts, `(Done)` state; detail in `## Status: v0.40.0`.
+> **▶ THE EXACT NEXT STEP = S2 (K1 competency structure, Room v8→v9, NO eval), fresh chat.**
+> After the arc: V6 coach breadth → capture-review
 > Phase 4 → F2/F3 (if not batched) → M3 last. Open owner items unchanged: B3 yes/no (gates F6) · F5.
 > The owner's **5-request batch** (2026-07-19) is planned as **4 phases** — durable spec + LOCKED owner
 > decisions in **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 4 — capture → open →
@@ -351,6 +354,62 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
   produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
   ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
   went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
+
+---
+
+## Status: v0.40.0 — Structured-Summary arc · S1 deterministic layout ✅ SHIPPED (signed · `versionCode 48` · Room stays **v8**, no schema change · compile + unit tests GREEN on the free debug gate before the tag · ONE adversarial 5-lens review = **0 findings** · **NO prompt bytes changed → no eval gate**)
+
+**What it is (spec: `docs/SUMMARY-STRUCTURE-PLAN.md` → S1).** The Summary tab's screen AND its
+copied text now render the user's own hierarchy — `Category → Project → Deliverable → pointers` —
+derived deterministically from the tags the generated achievements already carry. The AI was not
+consulted: pure render/export work.
+
+**The pieces (all in `ui/summary/`):**
+- **⭐ Grouping rule change (deliberate, both levels):** `groupAchievementsByProject` /
+  `groupFolderByDeliverable` now return null only when NOTHING is named (all loose) — previously both
+  demanded ≥2 groups, so a single named project or deliverable rendered flat and its name/state
+  vanished from the doc. PART B rule 2 condenses a deliverable to ONE pointer, so one-group folders
+  are the NORM, not an edge; the owner's target layout draws the header there. Only all-loose
+  areas/folders still render flat (byte-identical to pre-S1).
+- **`SummaryExport` rebuilt hierarchically:** real indented headers (2 spaces/level, Home's
+  `DocExport` idiom) replace the `[Project ▸ Deliverable]` line-tags. Project header → deliverable
+  sub-header → `• ` pointers; loose pointers after the deliverable groups at the project level;
+  no-project wins **plainly under the goal area after the named projects** (S-arc rule of shape — no
+  synthetic "No specific project" heading in a doc a manager reads). It reuses the exact grouping
+  functions the screen renders from, so screen and doc can never disagree on shape. A deliverable
+  group whose pointers are all blank is skipped, never a bare heading. Behaviours + L&G export
+  byte-identically to pre-S1 (their `[Project ▸ Deliverable]` evidence tags arrive in S3).
+- **`(from N logs)`** on a pointer when `SummaryAchievement.count > 1` (the model's echo of
+  `AggHighlight.count` — merged logs), in the export AND as the row chip (replacing the cryptic
+  "×N"). Routine roll-ups deliberately KEEP `×N` — that count is times done, not logs merged.
+- **`(Done)` state:** deliverable sub-headers show a muted "Done" tag on screen and ` (Done)` in the
+  export (Home's convention, NOT the spec sketch's `(DONE)`), looked up live via the new shared
+  `deliverableDone()` on the FULL normalized identity triple `(name, project, goalArea)` — a
+  same-named deliverable elsewhere can never answer (the v0.33.1 lesson). `ScreenState` gained
+  `deliverableFacts` (the same live rows `AggDeliverable.done` is built from).
+- **Small hardening:** the flat (all-loose) branch can no longer leak a sentinel ("Outside-project"/
+  "Inbox") onto a row as if it were a project name (`isNamedProject` filter).
+- **Untouched on purpose:** reorder arrows stay scoped to the project folder (the S1-changed branches
+  produce identical scopes, verified); collapse state, retag, set-aside, `deriveSetAside` matching —
+  all unchanged. Old cached summaries (defaulted `deliverable=null`/`count=1`) degrade cleanly.
+
+**Tests:** `SummaryExportTest` rewritten for the hierarchy (an exact-string target-shape test incl.
+indents/`(from 4 logs)`/`(Done)`, Done-scoped-by-identity, single-project header, all-loose plain,
+count>1 guard, nothing-dropped, blank-heading guard); `SummaryGroupingTest` updated for the new null
+rules + `deliverableDone` triple/normalization cases.
+
+**Verification:** free debug gate (compile + unit tests) GREEN on the exact commit (`221c9f3`);
+ONE scoped adversarial 5-lens review (compile / logic / UI-state / cached-data regression / test
+trace) = **0 demonstrable defects**; two non-defect notes recorded: the Done-lookup's
+`?: first-item-project` fallback is production-dead (the resolve lens guarantees project presence) —
+kept as cheap parity; and the screen renders a blank-bullet row where the export skips it
+(pre-existing asymmetry, not worsened).
+
+**Next: S2 = K1 competency structure** (Room v8→v9 additive; BEHAVIOUR-category sub-folders as
+"Competencies" in the framework editor + detail boxes; per-competency entry tag carried by
+`BackupCodec`; manual tagging via the 3rd-level picker pattern; chips in views; the K-proposal's
+⭐locked rules stand — competencies exist ONLY when the user defines them, tagging-only, never
+placement; NO eval). Fresh chat per the protocol.
 
 ---
 
