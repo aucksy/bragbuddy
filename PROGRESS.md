@@ -225,13 +225,17 @@ current code — that is the context, not chat history.
 > (the panel previously under-reported), with `entryCount` now the honest windowed count.
 > ⭐ Lesson: every silent curation act needs to say WHAT it kept, WHY, and WHERE the rest lives.
 >
-> **▶ THE EXACT NEXT STEP = V6 · coach breadth (a SMALL eval-gated prompt phase, own chat)** — the
-> coach picks ONE question from a small kind-set (number / before-after / who-for-scale) by what's
-> most missing; still one question; never invents. Edits `AiPrompts.IMPACT_COACH` + `eval/prompts/`
-> mirror + `run.mjs` in the SAME commit (PromptSyncTest); coach prompt only — NOT the categorizer's
-> cache-critical static block; budget 1–2 eval rounds. After that, per the vision-fit roadmap:
-> V3 capture-review Phase 4 (mockup-first) → V4 F2/F3 → V5 competency arc. Open owner items: B3
-> yes/no (gates F6) · F5 · V3-vs-V4 order sign-off.
+> **▶ ROADMAP RESHAPED AGAIN (owner, later 2026-07-21): the STRUCTURED-SUMMARY ARC is NEXT — spec +
+> ⭐4 locked decisions in `docs/SUMMARY-STRUCTURE-PLAN.md`.** The summary must mirror the user's own
+> organisation: Performance → Project → Deliverable → minimum impactful pointers with counts;
+> Leadership = PILLARS-FIRST with `[Project ▸ Deliverable]`-tagged evidence rewritten to the
+> leadership ANGLE (same win may appear in both sections, two angles); L&G = suggest-first
+> AI cites against the user's dev plan, user confirms. **The arc ABSORBS the approved competency
+> arc K1–K3** (its ⭐locked rules stand). Phases: **S1 deterministic layout (no eval) → S2 = K1
+> structure (Room v9) → S3 = K2 + PART B rewrite (EVAL-GATED 2–3 rounds) → S4 L&G suggest+confirm
+> + K3 coverage (EVAL-GATED; consider batching with F2/F3 to pay the cache invalidation once)**.
+> **▶ THE EXACT NEXT STEP = S1, fresh chat.** After the arc: V6 coach breadth → capture-review
+> Phase 4 → F2/F3 (if not batched) → M3 last. Open owner items unchanged: B3 yes/no (gates F6) · F5.
 > The owner's **5-request batch** (2026-07-19) is planned as **4 phases** — durable spec + LOCKED owner
 > decisions in **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 4 — capture → open →
 > "AI is working" → review & confirm placement (item 5) — HIGH risk, the CAPSTONE, LAST.** It **retires
