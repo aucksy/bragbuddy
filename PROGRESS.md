@@ -180,10 +180,43 @@ current code — that is the context, not chat history.
 > B3 = owner call) → V3 capture-review Phase 4 → V4 F2/F3 calibration → V5 competency arc K1–K3 →
 > V6 coach breadth**; F5 rides along; **F6 (delete `refineFramework`) is ON HOLD until the B3
 > decision**; M3 stays last.
-> **▶ THE EXACT NEXT STEP = the OWNER'S PICK on the roadmap's 3 decisions** (doc §7): (1) setup ease
-> B2-only vs B2+B3 (B3 requires explicitly re-scoping the 2026-07-07 no-AI-reshapes rule); (2)
-> sequencing sign-off (V3-before-V4 recommended vs the AI-assessment's F2-first); (3) F5. The
-> competency arc's ⭐locked decisions stand unchanged. NO build until the owner picks.
+> **✅ OWNER PICKED (later 2026-07-21): "implement these" — the chat-summary top 3 — with two
+> constraints: NO company names anywhere in the app, and templates use ALTERNATE (generic) wording
+> that mirrors the same framework shapes.** The owner did NOT re-scope the no-AI-reshapes rule, so
+> **B3 (scan-to-draft) is NOT approved** — templates path (B2) only. **F6 stays ON HOLD** (B3 was
+> neither chosen nor explicitly ruled out; deleting then rebuilding the seam would be churn — get an
+> explicit B3 yes/no before touching it). F5 remains UNANSWERED.
+>
+> **✅ v0.39.0 — VISION-FIT V1+V2 SHIPPED (2026-07-21, `versionCode 46`, commit `8abd8b6`).**
+> - **V1 · "Last year" summary period**: `SummaryPeriod.LAST_YEAR` anchors one review year back
+>   (`ReviewPeriods.windowFor`), fixing the year-end-written-after-close case (April cycle). Additive:
+>   cache keys are period-scoped; default period unchanged; the Generate sheet's segmented row renders
+>   it automatically via `SummaryPeriod.entries`. Tests in `ReviewPeriodTest`.
+> - **V2 · Framework templates (B2, static, NO AI, NO company names)**: `data/framework/
+>   FrameworkPresets.kt` = 6 hand-authored shapes (balanced=default · named leadership pillars ·
+>   weighted goal/KRA sheet · OKR · evidence-per-competency · simple narrative) in generic wording,
+>   each detail text telling the user to replace example names with their own form's; "Start from a
+>   template" pill on `FrameworkScreen` (surfaces in the Framework tab AND onboarding step, one
+>   implementation) → full-screen `TemplatePickerSheet` (CategoryEditSheet idiom; inset spacer =
+>   terminal child inside the scroll per the standing rule; `reportEditing` wired so onboarding's
+>   Next bar hides). `FrameworkViewModel.applyTemplate` replaces the pillar list and reuses
+>   **`remove()`'s exact cascade** for categories whose NAME disappears (folders + manual anchors +
+>   deliverable tags); same-named categories keep their folders. Pristine setup (untouched default,
+>   zero folders) applies silently; anything else gets a replace-confirm naming the Uncategorized
+>   catch-all. Tests in `FrameworkPresetsTest` (ids/names unique, ≥1 GOAL_AREA + ≥1 BEHAVIOUR each,
+>   balanced==DEFAULT).
+> - **B1 · guidance copy**: category-detail placeholder now asks for the form's section name +
+>   target/weightage; project-detail placeholder asks for the target; onboarding framework-step
+>   mentions templates; rehearse copy embraces the a-few-times-a-week rhythm.
+> - **No prompt bytes changed → NO eval gate.** Room stays **v8**. No schema change.
+>
+> **▶ THE EXACT NEXT STEP = V6 · coach breadth (a SMALL eval-gated prompt phase, own chat)** — the
+> coach picks ONE question from a small kind-set (number / before-after / who-for-scale) by what's
+> most missing; still one question; never invents. Edits `AiPrompts.IMPACT_COACH` + `eval/prompts/`
+> mirror + `run.mjs` in the SAME commit (PromptSyncTest); coach prompt only — NOT the categorizer's
+> cache-critical static block; budget 1–2 eval rounds. After that, per the vision-fit roadmap:
+> V3 capture-review Phase 4 (mockup-first) → V4 F2/F3 → V5 competency arc. Open owner items: B3
+> yes/no (gates F6) · F5 · V3-vs-V4 order sign-off.
 > The owner's **5-request batch** (2026-07-19) is planned as **4 phases** — durable spec + LOCKED owner
 > decisions in **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 4 — capture → open →
 > "AI is working" → review & confirm placement (item 5) — HIGH risk, the CAPSTONE, LAST.** It **retires
