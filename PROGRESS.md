@@ -210,6 +210,21 @@ current code — that is the context, not chat history.
 >   mentions templates; rehearse copy embraces the a-few-times-a-week rhythm.
 > - **No prompt bytes changed → NO eval gate.** Room stays **v8**. No schema change.
 >
+> **✅ v0.39.1 — Set-aside transparency patch (2026-07-21, `versionCode 47`, owner feedback with
+> screenshot).** The owner generated a One-page summary of his restored real record (ALL work in ONE
+> goal area) and 9 real wins landed in Set-aside with no explanation, no home shown, and a silent
+> one-tap Restore. Root cause was COMMUNICATION, not filing: One page = the ~5 strongest per category,
+> re-picked (nondeterministically) on every Generate; with a single goal area nearly everything
+> competes for 5 slots. Fixes (all client-side, NO prompt change, NO eval): each set-aside row now
+> shows its still-filed home (`Category · Project ▸ Deliverable`, from the rollup candidate);
+> Restore/Restore-all confirm the destination via snackbar and the injected line carries its
+> project+deliverable tag (`RestoredNote` gained defaulted fields — old cached JSON decodes);
+> the panel opens with the deterministic explanation + a one-tap **Generate Detailed** path
+> (selects DETAILED + opens the sheet); and the derived set-aside now diffs against an **UNCAPPED**
+> aggregate (`Computed.aggFull`) so wins below the model's 15-highlight shortlist are listed too
+> (the panel previously under-reported), with `entryCount` now the honest windowed count.
+> ⭐ Lesson: every silent curation act needs to say WHAT it kept, WHY, and WHERE the rest lives.
+>
 > **▶ THE EXACT NEXT STEP = V6 · coach breadth (a SMALL eval-gated prompt phase, own chat)** — the
 > coach picks ONE question from a small kind-set (number / before-after / who-for-scale) by what's
 > most missing; still one question; never invents. Edits `AiPrompts.IMPACT_COACH` + `eval/prompts/`
