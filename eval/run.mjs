@@ -691,8 +691,26 @@ function scoreCategorizerCase(c, record) {
 
   // demonstrates — required tags must be present on some entry (extras are a judgment call and
   // allowed; ghost-tag inflation is AI-1 validator territory). Report-only metric.
+  // APP-MIRROR (v0.38.0): CategorizedNormalizer's competency→category mapping — a returned tag that
+  // matches no behaviour NAME but appears (whole-word) inside exactly ONE behaviour pillar's blurb
+  // snaps to that pillar's name. The model, told to judge against the description, legitimately
+  // answers with the competency it matched; the app now keeps that answer instead of dropping it.
   if (Array.isArray(expect.demonstrates) && expect.demonstrates.length > 0) {
-    const got = new Set(entries.flatMap((e) => e.demonstrates ?? []).map(norm));
+    const behaviours = (framework.pillars || []).filter((p) => p.kind === 'BEHAVIOUR');
+    const tokens = (s) => ' ' + norm(s).replace(/[^a-z0-9\s]+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+    const nameByNorm = new Map(behaviours.map((p) => [norm(p.name), p.name]));
+    const blurbs = behaviours
+      .filter((p) => String(p.blurb ?? '').trim())
+      .map((p) => ({ toks: tokens(p.blurb), name: p.name }));
+    const mapTag = (t) => {
+      const byName = nameByNorm.get(norm(t));
+      if (byName) return byName;
+      const tt = tokens(t);
+      if (tt.trim().length < 4) return t; // unmapped stays raw so the failure detail stays informative
+      const owners = blurbs.filter((b) => b.toks.includes(tt));
+      return owners.length === 1 ? owners[0].name : t;
+    };
+    const got = new Set(entries.flatMap((e) => e.demonstrates ?? []).map((t) => norm(mapTag(t))));
     const missing = expect.demonstrates.filter((w) => !got.has(norm(w)));
     missing.length === 0
       ? pass('demonstrates')

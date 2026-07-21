@@ -82,6 +82,80 @@ class CategorizedNormalizerTest {
         assertThat(e.demonstrates).containsExactly("Leadership & Behaviours")
     }
 
+    // --- v0.38.0 · competency→category mapping (AI-SYSTEM-ASSESSMENT F1) ---
+
+    private val amexStylePillars = listOf(
+        Pillar("perf", "Performance Goals", PillarKind.GOAL_AREA, "delivery"),
+        Pillar(
+            "lead", "Leadership & Behaviours", PillarKind.BEHAVIOUR,
+            "Summarize how you've brought our Leadership Behaviors to life: " +
+                "Set the Agenda: Define What Winning Looks Like. Bring Others With You. Do It the Right Way.",
+        ),
+        Pillar("values", "Company Values", PillarKind.BEHAVIOUR, "Integrity, customer focus, teamwork."),
+    )
+
+    private fun normAmex(vararg entries: CategorizedEntry) =
+        CategorizedNormalizer.normalize(CategorizeResult(entries.toList()), placement, amexStylePillars, today).entries
+
+    @Test
+    fun `a competency named in exactly one behaviour's description maps to that behaviour`() {
+        val e = normAmex(
+            CategorizedEntry(
+                bullet = "x", project = "Raven Migration", goalCategory = "Performance Goals",
+                demonstrates = listOf("set the agenda", "Bring Others With You", "teamwork"),
+                confidence = 0.8,
+            ),
+        ).single()
+        // "set the agenda"/"Bring Others With You" live only in the Leadership blurb; "teamwork" only in
+        // Company Values — each maps UP to its owning category, deduped.
+        assertThat(e.demonstrates).containsExactly("Leadership & Behaviours", "Company Values")
+    }
+
+    @Test
+    fun `a tag named in MORE than one behaviour description stays dropped (ambiguous)`() {
+        val pillars = listOf(
+            Pillar("a", "Collaboration", PillarKind.BEHAVIOUR, "Working together across teams."),
+            Pillar("b", "Company Values", PillarKind.BEHAVIOUR, "Integrity and working together."),
+        )
+        val e = CategorizedNormalizer.normalize(
+            CategorizeResult(
+                listOf(
+                    CategorizedEntry(
+                        bullet = "x", project = "Raven Migration", goalCategory = "Performance Goals",
+                        demonstrates = listOf("working together"), confidence = 0.8,
+                    ),
+                ),
+            ),
+            placement, pillars, today,
+        ).entries.single()
+        assertThat(e.demonstrates).isEmpty()
+    }
+
+    @Test
+    fun `a genuinely unknown tag still drops and word boundaries are respected`() {
+        val e = normAmex(
+            CategorizedEntry(
+                bullet = "x", project = "Raven Migration", goalCategory = "Performance Goals",
+                // "innovation": in no blurb → dropped. "win": under the 4-char floor → never maps
+                // (and "Winning" must not match it). "winning look": word sequence broken mid-word
+                // ("looks" ≠ "look") → boundary respected, dropped.
+                demonstrates = listOf("innovation", "win", "winning look"), confidence = 0.8,
+            ),
+        ).single()
+        assertThat(e.demonstrates).isEmpty()
+    }
+
+    @Test
+    fun `an exact behaviour NAME still wins over any description mapping`() {
+        val e = normAmex(
+            CategorizedEntry(
+                bullet = "x", project = "Raven Migration", goalCategory = "Performance Goals",
+                demonstrates = listOf("company values"), confidence = 0.8,
+            ),
+        ).single()
+        assertThat(e.demonstrates).containsExactly("Company Values")
+    }
+
     @Test
     fun `implausible dates are rejected, plausible ones kept`() {
         val future = norm(

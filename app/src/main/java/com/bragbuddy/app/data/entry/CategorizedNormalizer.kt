@@ -21,8 +21,13 @@ import java.time.LocalDate
  *    Inbox-floor routing then parks it — nothing lost, nothing phantom-filed).
  *  - **goalCategory** → snap to a goal-area / development pillar name; an unknown value is LEFT VERBATIM
  *    (the Uncategorized catch-all must keep its guarantee — a filed entry is never hidden).
- *  - **demonstrates** → snap each tag to a canonical BEHAVIOUR pillar name; drop the ones that match no
- *    behaviour (kills ghost/sub-behaviour inflation).
+ *  - **demonstrates** → snap each tag to a canonical BEHAVIOUR pillar name. A tag that matches no
+ *    pillar NAME but appears verbatim inside exactly ONE behaviour pillar's description maps to that
+ *    pillar (v0.38.0): real frameworks describe a behaviour category by NAMING its competencies
+ *    ("Set the Agenda: …"), and the model — told to judge against the description — legitimately
+ *    answers with the competency it matched. Dropping those answers silently starved the rollup's
+ *    behaviour evidence (demonstratesAccuracy 14%, AI-SYSTEM-ASSESSMENT F1). Anything still unmatched
+ *    is dropped as before (the ghost-tag guard survives; ambiguous-across-pillars also drops).
  *  - **dateMentioned** → reject an implausible date (> 370 days past, or on/after tomorrow); the row
  *    then keeps its capture time as occurredAt.
  *
@@ -37,6 +42,22 @@ object CategorizedNormalizer {
 
     private fun norm(s: String?): String = (s ?: "").trim().lowercase().replace(Regex("\\s+"), " ")
 
+    /** Word-sequence form for competency↔blurb containment: lowercase, every punctuation run → one
+     *  space, padded with spaces so containment matches whole words only ("agenda" never matches
+     *  inside "agendas"). Mirrored in eval/run.mjs (`tokens`). */
+    private fun tokens(s: String): String =
+        " " + s.trim().lowercase().replace(Regex("[^a-z0-9]+"), " ").trim() + " "
+
+    /** The BEHAVIOUR pillar whose description names this tag as a competency — only when exactly ONE
+     *  does (an ambiguous tag stays dropped, like a ghost). Trivially short tags never map. */
+    private fun competencyOwner(tag: String, behaviourBlurbs: List<Pair<String, String>>): String? {
+        val t = tokens(tag)
+        if (t.trim().length < 4) return null
+        return behaviourBlurbs.filter { (blurb, _) -> t in blurb }
+            .map { (_, name) -> name }
+            .singleOrNull()
+    }
+
     fun normalize(
         result: CategorizeResult,
         placementProjects: List<String>,
@@ -50,8 +71,11 @@ object CategorizedNormalizer {
         val behaviourNames = pillars
             .filter { it.kind == PillarKind.BEHAVIOUR }
             .associate { norm(it.name) to it.name }
+        val behaviourBlurbs = pillars
+            .filter { it.kind == PillarKind.BEHAVIOUR && it.blurb.isNotBlank() }
+            .map { tokens(it.blurb) to it.name }
 
-        return CategorizeResult(result.entries.map { e -> normalizeEntry(e, projByNorm, goalNames, behaviourNames, today) })
+        return CategorizeResult(result.entries.map { e -> normalizeEntry(e, projByNorm, goalNames, behaviourNames, behaviourBlurbs, today) })
     }
 
     private fun normalizeEntry(
@@ -59,6 +83,7 @@ object CategorizedNormalizer {
         projByNorm: Map<String, String>,
         goalNames: Map<String, String>,
         behaviourNames: Map<String, String>,
+        behaviourBlurbs: List<Pair<String, String>>,
         today: LocalDate,
     ): CategorizedEntry {
         val projNorm = norm(e.project)
@@ -88,9 +113,10 @@ object CategorizedNormalizer {
             else -> e.goalCategory // unknown stays verbatim (Uncategorized guarantee)
         }
 
-        // --- demonstrates: snap to canonical behaviour names, drop unknowns ---
+        // --- demonstrates: snap to canonical behaviour names; a competency named inside exactly one
+        // behaviour's description maps UP to that behaviour; anything else drops ---
         val demonstrates = e.demonstrates
-            .mapNotNull { behaviourNames[norm(it)] }
+            .mapNotNull { behaviourNames[norm(it)] ?: competencyOwner(it, behaviourBlurbs) }
             .distinct()
 
         // --- dateMentioned: reject implausible dates ---
