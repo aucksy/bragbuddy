@@ -159,9 +159,13 @@ current code — that is the context, not chat history.
 - **Sequence: v0.32.0 transcript access → v0.33.0 deliverables (structure, manual) → v0.34.0 AI filing +
   per-deliverable summary → … → M3 last.**
 
-> **▶ WHERE WE ARE (2026-07-19): `v0.37.0` is SHIPPED, signed (`versionCode 44`), release APK+AAB live —
-> capture-review Phase 3 (split a big paste into one entry per achievement) is DONE.** Phases 1 (bottom-bar,
-> v0.35.0) + 2 (which-days reminder, v0.36.0) and the DELIVERABLES ARC (through v0.34.0) are also complete.
+> **▶ WHERE WE ARE (2026-07-21): `v0.38.0` is SHIPPED, signed (`versionCode 45`) — an owner-directed
+> side-track: the AI system prompt assessment was REFRESHED (`docs/AI-SYSTEM-ASSESSMENT.md`, supersedes
+> 2026-07-11 — read it before any AI work; F2/F3 prompt calibration + F5/F6 decisions remain OPEN) and its
+> Fix 1 shipped: `demonstratesAccuracy` 14%→**100%** (behaviour evidence no longer silently dropped for
+> real frameworks) + 4 stale goldens re-specced; fresh eval baseline `b33041e`. See `## Status: v0.38.0`.**
+> Before that: capture-review Phase 3 (big-paste splitting, v0.37.0), Phases 1 (bottom-bar,
+> v0.35.0) + 2 (which-days reminder, v0.36.0) and the DELIVERABLES ARC (through v0.34.0) are complete.
 > The owner's **5-request batch** (2026-07-19) is planned as **4 phases** — durable spec + LOCKED owner
 > decisions in **`docs/CAPTURE-REVIEW-PLAN.md`**. **▶ THE EXACT NEXT STEP = Phase 4 — capture → open →
 > "AI is working" → review & confirm placement (item 5) — HIGH risk, the CAPSTONE, LAST.** It **retires
@@ -277,6 +281,57 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
   produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
   ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
   went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
+
+---
+
+## Status: v0.38.0 — AI-assessment refresh + F1 evidence rescue ✅ SHIPPED (signed · `versionCode 45` · Room stays **v8** · compile + unit tests GREEN on the free debug gate before the tag · **NO prompt bytes changed — cache intact · ONE eval-baseline round run, verdict below**)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.38.0/BragBuddy-v0.38.0.apk` (`.aab` alongside).
+
+**A side-track from the capture-review batch (owner-directed 2026-07-21): full AI system prompt
+assessment, then ONE owner-picked fix.** The refreshed assessment (supersedes 2026-07-11) is
+**`docs/AI-SYSTEM-ASSESSMENT.md`** — findings F1–F6 with file:line evidence, the two contradiction
+adjudications (⭐ **prompt Example 3 loses to golden `po-metric-30-percent`** — the golden's
+"migration status dashboard" is a real loose-mention cue and the example sits within pattern-matching
+distance of it; ⭐ **goldens `real-010`/`real-011` were stale**, not rule 2), the dire-metric
+diagnoses, schema-drift CLEAN, and the prioritised plan. Owner picked **Fix 1 (F1+F4)**; the F2/F3
+Inbox-boundary + metric prompt calibration phase and the F5/F6 decisions remain OPEN in the doc.
+
+### What shipped (commit `0ae5e59`)
+- **F1 · competency→category mapping** (`CategorizedNormalizer`): a `demonstrates` tag matching no
+  behaviour NAME but appearing **whole-word inside exactly ONE behaviour pillar's blurb** now maps UP
+  to that pillar's canonical name (4-char floor; ambiguous-across-pillars still drops; ghost guard
+  intact). Root cause: real frameworks (the owner's own Amex-style one) describe a behaviour category
+  by NAMING its competencies, the model — told to judge against the description — answers with the
+  competency it matched, and the old normalizer threw that answer away, **starving the rollup's
+  behaviour evidence** (`RollupAggregator` matches evidence by pillar name only). Mirrored in
+  `run.mjs`'s demonstrates scorer (APP-MIRROR); 4 new unit tests.
+- **F4 · four stale goldens re-specced**: `real-006`/`real-007` demonstrates now want the CATEGORY
+  name (their sub-competency wants were written in AI-0, before the normalizer's
+  canonical-names-only contract existed); `real-010`/`real-011` drop the pre-v0.37.0 `entryCount: 1`
+  that contradicted split rule 2 **by construction** (real-011 = robust minimum ≥3 anchored entries,
+  over-split tolerated like `paste-appraisal-split`; real-010 held check-free — development-placement
+  policy still open).
+
+### Eval verdict (ONE `eval-baseline-v0.38.0` round — measure + new-baseline in one spend, since no
+prompt bytes moved a gate comparison was not owed; baseline committed by the workflow as `b33041e`)
+- **`demonstratesAccuracy` 14.3% → 100.0%** (7/7) — the fix's whole point, fully landed; `real-011`
+  left the failure list entirely.
+- **`entryCountAccuracy` 91.7% → 97.5%** (39/40) — the two by-construction fails are gone; only
+  `real-003` remains.
+- Incidental gains: `placementAccuracy` 96.3→97.1%, `impactBand` 92.3→100%.
+- **No regressions**: `inboxPrecision` 88.5% (23/26 — the KNOWN-OPEN Example-3 conflict, untouched
+  exactly as predicted), `inboxRecall` 0.8, `coachPass` 91.7%, `metricPreserved` 60% (that's F3 —
+  a prompt fix, deliberately not attempted here), `summaryChecks` 96.7% (the `detailed-length`
+  gpt-oss-120b known-red, F5).
+
+### 🚫 Carry-forwards
+- All v0.33.1 / v0.34.0 / v0.37.0 do-NOT-re-fix lists still apply.
+- **The next prompt-text phase is F2+F3 batched** (Example 3 rework + Inbox/Outside-project boundary
+  + rule-11 metric obligation) — ONE static-block edit, 2–3 paid rounds, and note `inboxRecall` sits
+  exactly on its 0.8 floor. Do NOT split F2 and F3 into two cache-invalidating releases.
+- The committed baseline now includes the 7th summary golden (`deliverable-stories`) and
+  `deliverableAccuracy` 83.3%, which the pre-v0.34.0 baseline lacked.
 
 ---
 
