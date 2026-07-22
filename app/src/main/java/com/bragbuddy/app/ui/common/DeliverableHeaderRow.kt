@@ -37,12 +37,11 @@ import com.bragbuddy.app.ui.theme.BragPalette
 import com.bragbuddy.app.ui.theme.Radii
 
 /**
- * A **deliverable** heading inside an expanded project (v0.33.0) — the third level, rendered as a
- * grouping rather than another collapse step (owner's call: Home already costs two taps to reach a
- * bullet, and a third would bury the record).
+ * A **deliverable** heading inside an expanded project (v0.33.0) — the third level.
  *
- * An ACTIVE one is [collapsible]=false: its wins are simply listed under it. A **done** one is
- * collapsible and starts closed — it never hides its entries, it just stops competing with live work.
+ * Since v0.40.3 EVERY deliverable is [collapsible] (the owner reversed the v0.33.0 "no third tap"
+ * call); only the DEFAULT differs by lifecycle: an ACTIVE one starts open, a **done** one starts
+ * closed — neither ever hides its entries for good, a closed one just stops competing with live work.
  * The ⋮ carries the lifecycle (rename / mark done / delete); it mirrors `EntryBulletRow.BulletMenu`,
  * which is the in-repo precedent for a per-row menu (the Design System specs none — flagged, as in
  * v0.31.0).

@@ -171,12 +171,17 @@ fun HomeScreen(
         }
     }
 
-    // Deliverable-level expansion (only DONE ones collapse — active ones always show their wins).
+    // Deliverable-level expansion (v0.40.3 — EVERY deliverable collapses; owner reversed the v0.33.0
+    // "no third tap" call). The set holds the groups the user flipped AWAY from their default, because
+    // the two lifecycles default differently: active = open, done = closed. So contains-key means
+    // "collapsed" for an active group and "expanded" for a done one. A group that changes lifecycle
+    // keeps its toggle mark (session-only), so it may arrive in its new state pre-flipped — harmless,
+    // one tap corrects it; tracking two sets to avoid that would outlive the quirk it prevents.
     // Keyed "<projectName>::<deliverableName>": a deliverable is unique by (name, project, goalArea),
     // so the name alone would collide across projects.
-    val expandedDeliverables = remember { mutableStateListOf<String>() }
+    val toggledDeliverables = remember { mutableStateListOf<String>() }
     fun toggleDeliverable(key: String) {
-        if (expandedDeliverables.contains(key)) expandedDeliverables.remove(key) else expandedDeliverables.add(key)
+        if (toggledDeliverables.contains(key)) toggledDeliverables.remove(key) else toggledDeliverables.add(key)
     }
     // Pending deliverable dialogs, each carrying the full (project, goalArea) identity.
     var createDeliverableFor by remember { mutableStateOf<DeliverableTarget?>(null) }
@@ -304,7 +309,7 @@ fun HomeScreen(
                         onRedo = { redo(it) },
                         onDelete = { deleteTarget = it },
                         onAddProject = { createFolderFor = CreateFolderTarget(section.pillar.name) },
-                        isDeliverableExpanded = { k -> expandedDeliverables.contains(section.pillar.id + "::" + k) },
+                        isDeliverableToggled = { k -> toggledDeliverables.contains(section.pillar.id + "::" + k) },
                         onToggleDeliverable = { k -> toggleDeliverable(section.pillar.id + "::" + k) },
                         onAddDeliverable = { project ->
                             createDeliverableFor = DeliverableTarget(project, section.pillar.name, "")
@@ -494,7 +499,9 @@ private fun GoalSectionView(
     onAddProject: () -> Unit,
     // Deliverable callbacks carry the OWNING PROJECT alongside the deliverable name: a deliverable is
     // identified by (name, project, goalArea), so a name alone can't say which one is meant.
-    isDeliverableExpanded: (String) -> Boolean,
+    // "Toggled" = flipped away from the lifecycle default (active opens, done closes) — see the state
+    // declaration in HomeScreen.
+    isDeliverableToggled: (String) -> Boolean,
     onToggleDeliverable: (String) -> Unit,
     onAddDeliverable: (project: String) -> Unit,
     onAddEntryToDeliverable: (project: String, deliverable: String) -> Unit,
@@ -536,7 +543,7 @@ private fun GoalSectionView(
                         onDelete = onDelete,
                         // Scope the expand key by project too — two projects under one category may each
                         // own a same-named deliverable, and a bare name would expand both at once.
-                        isDeliverableExpanded = { d -> isDeliverableExpanded("${project.name}::$d") },
+                        isDeliverableToggled = { d -> isDeliverableToggled("${project.name}::$d") },
                         onToggleDeliverable = { d -> onToggleDeliverable("${project.name}::$d") },
                         onAddDeliverable = { onAddDeliverable(project.name) },
                         onAddEntryTo = { d -> onAddEntryToDeliverable(project.name, d) },
@@ -572,7 +579,7 @@ private fun FolderCard(
     onRedo: (EntryEntity) -> Unit,
     onDelete: (EntryEntity) -> Unit,
     // ---- deliverables (v0.33.0). All keyed by NAME, matching how the whole app references them. ----
-    isDeliverableExpanded: (String) -> Boolean,
+    isDeliverableToggled: (String) -> Boolean,
     onToggleDeliverable: (String) -> Unit,
     onAddDeliverable: () -> Unit,
     onAddEntryTo: (String) -> Unit,
@@ -650,42 +657,47 @@ private fun FolderCard(
                 if (project.entries.isEmpty() && project.deliverables.isEmpty()) {
                     Text("No entries yet", style = MaterialTheme.typography.bodySmall, color = palette.text3)
                 } else {
-                    // Active deliverables: a heading with its wins already under it — no extra tap
-                    // (owner's call). Then the loose wins with no heading at all, because "not in a
-                    // deliverable" is the ordinary case and labelling it would be noise on every project.
+                    // Active deliverables: a heading with its wins under it, open by default — and since
+                    // v0.40.3 collapsible too (owner reversed the v0.33.0 "no third tap" call). Then the
+                    // loose wins with no heading at all, because "not in a deliverable" is the ordinary
+                    // case and labelling it would be noise on every project.
                     // `key(g.name)`: these render in a forEach, so state would otherwise bind to the SLOT
                     // — and groups reorder on their own (sorted by recency, so an entry finishing filing
                     // in the background re-sorts them). With an open ⋮ popup covering the swap, the next
                     // tap would land on whatever slid into that slot. Keyed, a group carries its state.
                     view.groups.forEach { g ->
                         key(g.name) {
+                            // Active default = OPEN; a toggle mark means the user collapsed it.
+                            val open = !isDeliverableToggled(g.name)
                             DeliverableHeader(
                                 group = g,
                                 hue = hue,
                                 palette = palette,
-                                expanded = true,
-                                collapsible = false,
-                                onToggle = {},
+                                expanded = open,
+                                collapsible = true,
+                                onToggle = { onToggleDeliverable(g.name) },
                                 onAddEntry = { onAddEntryTo(g.name) },
                                 onRename = { onRenameDeliverable(g.name) },
                                 onToggleDone = { onSetDeliverableDone(g.name, true) },
                                 onDelete = { onDeleteDeliverable(g.name) },
                             )
-                            g.entries.forEach { entry ->
-                                EntryBulletRow(
-                                    entry = entry,
-                                    hue = hue,
-                                    showFromProject = false,
-                                    indent = true,
-                                    onEdit = { onEdit(entry) },
-                                    onRedo = { onRedo(entry) },
-                                    onDelete = { onDelete(entry) },
-                                    onTap = { onOpenDetail(entry) },
-                                )
-                            }
-                            if (g.entries.isEmpty()) EmptyDeliverableNote(palette)
-                            impactHints[g.name].orEmpty().takeIf { it.isNotEmpty() }?.let { wins ->
-                                DeliverableImpactHint(wins.size, palette) { onAddImpact(wins.first()) }
+                            if (open) {
+                                g.entries.forEach { entry ->
+                                    EntryBulletRow(
+                                        entry = entry,
+                                        hue = hue,
+                                        showFromProject = false,
+                                        indent = true,
+                                        onEdit = { onEdit(entry) },
+                                        onRedo = { onRedo(entry) },
+                                        onDelete = { onDelete(entry) },
+                                        onTap = { onOpenDetail(entry) },
+                                    )
+                                }
+                                if (g.entries.isEmpty()) EmptyDeliverableNote(palette)
+                                impactHints[g.name].orEmpty().takeIf { it.isNotEmpty() }?.let { wins ->
+                                    DeliverableImpactHint(wins.size, palette) { onAddImpact(wins.first()) }
+                                }
                             }
                         }
                     }
@@ -704,7 +716,8 @@ private fun FolderCard(
                     // stop competing for attention with live work.
                     view.doneGroups.forEach { g ->
                         key(g.name) {
-                            val open = isDeliverableExpanded(g.name)
+                            // Done default = CLOSED; a toggle mark means the user opened it.
+                            val open = isDeliverableToggled(g.name)
                             DeliverableHeader(
                                 group = g,
                                 hue = hue,

@@ -153,11 +153,14 @@ fun PillarDetailScreen(
         if (selected.isEmpty()) selectionMode = false
     }
 
-    // Deliverable state (v0.33.0) — only DONE ones collapse; keys are scoped "<project>::<deliverable>"
-    // because a deliverable is unique by (name, project, goalArea), never by name alone.
-    val expandedDeliverables = remember { mutableStateListOf<String>() }
+    // Deliverable state (v0.40.3 — EVERY deliverable collapses; owner reversed the v0.33.0 "no third
+    // tap" call). Contains-key = flipped away from the lifecycle default (active = open, done =
+    // closed), mirroring Home's `toggledDeliverables` exactly. Keys are scoped
+    // "<project>::<deliverable>" because a deliverable is unique by (name, project, goalArea),
+    // never by name alone.
+    val toggledDeliverables = remember { mutableStateListOf<String>() }
     fun toggleDeliverable(key: String) {
-        if (expandedDeliverables.contains(key)) expandedDeliverables.remove(key) else expandedDeliverables.add(key)
+        if (toggledDeliverables.contains(key)) toggledDeliverables.remove(key) else toggledDeliverables.add(key)
     }
     var createDeliverableFor by remember { mutableStateOf<DeliverableTarget?>(null) }
     var renameDeliverable by remember { mutableStateOf<DeliverableTarget?>(null) }
@@ -331,7 +334,7 @@ fun PillarDetailScreen(
                                 palette = palette,
                                 selectionMode = selectionMode,
                                 isSelected = { selected.contains(it) },
-                                isDeliverableExpanded = { expandedDeliverables.contains("${proj.name}::$it") },
+                                isDeliverableToggled = { toggledDeliverables.contains("${proj.name}::$it") },
                                 onToggleDeliverable = { toggleDeliverable("${proj.name}::$it") },
                                 onToggleSelect = { toggle(it) },
                                 onEnterSelection = { enterSelection(it) },
@@ -386,7 +389,7 @@ fun PillarDetailScreen(
                                         palette = palette,
                                         selectionMode = selectionMode,
                                         isSelected = { selected.contains(it) },
-                                        isDeliverableExpanded = { expandedDeliverables.contains("${project.name}::$it") },
+                                        isDeliverableToggled = { toggledDeliverables.contains("${project.name}::$it") },
                                         onToggleDeliverable = { toggleDeliverable("${project.name}::$it") },
                                         onToggleSelect = { toggle(it) },
                                         onEnterSelection = { enterSelection(it) },
@@ -718,7 +721,8 @@ private fun ProjectBody(
     palette: BragPalette,
     selectionMode: Boolean,
     isSelected: (Long) -> Boolean,
-    isDeliverableExpanded: (String) -> Boolean,
+    /** "Toggled" = flipped away from the lifecycle default (active opens, done closes). */
+    isDeliverableToggled: (String) -> Boolean,
     onToggleDeliverable: (String) -> Unit,
     onToggleSelect: (Long) -> Unit,
     onEnterSelection: (Long) -> Unit,
@@ -755,21 +759,26 @@ private fun ProjectBody(
     // whatever slid into that slot. Keyed, the whole group moves with its state.
     project.activeDeliverables.forEach { g ->
         key(g.name) {
+            // Active default = OPEN; a toggle mark means the user collapsed it. Selection mode
+            // force-opens (a hidden win can't be bulk-selected), exactly as the done groups below.
+            val open = selectionMode || !isDeliverableToggled(g.name)
             DeliverableHeader(
                 group = g,
                 hue = hue,
                 palette = palette,
-                expanded = true,
-                collapsible = false,
-                onToggle = {},
+                expanded = open,
+                collapsible = true,
+                onToggle = { onToggleDeliverable(g.name) },
                 onAddEntry = { onAddEntryTo(g.name) },
                 onRename = { onRenameDeliverable(g.name) },
                 onToggleDone = { onSetDeliverableDone(g.name, true) },
                 onDelete = { onDeleteDeliverable(g.name) },
             )
-            g.entries.forEach { bullet(it, indent = true) }
-            // Home says this; without it the deep view shows a bare heading and reads like a bug.
-            if (g.entries.isEmpty()) EmptyDeliverableNote(palette)
+            if (open) {
+                g.entries.forEach { bullet(it, indent = true) }
+                // Home says this; without it the deep view shows a bare heading and reads like a bug.
+                if (g.entries.isEmpty()) EmptyDeliverableNote(palette)
+            }
         }
     }
     project.loose.forEach { bullet(it, indent = false) }
@@ -777,7 +786,8 @@ private fun ProjectBody(
         key(g.name) {
             // Selection mode force-opens everything, exactly as the project level does — a hidden win
             // can't be bulk-selected, and a done deliverable's wins are still part of the record.
-            val open = selectionMode || isDeliverableExpanded(g.name)
+            // Done default = CLOSED; a toggle mark means the user opened it.
+            val open = selectionMode || isDeliverableToggled(g.name)
             DeliverableHeader(
                 group = g,
                 hue = hue,
