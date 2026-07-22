@@ -10,7 +10,6 @@ import com.bragbuddy.app.data.entry.TextCaps
 import com.bragbuddy.app.data.framework.Framework
 import com.bragbuddy.app.data.framework.FrameworkStore
 import com.bragbuddy.app.data.framework.PillarKind
-import com.bragbuddy.app.data.impact.ImpactCandidates
 import com.bragbuddy.app.data.deliverable.DeliverableRepository
 import com.bragbuddy.app.data.local.DeliverableEntity
 import com.bragbuddy.app.data.local.EntryEntity
@@ -189,19 +188,32 @@ class HomeViewModel @Inject constructor(
     /**
      * The single dismissible nudge card Home may show (the "card diet" — at most ONE, so the record
      * starts near the top). The two auto strips (filing / waiting-offline) are status-driven and
-     * render independently; this only arbitrates the four *dismissible* cards by fixed priority:
-     * **reliability > daily nudge > impact > preview**. (The notification primer is a MainScaffold
-     * overlay that gates the reliability card, not a Home card.)
+     * render independently; this only arbitrates the *dismissible* cards by fixed priority:
+     * **reliability > daily nudge > preview**. (The notification primer is a MainScaffold overlay
+     * that gates the reliability card, not a Home card. The old app-wide "Make N wins stronger"
+     * impact card is RETIRED — impact coaching now lives per-deliverable, inside the document.)
      */
     sealed interface HomeNudge {
         data object None : HomeNudge
         data object Reliability : HomeNudge
         data object Daily : HomeNudge
-        data object Impact : HomeNudge
         data class Preview(val count: Int) : HomeNudge
     }
-    // `activeNudge` (the resolver) is declared AFTER the impact flows below — it references them, and a
-    // property initializer can't read a `val` declared later (it would be null at construction).
+
+    /** The M2 one-slot resolver. Priority: reliability > daily > preview; [HomeNudge.None] when
+     *  nothing qualifies. */
+    val activeNudge: StateFlow<HomeNudge> = combine(
+        showReliabilityCard,
+        showDailyNudge,
+        previewBannerCount,
+    ) { reliability, daily, preview ->
+        when {
+            reliability -> HomeNudge.Reliability
+            daily -> HomeNudge.Daily
+            preview != null -> HomeNudge.Preview(preview)
+            else -> HomeNudge.None
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeNudge.None)
 
     /** Drives the waiting-voice strip's copy: offline → "waiting for network"; online → the honest
      *  "retrying shortly" (a queued clip while online usually means a service/key hiccup). */
@@ -279,37 +291,12 @@ class HomeViewModel @Inject constructor(
         data class Ready(val question: String, val isAi: Boolean) : ImpactSuggestUi
     }
 
-    /** Filed wins that would be stronger with a number (see [ImpactCandidates]). Gated on a Groq key:
-     *  the add-impact merge re-runs the categorizer, so without AI the card is hidden (and, in practice,
-     *  there'd be no PROCESSED entries to list anyway). */
-    val impactCandidates: StateFlow<List<EntryEntity>> = combine(
-        repository.observeAll(), settings.settings,
-    ) { entries, s ->
-        if (!s.aiEnabled) emptyList() else ImpactCandidates.from(entries)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    /** Session-only "not now" for the impact card (resets on next app open; there's still un-quantified
-     *  work, so it's fine to offer again — just not naggy within a session). */
-    private val _impactCardDismissed = MutableStateFlow(false)
-    val impactCardDismissed: StateFlow<Boolean> = _impactCardDismissed.asStateFlow()
-    fun dismissImpactCard() { _impactCardDismissed.value = true }
-
-    /** The M2 one-slot resolver (declared here, after the impact flows it reads). Priority:
-     *  reliability > daily > impact > preview; [HomeNudge.None] when nothing qualifies. */
-    val activeNudge: StateFlow<HomeNudge> = combine(
-        showReliabilityCard,
-        showDailyNudge,
-        combine(impactCandidates, impactCardDismissed) { c, dismissed -> c.isNotEmpty() && !dismissed },
-        previewBannerCount,
-    ) { reliability, daily, impact, preview ->
-        when {
-            reliability -> HomeNudge.Reliability
-            daily -> HomeNudge.Daily
-            impact -> HomeNudge.Impact
-            preview != null -> HomeNudge.Preview(preview)
-            else -> HomeNudge.None
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeNudge.None)
+    /** Whether the AI route is usable (BYOK key or managed relay). The per-deliverable impact hint is
+     *  gated on it: the add-impact merge re-runs the categorizer, so without AI the hint would open a
+     *  sheet whose Add can't complete. */
+    val aiReady: StateFlow<Boolean> = settings.settings
+        .map { it.aiEnabled }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     /** The coaching question for the entry whose "Add impact" sheet is open (null = no sheet). */
     private val _impactSuggestion = MutableStateFlow<ImpactSuggestUi?>(null)

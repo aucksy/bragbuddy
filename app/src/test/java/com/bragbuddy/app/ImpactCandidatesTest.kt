@@ -79,4 +79,70 @@ class ImpactCandidatesTest {
         assertThat(ImpactCandidates.lacksMeasurable(entry(bullet = "Ran 3 workshops"))).isFalse()
         assertThat(ImpactCandidates.lacksMeasurable(entry(bullet = "Ran a workshop", metric = "40 attendees"))).isFalse()
     }
+
+    // ---------------- Deliverable-level coverage (the message's remove rule) ----------------
+
+    @Test
+    fun `one win carrying both a number and an angle covers the deliverable`() {
+        assertThat(ImpactCandidates.coveredTogether(listOf(entry(bullet = "Cut drop-off by 18%")))).isTrue()
+    }
+
+    @Test
+    fun `the number and the angle may come from different wins`() {
+        val covered = ImpactCandidates.coveredTogether(
+            listOf(
+                entry(bullet = "Improved the checkout flow"), // angle, no number
+                entry(bullet = "Handled 40 escalation tickets"), // number, no angle
+            ),
+        )
+        assertThat(covered).isTrue()
+    }
+
+    @Test
+    fun `numbers alone or angle alone do not cover`() {
+        assertThat(ImpactCandidates.coveredTogether(listOf(entry(bullet = "Handled 40 tickets")))).isFalse()
+        assertThat(
+            ImpactCandidates.coveredTogether(
+                listOf(entry(bullet = "Improved the flow"), entry(bullet = "Shipped the redesign")),
+            ),
+        ).isFalse()
+        assertThat(ImpactCandidates.coveredTogether(emptyList())).isFalse()
+    }
+
+    @Test
+    fun `an explicit metric contributes both halves`() {
+        val covered = ImpactCandidates.coveredTogether(
+            listOf(entry(bullet = "Shipped the checkout revamp", metric = "cut latency 30%")),
+        )
+        assertThat(covered).isTrue()
+    }
+
+    @Test
+    fun `a routine win's number still counts toward coverage`() {
+        val covered = ImpactCandidates.coveredTogether(
+            listOf(
+                entry(bullet = "Processed 30 invoices", routine = true),
+                entry(bullet = "Improved the vendor runbook"),
+            ),
+        )
+        assertThat(covered).isTrue()
+    }
+
+    @Test
+    fun `hintFor lists candidates when uncovered and nothing when covered`() {
+        val uncovered = listOf(entry(bullet = "Shipped the redesign"), entry(bullet = "Led the rollout call"))
+        assertThat(ImpactCandidates.hintFor(uncovered)).hasSize(2)
+
+        // Covered: the strong line silences the hint even though number-less wins remain.
+        val covered = uncovered + entry(bullet = "Cut support load by 25%")
+        assertThat(ImpactCandidates.hintFor(covered)).isEmpty()
+    }
+
+    @Test
+    fun `hintFor is newest first so a tap opens the freshest win`() {
+        val old = entry(bullet = "Old loose win", createdAt = 100L)
+        val fresh = entry(bullet = "Fresh loose win", createdAt = 900L)
+        val out = ImpactCandidates.hintFor(listOf(old, fresh))
+        assertThat(out.map { it.bullet }).containsExactly("Fresh loose win", "Old loose win").inOrder()
+    }
 }

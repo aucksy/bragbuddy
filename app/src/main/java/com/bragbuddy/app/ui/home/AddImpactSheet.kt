@@ -54,7 +54,8 @@ import com.bragbuddy.app.ui.theme.Radii
 import com.bragbuddy.app.ui.theme.Spacing
 
 /**
- * The Phase 4 **"Add impact"** sheet — reached from the Home impact card. Shows the win, an AI
+ * The **"Add impact"** sheet — reached from a deliverable's impact hint on Home (the app-wide impact
+ * card is retired). Shows the win, an AI
  * project-aware question about what to quantify (loading → the question, or a generic fallback), and a
  * type-only field for the number/result. On Add the number is merged into the bullet (the AI never
  * invents it — it comes from here). A custom scrim + Column sheet (never a Material ModalBottomSheet —

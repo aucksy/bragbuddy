@@ -34,4 +34,28 @@ class ImpactCheckTest {
         // "someone" contains "one", "tension" contains "ten" — must NOT count.
         assertThat(ImpactCheck.hasMeasurable("Someone from tension-free ops helped out")).isFalse()
     }
+
+    @Test
+    fun `impact angle detects change verbs and result connectives`() {
+        assertThat(ImpactCheck.hasImpactAngle("Improved retention across the funnel")).isTrue()
+        assertThat(ImpactCheck.hasImpactAngle("Cut vendor spend this quarter")).isTrue()
+        assertThat(ImpactCheck.hasImpactAngle("Reduced the build queue")).isTrue()
+        assertThat(ImpactCheck.hasImpactAngle("Took onboarding from days to hours")).isTrue()
+        assertThat(ImpactCheck.hasImpactAngle("The cleanup led to fewer escalations")).isTrue()
+        assertThat(ImpactCheck.hasImpactAngle("Made checkout faster for repeat buyers")).isTrue()
+    }
+
+    @Test
+    fun `impact angle stays quiet on plain activity notes`() {
+        assertThat(ImpactCheck.hasImpactAngle("Shipped the onboarding redesign")).isFalse()
+        assertThat(ImpactCheck.hasImpactAngle("Ran a workshop for the team")).isFalse()
+        assertThat(ImpactCheck.hasImpactAngle("Attended the platform sync")).isFalse()
+        assertThat(ImpactCheck.hasImpactAngle("")).isFalse()
+    }
+
+    @Test
+    fun `impact angle matches only on word boundaries`() {
+        // "executed" contains "cut", "haircut" ends in "cut" mid-word — must NOT count.
+        assertThat(ImpactCheck.hasImpactAngle("Executed the haircut booking flow")).isFalse()
+    }
 }

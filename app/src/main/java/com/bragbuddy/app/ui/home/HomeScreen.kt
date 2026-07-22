@@ -69,6 +69,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bragbuddy.app.R
 import androidx.compose.ui.text.style.TextOverflow
+import com.bragbuddy.app.data.impact.ImpactCandidates
 import com.bragbuddy.app.data.local.DELIVERABLE_LABEL
 import com.bragbuddy.app.data.local.EntryEntity
 import com.bragbuddy.app.data.local.EntryStatus
@@ -76,6 +77,7 @@ import com.bragbuddy.app.data.local.isNamedProject
 import com.bragbuddy.app.ui.common.LocalSnackbarController
 import com.bragbuddy.app.ui.capture.CaptureLauncher
 import com.bragbuddy.app.ui.common.DeliverableHeader
+import com.bragbuddy.app.ui.common.DeliverableImpactHint
 import com.bragbuddy.app.ui.common.EmptyDeliverableNote
 import com.bragbuddy.app.ui.common.EntryBulletRow
 import com.bragbuddy.app.ui.entry.EntryDetailSheet
@@ -122,8 +124,9 @@ fun HomeScreen(
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
     // M2 · the one-slot nudge queue: at most ONE dismissible card, resolved by priority in the VM.
     val activeNudge by viewModel.activeNudge.collectAsStateWithLifecycle()
-    // Phase 4 · "Add impact" card content (the card itself is rendered only when [activeNudge] == Impact).
-    val impactCandidates by viewModel.impactCandidates.collectAsStateWithLifecycle()
+    // Per-deliverable impact coaching (the app-wide counter card is retired): hints render inside the
+    // document, gated on the AI route being usable (the add-impact merge re-runs the categorizer).
+    val aiReady by viewModel.aiReady.collectAsStateWithLifecycle()
     val impactSuggestion by viewModel.impactSuggestion.collectAsStateWithLifecycle()
 
     // Time/system-state cards re-evaluate whenever Home comes (back) into view; the lifecycle-aware
@@ -138,8 +141,7 @@ fun HomeScreen(
     var deleteTarget by remember { mutableStateOf<EntryEntity?>(null) }
     // Tap an entry → detail sheet (snapshot; toggles update it optimistically so ★/Pin flip instantly).
     var detailEntry by remember { mutableStateOf<EntryEntity?>(null) }
-    // The "Add impact" card's expand state + the entry whose add-impact sheet is open.
-    var impactExpanded by remember { mutableStateOf(false) }
+    // The entry whose "Add impact" sheet is open (reached from a deliverable's impact hint).
     var impactTarget by remember { mutableStateOf<EntryEntity?>(null) }
 
     fun copyAll() {
@@ -244,12 +246,10 @@ fun HomeScreen(
 
         if (doc.isEmpty) {
             // A brand-new user on a risky OEM still deserves the reminder-health warning — the only
-            // nudge that can be active with no entries (daily/impact/preview all need prior content).
+            // nudge that can be active with no entries (daily/preview both need prior content).
             if (activeNudge != HomeViewModel.HomeNudge.None) {
                 HomeNudgeCard(
-                    nudge = activeNudge, palette = palette, impactCandidates = impactCandidates,
-                    impactExpanded = impactExpanded, onImpactToggle = { impactExpanded = !impactExpanded },
-                    onAddImpact = { impactTarget = it }, onDismissImpact = { viewModel.dismissImpactCard() },
+                    nudge = activeNudge, palette = palette,
                     onOpenReliability = onOpenReliability, onDismissReliability = { viewModel.dismissReliabilityCard() },
                     onDailyAdd = onQuickCapture, onDismissDaily = { viewModel.dismissDailyNudge() },
                     previewFirstGoal = doc.goals.firstOrNull()?.pillar?.name,
@@ -270,9 +270,7 @@ fun HomeScreen(
                 if (activeNudge != HomeViewModel.HomeNudge.None) {
                     item(key = "nudge") {
                         HomeNudgeCard(
-                            nudge = activeNudge, palette = palette, impactCandidates = impactCandidates,
-                            impactExpanded = impactExpanded, onImpactToggle = { impactExpanded = !impactExpanded },
-                            onAddImpact = { impactTarget = it }, onDismissImpact = { viewModel.dismissImpactCard() },
+                            nudge = activeNudge, palette = palette,
                             onOpenReliability = onOpenReliability, onDismissReliability = { viewModel.dismissReliabilityCard() },
                             onDailyAdd = onQuickCapture, onDismissDaily = { viewModel.dismissDailyNudge() },
                             previewFirstGoal = doc.goals.firstOrNull()?.pillar?.name,
@@ -293,6 +291,8 @@ fun HomeScreen(
                     GoalSectionView(
                         section = section,
                         palette = palette,
+                        aiReady = aiReady,
+                        onAddImpact = { impactTarget = it },
                         expanded = expanded.contains("goal-" + section.pillar.id),
                         onToggle = { toggle("goal-" + section.pillar.id) },
                         isFolderExpanded = { folder -> expandedFolders.contains(section.pillar.id + "::" + folder) },
@@ -477,6 +477,10 @@ private const val MAX_INLINE_ENTRIES = 10
 private fun GoalSectionView(
     section: GoalSection,
     palette: BragPalette,
+    /** Gates the per-deliverable impact hints (the add-impact merge needs the AI route). */
+    aiReady: Boolean,
+    /** Opens the "Add impact" sheet for a specific number-less win. */
+    onAddImpact: (EntryEntity) -> Unit,
     expanded: Boolean,
     onToggle: () -> Unit,
     isFolderExpanded: (String) -> Boolean,
@@ -520,6 +524,8 @@ private fun GoalSectionView(
                         project = project,
                         hue = hue.solid,
                         palette = palette,
+                        aiReady = aiReady,
+                        onAddImpact = onAddImpact,
                         expanded = isFolderExpanded(key),
                         onToggle = { onToggleFolder(key) },
                         onSeeMore = { onSeeMore(key) },
@@ -555,6 +561,8 @@ private fun FolderCard(
     project: ProjectBullets,
     hue: Color,
     palette: BragPalette,
+    aiReady: Boolean,
+    onAddImpact: (EntryEntity) -> Unit,
     expanded: Boolean,
     onToggle: () -> Unit,
     onSeeMore: () -> Unit,
@@ -624,6 +632,17 @@ private fun FolderCard(
         }
         AnimatedVisibility(visible = expanded) {
             val view = remember(project) { project.inlineView(MAX_INLINE_ENTRIES) }
+            // Per-deliverable impact coaching: the number-less wins each deliverable could strengthen,
+            // computed from the FULL group (the inline view above truncates entries to the Home cap, and
+            // a hint counted from a truncated list would understate). Empty when the deliverable's wins
+            // already carry a number + impact wording together — then there's nothing to say.
+            val impactHints = remember(project, aiReady) {
+                if (!aiReady) {
+                    emptyMap()
+                } else {
+                    project.deliverables.associate { g -> g.name to ImpactCandidates.hintFor(g.entries) }
+                }
+            }
             Column(
                 Modifier.padding(start = Spacing.card, end = Spacing.card, bottom = Spacing.card),
                 verticalArrangement = Arrangement.spacedBy(Spacing.s2),
@@ -665,6 +684,9 @@ private fun FolderCard(
                                 )
                             }
                             if (g.entries.isEmpty()) EmptyDeliverableNote(palette)
+                            impactHints[g.name].orEmpty().takeIf { it.isNotEmpty() }?.let { wins ->
+                                DeliverableImpactHint(wins.size, palette) { onAddImpact(wins.first()) }
+                            }
                         }
                     }
                     view.loose.forEach { entry ->
@@ -712,6 +734,11 @@ private fun FolderCard(
                                 // anything was logged, or its last win deleted) — without this the
                                 // chevron flips and nothing appears, which reads as a dead control.
                                 if (g.entries.isEmpty()) EmptyDeliverableNote(palette)
+                                // A done deliverable needs its outcome number MOST — the summary writes
+                                // it as a completed story — so the hint shows here too, once opened.
+                                impactHints[g.name].orEmpty().takeIf { it.isNotEmpty() }?.let { wins ->
+                                    DeliverableImpactHint(wins.size, palette) { onAddImpact(wins.first()) }
+                                }
                             }
                         }
                     }
@@ -878,16 +905,12 @@ private fun ProcessingCard(processing: List<EntryEntity>, palette: BragPalette) 
 // ---------------- M2 · one-slot nudge dispatcher ----------------
 
 /** Renders the single active dismissible nudge card (priority resolved in the VM). Used from both the
- *  empty-state branch and the document LazyColumn, so exactly one card is ever visible. */
+ *  empty-state branch and the document LazyColumn, so exactly one card is ever visible. (The old
+ *  app-wide impact counter card is retired — impact coaching renders per-deliverable in the document.) */
 @Composable
 private fun HomeNudgeCard(
     nudge: HomeViewModel.HomeNudge,
     palette: BragPalette,
-    impactCandidates: List<EntryEntity>,
-    impactExpanded: Boolean,
-    onImpactToggle: () -> Unit,
-    onAddImpact: (EntryEntity) -> Unit,
-    onDismissImpact: () -> Unit,
     onOpenReliability: () -> Unit,
     onDismissReliability: () -> Unit,
     onDailyAdd: () -> Unit,
@@ -902,11 +925,6 @@ private fun HomeNudgeCard(
             ReliabilityCard(palette, onReview = onOpenReliability, onDismiss = onDismissReliability)
         HomeViewModel.HomeNudge.Daily ->
             DailyNudgeCard(palette, onAdd = onDailyAdd, onDismiss = onDismissDaily)
-        HomeViewModel.HomeNudge.Impact ->
-            ImpactCard(
-                entries = impactCandidates, expanded = impactExpanded, onToggle = onImpactToggle,
-                onAddImpact = onAddImpact, onDismiss = onDismissImpact, palette = palette,
-            )
         is HomeViewModel.HomeNudge.Preview ->
             PreviewBannerCard(
                 entryCount = nudge.count, firstGoalName = previewFirstGoal,

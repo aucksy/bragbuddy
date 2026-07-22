@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -167,4 +168,33 @@ fun EmptyDeliverableNote(palette: BragPalette) {
         color = palette.text3,
         modifier = Modifier.padding(start = 22.dp),
     )
+}
+
+/**
+ * The **deliverable-level impact hint** — one quiet, tappable line under a deliverable's wins:
+ * "[count] wins here could be stronger — add a number". It replaces the retired app-wide Home
+ * counter card (which summed every log in the record); the unit of coaching is now ONE deliverable,
+ * and the line isn't rendered at all once that deliverable's wins collectively carry a number and an
+ * impact angle (see `ImpactCandidates.hintFor`). Indent matches [EmptyDeliverableNote], so it reads
+ * as part of the group.
+ */
+@Composable
+fun DeliverableImpactHint(count: Int, palette: BragPalette, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .padding(start = 22.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.TrendingUp, null, tint = palette.primary, modifier = Modifier.size(13.dp))
+        Spacer(Modifier.size(5.dp))
+        Text(
+            "$count ${if (count == 1) "win" else "wins"} here could be stronger — add a number",
+            style = MaterialTheme.typography.labelMedium,
+            color = palette.primary,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
 }
