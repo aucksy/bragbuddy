@@ -247,6 +247,10 @@ current code — that is the context, not chat history.
 > document, and the hint is REMOVED for a deliverable whose wins collectively already carry a number +
 > impact-angle wording (still the free local no-AI check — extended with `hasImpactAngle`; NO prompt
 > bytes → no eval gate). Detail in `## Status: v0.40.2`.
+> **✅ v0.40.3 FIX (2026-07-22, `versionCode 51`, owner-requested, NOT a phase)** — **every deliverable
+> is now collapsible** (⭐the owner REVERSED the v0.33.0 "no third tap" call), on Home AND the deep
+> pillar/folder view, with the defaults kept: active starts OPEN, Done starts CLOSED. UI-only; detail
+> in `## Status: v0.40.3`.
 > **📊 `docs/COST-MODEL.md` (2026-07-21, owner question):** measured AI cost model — summary input
 > PLATEAUS at the rollup caps (worst Detailed ≈ ₹0.77/gen; the daily categorizer is the real cost
 > driver) — **plus §7 the RECOMMENDED LAUNCH QUOTA CARD ("habit free / harvest paid": One page +
@@ -370,6 +374,44 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
   produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
   ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
   went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
+
+---
+
+## Status: v0.40.3 — Every deliverable is collapsible ✅ SHIPPED (signed · `versionCode 51` · Room stays **v8**, no schema change · compile + unit tests GREEN on the free debug gate before the tag · ONE adversarial 5-lens review = verdict SHIP, 0 blocking (findings below) · **UI-only, NO prompt bytes → no eval gate** · NOT a phase — same owner fix session as v0.40.2)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.40.3/BragBuddy-v0.40.3.apk` (`.aab` alongside).
+
+**The ask (owner, 2026-07-22):** "make the deliverables expandable and collapsible too... current
+default state is fine." ⭐ This **REVERSES the v0.33.0 owner call** ("a deliverable is a group header
+inside the expanded project — no third tap"); v0.33.0's docs stand as provenance, this entry is the
+newer decision. Defaults unchanged: **active = open, Done = closed**.
+
+### What shipped (commit `98c19b1` + docs/bump)
+- Both render surfaces — Home's `FolderCard` and the deep view's `ProjectBody` — now pass
+  `collapsible = true` for ACTIVE groups too, with the wins + `EmptyDeliverableNote` + the v0.40.2
+  `DeliverableImpactHint` rendered only while open. The heading always keeps its count
+  (`totalCount` — a collapsed group is never evidence-free).
+- **One toggle set per screen, inverted-by-lifecycle semantics:** `toggledDeliverables` holds the
+  groups the user flipped AWAY from their lifecycle default — contains-key = collapsed for an active
+  group, expanded for a Done one. Both defaults fall out of one mechanism; session-only (`remember`),
+  like the folder-expansion lists. Accepted quirk (documented in-code): a group whose lifecycle flips
+  keeps its mark, so it can arrive pre-flipped once; one tap corrects it.
+- Deep view: **selection mode still force-opens BOTH branches** (a hidden win can't be bulk-selected).
+- `DeliverableHeader` itself unchanged structurally (doc comment updated) — the chevron/tap-to-toggle
+  behaviour Done groups always had simply applies everywhere now.
+
+**Review (ONE adversarial 5-lens pass): verdict SHIP, 0 HIGH/MED.** Recorded, not churned (all
+pre-existing patterns this change merely extends): **NOTE** the `"::"` toggle-key join is unescaped —
+pathological user names containing `::` could make two groups toggle in lockstep (cosmetic, since
+v0.33.0); **NOTE** renaming a collapsed group drops its session mark (snaps back to default);
+**LOW (a11y polish)** the header's toggle `clickable` sets no `Role.Button`/state description for
+TalkBack — pre-existing on Done headers, now on ~2× the rows; worth folding into any future a11y pass.
+Verified clean: recomposition via SnapshotStateList reads, ⋮ menu can't strand or re-point, bulk
+selection/`presentIds` and Doc/Summary exports are data-driven and collapse-immune, `inlineView`
+budget unaffected, zero stale references to the old names.
+
+**Verification:** free debug gate GREEN on the exact fix commit (`98c19b1`) before the review; docs +
+version bump re-gated before tagging.
 
 ---
 
