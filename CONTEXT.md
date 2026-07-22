@@ -257,7 +257,9 @@ rehydration set (§1) and continues deterministically from the "next step" in `P
   tests → signed APK → handoff. **THE 9-FEATURE BATCH IS COMPLETE — v0.25.0 = P4 SHIPPED (latest); await the
   creator's next direction (iOS still DEFERRED).** **P4 (v0.25.0):** a **collapsible Home "Add impact" card**
   (`ui/home/ImpactCard.kt`; pure `data/impact/ImpactCandidates.kt` = PROCESSED non-routine wins whose bullet has
-  no number; gated on a Groq key) → tap a win → custom-scrim `AddImpactSheet` with an **AI project-aware question**
+  no number; gated on a Groq key) *(⚠ the app-wide CARD was RETIRED in v0.40.2 — `ImpactCard.kt` deleted; impact
+  coaching now renders per-deliverable inside the document, and the hint disappears once a deliverable's wins
+  collectively carry a number + impact wording; the sheet/seam below are unchanged)* → tap a win → custom-scrim `AddImpactSheet` with an **AI project-aware question**
   about what to quantify (new `AiProvider.suggestImpact` seam, uses the project's `description` detail; the AI
   **only asks — never invents a number**) → type the number → **non-destructive** `EntryProcessor.addImpact` folds
   it into the bullet via COMBINE mode, **keeping the win PROCESSED with its placement/behaviours/★ intact** (a

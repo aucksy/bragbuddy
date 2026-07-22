@@ -241,6 +241,12 @@ current code — that is the context, not chat history.
 > READ timeout, so OkHttp's 10s default hung up on any non-streaming generation longer than 10s (both
 > models, every time; One page squeaked under). Timeouts fixed + every generate failure now says what
 > actually happened, typed via `AiHttpException`. Detail in `## Status: v0.40.1`.
+> **✅ v0.40.2 FIX (2026-07-22, `versionCode 50`, owner-reported, NOT a phase)** — the app-wide Home
+> "Make N wins stronger" impact counter card is RETIRED (it summed every number-less log in the whole
+> record and sat pinned at the top of Home); impact coaching now renders **per-deliverable** inside the
+> document, and the hint is REMOVED for a deliverable whose wins collectively already carry a number +
+> impact-angle wording (still the free local no-AI check — extended with `hasImpactAngle`; NO prompt
+> bytes → no eval gate). Detail in `## Status: v0.40.2`.
 > **📊 `docs/COST-MODEL.md` (2026-07-21, owner question):** measured AI cost model — summary input
 > PLATEAUS at the rollup caps (worst Detailed ≈ ₹0.77/gen; the daily categorizer is the real cost
 > driver) — **plus §7 the RECOMMENDED LAUNCH QUOTA CARD ("habit free / harvest paid": One page +
@@ -364,6 +370,62 @@ The container exists and the user drives it; the AI stays out. Ships fast, immed
   produce one grouped story, not scattered bullets. Expect the `summaryChecks` 100% AND-gate to bite; budget
   ≥2 gate rounds. **Set any new floor to what the model RELIABLY does** — v0.31.0's `lengthHonoured` floor of 6
   went red because gpt-oss-120b is conservative (1/3 consensus) even after the prompt fix.
+
+---
+
+## Status: v0.40.2 — Impact coaching moves to the deliverable level ✅ SHIPPED (signed · `versionCode 50` · Room stays **v8**, no schema change · compile + unit tests GREEN on the free debug gate before the tag · ONE adversarial 5-lens review = verdict SHIP, 0 blocking (1 accepted LOW + 2 NOTEs below) · **NO prompt bytes changed → no eval gate** · NOT a phase — an owner-reported fix session)
+
+**APK:** `github.com/aucksy/bragbuddy/releases/download/v0.40.2/BragBuddy-v0.40.2.apk` (`.aab` alongside).
+
+**The complaint (owner, 2026-07-22):** the app "analyzes every log" for strengthenable wins and pins a
+persistent "17 wins can be strengthened" message at the top of Home. Wanted instead: the message and its
+count **specific to each deliverable**, and **removed entirely** when numbers + an impact angle are
+already present at the deliverable level.
+
+**What was actually happening (code-read):** no AI was scanning anything — the count came from the
+free local `ImpactCheck.hasMeasurable` regex (v0.7.0) run over EVERY processed win in the record by
+`ImpactCandidates.from`, feeding the v0.25.0 `ImpactCard` pinned into the Home nudge queue
+(session-only dismiss → back every open). The unit was wrong (whole record, deliverables ignored),
+not the cost.
+
+### What shipped (commit `555e44b` + docs/bump)
+- **`ImpactCard.kt` DELETED; `HomeNudge.Impact` removed.** The one-slot Home nudge queue is now
+  **reliability > daily > preview**.
+- **Per-deliverable hint** (`ui/common` · `DeliverableImpactHint`): one quiet tappable line under a
+  deliverable's wins inside the expanded project card — "N wins here could be stronger — add a number",
+  N scoped to THAT deliverable. Active groups always; done groups when expanded (a done deliverable
+  needs its outcome number most — the summary writes it as a completed story). Tap → the existing
+  `AddImpactSheet` (AI question seam unchanged) on the deliverable's **newest** number-less win.
+  Gated on `HomeViewModel.aiReady` (= `aiEnabled`; the merge re-runs the categorizer).
+- **The remove rule** (pure, unit-tested): `ImpactCheck.hasImpactAngle` (new local regex — change verbs
+  improved/reduced/saved/cut/faster…, "from X to Y", "led to", "resulting in") +
+  `ImpactCandidates.coveredTogether` — a deliverable is **covered** when its wins COLLECTIVELY carry a
+  number AND impact wording (the two halves may come from different wins; routine wins count toward
+  coverage). Covered → `hintFor` returns empty → **no message at all**, even if some lines lack numbers.
+  Judged collectively because the summary condenses a deliverable to ONE outcome-led story (v0.34.0):
+  once its numbers + angle exist somewhere, that story can be told.
+- **Hints are computed from the FULL deliverable group**, not the Home inline view's truncated copies
+  (which cap at 10 bullets/project) — a truncated count would understate.
+- **Deliberate scope lines:** wins OUTSIDE any deliverable (loose under a project / the Outside bucket)
+  get **no message anywhere** — the owner asked for deliverable-level only. The deep pillar/folder view
+  shows no hints (its VM has no AI wiring); Home's project cards are the surface.
+- Tests: `ImpactCheckTest` +3 (angle positives/negatives/word-boundaries), `ImpactCandidatesTest` +7
+  (coverage split across wins, metric contributes both halves, routine counts, hintFor on/off, order).
+
+**Review (ONE adversarial 5-lens pass per the standing rule): verdict SHIP, 0 blocking.**
+- **Accepted LOW (known-open):** an active deliverable that falls past Home's shared 10-bullet inline
+  budget (`inlineView`) renders no header AND no hint on Home, and the deep view has no hints — so its
+  coaching is unreachable until entries shift. Inherited v0.33.0 truncation design (reviewed then);
+  not worth reopening in a fix session. Revisit if the owner hits it.
+- **NOTE:** a non-blank but non-numeric `metric` ("went really well") counts as "has a number" — that's
+  the pre-existing `lacksMeasurable` semantics (metric is fed by the type-a-number sheet), reused as-is.
+- **NOTE (fixed here):** CONTEXT.md §4 / the v0.25.0 block described the deleted card as current —
+  superseded pointers added (history blocks kept as provenance, per convention).
+
+**Verification:** free debug gate (compile + unit tests) GREEN on the exact fix commit (`555e44b`)
+BEFORE the review; docs + version bump re-gated before tagging. ⭐ Lesson recorded: **a coaching nudge's
+unit must match the unit the record is judged in** — the summary tells deliverable-level stories, so
+win-level nagging across the whole record was noise even though each individual check was "correct".
 
 ---
 
@@ -2058,6 +2120,9 @@ baseline on every metric) before tagging the release. Commit a fresh baseline af
 **APK (on green):** `github.com/aucksy/bragbuddy/releases/download/v0.25.0/BragBuddy-v0.25.0.apk` (signed; `.aab` alongside).
 
 ### v0.25.0 — what was built (`versionCode 29`)
+> *(⚠ SUPERSEDED in part by v0.40.2: the app-wide CARD below was retired and `ImpactCard.kt` deleted —
+> impact coaching now renders per-deliverable. The sheet, the `suggestImpact` seam and the
+> `addImpact` merge are unchanged and still current. Kept as provenance.)*
 1. **The "Add impact" card (Home).** A **collapsible** card (`ui/home/ImpactCard.kt`, built in the existing
    reliability/nudge-card style) lists filed **wins that lack a number**. Backed by pure
    `data/impact/ImpactCandidates.kt` (`from()` = **PROCESSED** + **non-routine** + has a **bullet** + `lacksMeasurable`
